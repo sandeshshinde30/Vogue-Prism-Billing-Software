@@ -12,27 +12,54 @@ export function Button({
   children,
   className = '',
   disabled,
+  style,
   ...props
 }: ButtonProps) {
-  const base = 'inline-flex items-center justify-center font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed';
-
   const variants = {
-    primary: 'bg-green-500 text-white hover:bg-green-600',
-    secondary: 'bg-slate-100 text-slate-700 hover:bg-slate-200',
-    danger: 'bg-red-500 text-white hover:bg-red-600',
-    ghost: 'bg-transparent text-slate-600 hover:bg-slate-100',
+    primary: { bg: '#22c55e', hoverBg: '#16a34a', color: 'white' },
+    secondary: { bg: '#f1f5f9', hoverBg: '#e2e8f0', color: '#475569' },
+    danger: { bg: '#ef4444', hoverBg: '#dc2626', color: 'white' },
+    ghost: { bg: 'transparent', hoverBg: '#f1f5f9', color: '#475569' },
   };
 
   const sizes = {
-    sm: 'h-8 px-3 text-xs',
-    md: 'h-9 px-4 text-sm',
-    lg: 'h-10 px-5 text-sm',
+    sm: { height: '32px', padding: '0 12px', fontSize: '12px' },
+    md: { height: '36px', padding: '0 16px', fontSize: '14px' },
+    lg: { height: '40px', padding: '0 20px', fontSize: '14px' },
   };
+
+  const variantStyle = variants[variant];
+  const sizeStyle = sizes[size];
 
   return (
     <button
-      className={`${base} ${variants[variant]} ${sizes[size]} ${className}`}
+      className={`inline-flex items-center justify-center font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${className}`}
       disabled={disabled}
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        fontWeight: '500',
+        borderRadius: '8px',
+        border: 'none',
+        cursor: disabled ? 'not-allowed' : 'pointer',
+        transition: 'all 0.2s ease',
+        opacity: disabled ? '0.5' : '1',
+        backgroundColor: variantStyle.bg,
+        color: variantStyle.color,
+        ...sizeStyle,
+        ...style
+      }}
+      onMouseEnter={(e) => {
+        if (!disabled) {
+          e.currentTarget.style.backgroundColor = variantStyle.hoverBg;
+        }
+      }}
+      onMouseLeave={(e) => {
+        if (!disabled) {
+          e.currentTarget.style.backgroundColor = variantStyle.bg;
+        }
+      }}
       {...props}
     >
       {children}

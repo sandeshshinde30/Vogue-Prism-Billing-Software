@@ -8,6 +8,13 @@ interface CardProps {
 
 export function Card({ children, className = '', padding = 'md' }: CardProps) {
   const paddingStyles = {
+    none: { padding: '0' },
+    sm: { padding: '16px' },
+    md: { padding: '20px' },
+    lg: { padding: '24px' },
+  };
+
+  const paddingClasses = {
     none: '',
     sm: 'p-4',
     md: 'p-5',
@@ -15,7 +22,15 @@ export function Card({ children, className = '', padding = 'md' }: CardProps) {
   };
 
   return (
-    <div className={`bg-white border border-slate-200 rounded-xl ${paddingStyles[padding]} ${className}`}>
+    <div 
+      className={`bg-white border border-slate-200 rounded-xl ${paddingClasses[padding]} ${className}`}
+      style={{
+        backgroundColor: 'white',
+        border: '1px solid #e2e8f0',
+        borderRadius: '12px',
+        ...paddingStyles[padding]
+      }}
+    >
       {children}
     </div>
   );
