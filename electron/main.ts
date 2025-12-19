@@ -1,9 +1,9 @@
 import { app, BrowserWindow } from 'electron'
-// import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
+import { initDatabase, closeDatabase } from './database'
+import { setupIpcHandlers } from './ipc-handlers'
 
-// const require = createRequire(import.meta.url)
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 // The built directory structure
@@ -28,11 +28,21 @@ let win: BrowserWindow | null
 
 function createWindow() {
   win = new BrowserWindow({
-    icon: path.join(process.env.VITE_PUBLIC, 'electron-vite.svg'),
+    width: 1400,
+    height: 900,
+    minWidth: 1200,
+    minHeight: 700,
+    icon: path.join(process.env.VITE_PUBLIC, 'logo.png'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.mjs'),
+      contextIsolation: true,
+      nodeIntegration: false,
     },
+    titleBarStyle: 'default',
+    title: 'Vogue Prism - Billing Software',
   })
+
+  win.setMenuBarVisibility(false)
 
   // Test active push message to Renderer-process.
   win.webContents.on('did-finish-load', () => {
@@ -65,4 +75,12 @@ app.on('activate', () => {
   }
 })
 
-app.whenReady().then(createWindow)
+app.whenReady().then(() => {
+  initDatabase()
+  setupIpcHandlers()
+  createWindow()
+})
+
+app.on('before-quit', () => {
+  closeDatabase()
+})
