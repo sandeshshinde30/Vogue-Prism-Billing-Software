@@ -21,37 +21,27 @@ const navItems = [
 
 export function Sidebar() {
   return (
-    <aside 
-      className="w-60 bg-slate-900 flex flex-col h-full"
-      style={{ width: '240px', backgroundColor: '#0f172a' }}
-    >
+    <aside className="w-60 bg-gray-900 flex flex-col h-full flex-shrink-0">
       {/* Logo */}
-      <div 
-        className="h-16 px-5 flex items-center border-b border-slate-800"
-        style={{ height: '64px', padding: '0 20px', borderBottom: '1px solid #334155' }}
-      >
-        <div className="flex items-center gap-3" style={{ gap: '12px' }}>
-          <div 
-            className="w-9 h-9 bg-green-500 rounded-lg flex items-center justify-center"
-            style={{ 
-              width: '36px', 
-              height: '36px', 
-              backgroundColor: '#22c55e',
-              borderRadius: '8px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center'
-            }}
-          >
-            <span className="text-white font-bold text-sm" style={{ color: 'white', fontWeight: 'bold', fontSize: '14px' }}>
-              VP
-            </span>
+      <div className="h-16 px-5 flex items-center border-b border-gray-800"
+      style={
+        {
+          padding : '25px'
+        }
+      }>
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 rounded-lg flex items-center justify-center overflow-hidden bg-white">
+            <img 
+              src="/logo-gold.png" 
+              alt="Vogue Prism Logo" 
+              className="w-full h-full object-contain"
+            />
           </div>
           <div>
-            <h1 className="font-semibold text-white text-sm" style={{ fontWeight: '600', color: 'white', fontSize: '14px' }}>
+            <h1 className="font-semibold text-white text-sm">
               Vogue Prism
             </h1>
-            <p className="text-[11px] text-slate-500" style={{ fontSize: '11px', color: '#64748b' }}>
+            <p className="text-xs text-gray-500">
               Billing Software
             </p>
           </div>
@@ -59,33 +49,26 @@ export function Sidebar() {
       </div>
 
       {/* Navigation */}
-      <nav 
-        className="flex-1 py-4 px-3"
-        style={{ flex: '1', padding: '16px 12px' }}
-      >
-        <div className="space-y-1" style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+      <nav className="flex-1 py-4 px-3">
+        <div className="space-y-1"
+        style={{
+          padding : '10px'
+        }}
+        >
           {navItems.map((item) => (
             <NavLink
               key={item.to}
               to={item.to}
               className={({ isActive }) =>
-                `flex items-center gap-3 h-10 px-3 rounded-lg text-[13px] font-medium transition-colors ${
+                `flex items-center gap-3 h-10 px-3 rounded-lg text-sm font-medium transition-colors ${
                   isActive
                     ? 'bg-green-500/15 text-green-400'
-                    : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'
+                    : 'text-gray-400 hover:bg-gray-800 hover:text-gray-200'
                 }`
               }
               style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '12px',
-                height: '40px',
-                padding: '0 12px',
-                borderRadius: '8px',
-                fontSize: '13px',
-                fontWeight: '500',
-                transition: 'all 0.15s ease',
-                textDecoration: 'none'
+                padding : '16px',
+                margin : '5px'
               }}
             >
               <item.icon size={18} strokeWidth={1.8} />
@@ -96,19 +79,8 @@ export function Sidebar() {
       </nav>
 
       {/* Footer */}
-      <div 
-        className="h-12 px-5 flex items-center border-t border-slate-800"
-        style={{ 
-          height: '48px', 
-          padding: '0 20px', 
-          display: 'flex', 
-          alignItems: 'center', 
-          borderTop: '1px solid #334155' 
-        }}
-      >
-        <span className="text-[11px] text-slate-600" style={{ fontSize: '11px', color: '#475569' }}>
-          v1.0.0
-        </span>
+      <div className="h-12 px-5 flex items-center border-t border-gray-800">
+        <span className="text-xs text-gray-600">v1.0.0</span>
       </div>
     </aside>
   );

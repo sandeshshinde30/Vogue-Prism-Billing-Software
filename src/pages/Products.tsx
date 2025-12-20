@@ -107,10 +107,44 @@ export function Products() {
   };
 
   return (
-    <div className="space-y-6">
+    <div 
+      className="space-y-6"
+      style={{
+        width: '100%',
+        maxWidth: 'none',
+        margin: '0',
+        padding: '0'
+      }}
+    >
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-gray-900">Products</h1>
+      <div 
+        className="flex items-center justify-between"
+        style={{
+          marginBottom: '24px'
+        }}
+      >
+        <div>
+          <h1 
+            className="text-2xl font-bold text-gray-900"
+            style={{
+              fontSize: '28px',
+              fontWeight: '700',
+              color: '#111827',
+              marginBottom: '4px'
+            }}
+          >
+            Products
+          </h1>
+          <p 
+            className="text-sm text-gray-600"
+            style={{
+              fontSize: '14px',
+              color: '#6b7280'
+            }}
+          >
+            Manage your product inventory
+          </p>
+        </div>
         <Button onClick={handleAdd}>
           <Plus size={18} className="mr-2" />
           Add Product
@@ -118,134 +152,319 @@ export function Products() {
       </div>
 
       {/* Filters */}
-      <Card>
-        <div className="flex gap-4">
+      <Card style={{ marginBottom: '24px' }}>
+        <div className="flex flex-col sm:flex-row gap-4">
           <div className="flex-1">
             <Input
               placeholder="Search products..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              icon={<Search size={18} />}
+             
             />
           </div>
-          <Select
-            value={categoryFilter}
-            onChange={(e) => setCategoryFilter(e.target.value)}
-            options={[
-              { value: '', label: 'All Categories' },
-              ...CATEGORIES.map((c) => ({ value: c, label: c })),
-            ]}
-            className="w-48"
-          />
-          <Select
-            value={stockFilter}
-            onChange={(e) => setStockFilter(e.target.value)}
-            options={[
-              { value: '', label: 'All Stock' },
-              { value: 'low', label: 'Low Stock' },
-              { value: 'out', label: 'Out of Stock' },
-            ]}
-            className="w-40"
-          />
+          <div className="flex flex-col sm:flex-row gap-4">
+            <Select
+              value={categoryFilter}
+              onChange={(e) => setCategoryFilter(e.target.value)}
+              options={[
+                { value: '', label: 'All Categories' },
+                ...CATEGORIES.map((c) => ({ value: c, label: c })),
+              ]}
+              className="w-full sm:w-48"
+            />
+            <Select
+              value={stockFilter}
+              onChange={(e) => setStockFilter(e.target.value)}
+              options={[
+                { value: '', label: 'All Stock' },
+                { value: 'low', label: 'Low Stock' },
+                { value: 'out', label: 'Out of Stock' },
+              ]}
+              className="w-full sm:w-40"
+            />
+          </div>
         </div>
       </Card>
 
       {/* Products Table */}
-      <Card padding="none">
+      <Card padding="none" style={{ marginBottom: '24px' }}>
         {loading ? (
-          <div className="flex items-center justify-center h-48 text-gray-400">
-            Loading products...
+          <div 
+            className="flex items-center justify-center h-48 text-gray-400"
+            style={{
+              height: '192px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center'
+            }}
+          >
+            <div className="text-center">
+              <Package size={48} className="mx-auto mb-4 opacity-50" />
+              <p>Loading products...</p>
+            </div>
           </div>
         ) : filteredProducts.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-48 text-gray-400">
-            <Package size={48} className="mb-2" />
-            <p>No products found</p>
+          <div 
+            className="flex flex-col items-center justify-center h-48 text-gray-400"
+            style={{
+              height: '192px',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center'
+            }}
+          >
+            <Package size={48} className="mb-4 opacity-50" />
+            <p className="text-lg font-medium">No products found</p>
+            <p className="text-sm">Try adjusting your search or filters</p>
           </div>
         ) : (
-          <table className="w-full">
-            <thead>
-              <tr className="bg-gray-50 border-b border-gray-200">
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                  ID
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                  Name
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                  Category
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                  Size
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                  Price
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                  Stock
-                </th>
-                <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">
-                  Actions
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {filteredProducts.map((product) => (
-                <tr key={product.id} className="hover:bg-gray-50">
-                  <td className="px-4 py-3 text-sm font-mono text-gray-500">
-                    P{String(product.id).padStart(3, '0')}
-                  </td>
-                  <td className="px-4 py-3">
-                    <span className="font-medium text-gray-900">
-                      {product.name}
-                    </span>
-                    {product.barcode && (
-                      <p className="text-xs text-gray-500 font-mono">
-                        {product.barcode}
-                      </p>
-                    )}
-                  </td>
-                  <td className="px-4 py-3 text-sm text-gray-600">
-                    {product.category}
-                  </td>
-                  <td className="px-4 py-3 text-sm text-gray-600">
-                    {product.size || '-'}
-                  </td>
-                  <td className="px-4 py-3 text-sm font-mono font-medium text-gray-900">
-                    ₹{product.price.toLocaleString()}
-                  </td>
-                  <td className="px-4 py-3">
-                    <span
-                      className={`inline-flex items-center gap-1 px-2 py-1 rounded text-sm font-medium ${
-                        product.stock === 0
-                          ? 'bg-red-100 text-red-700'
-                          : product.stock <= product.lowStockThreshold
-                          ? 'bg-yellow-100 text-yellow-700'
-                          : 'bg-green-100 text-green-700'
-                      }`}
-                    >
-                      {product.stock <= product.lowStockThreshold &&
-                        product.stock > 0 && <AlertTriangle size={14} />}
-                      {product.stock}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <button
-                      onClick={() => handleEdit(product)}
-                      className="p-1.5 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded"
-                    >
-                      <Edit2 size={16} />
-                    </button>
-                    <button
-                      onClick={() => handleDelete(product.id)}
-                      className="p-1.5 text-red-500 hover:text-red-700 hover:bg-red-50 rounded ml-1"
-                    >
-                      <Trash2 size={16} />
-                    </button>
-                  </td>
+          <div className="overflow-x-auto">
+            <table 
+              className="w-full min-w-[800px]"
+              style={{
+                width: '100%',
+                minWidth: '800px',
+                borderCollapse: 'collapse'
+              }}
+            >
+              <thead>
+                <tr className="bg-gray-50 border-b border-gray-200">
+                  <th 
+                    className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                    style={{
+                      padding: '16px 24px',
+                      textAlign: 'left',
+                      fontSize: '11px',
+                      fontWeight: '500',
+                      color: '#6b7280',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.05em'
+                    }}
+                  >
+                    ID
+                  </th>
+                  <th 
+                    className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                    style={{
+                      padding: '16px 24px',
+                      textAlign: 'left',
+                      fontSize: '11px',
+                      fontWeight: '500',
+                      color: '#6b7280',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.05em'
+                    }}
+                  >
+                    Product Details
+                  </th>
+                  <th 
+                    className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                    style={{
+                      padding: '16px 24px',
+                      textAlign: 'left',
+                      fontSize: '11px',
+                      fontWeight: '500',
+                      color: '#6b7280',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.05em'
+                    }}
+                  >
+                    Category
+                  </th>
+                  <th 
+                    className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                    style={{
+                      padding: '16px 24px',
+                      textAlign: 'left',
+                      fontSize: '11px',
+                      fontWeight: '500',
+                      color: '#6b7280',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.05em'
+                    }}
+                  >
+                    Size
+                  </th>
+                  <th 
+                    className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                    style={{
+                      padding: '16px 24px',
+                      textAlign: 'left',
+                      fontSize: '11px',
+                      fontWeight: '500',
+                      color: '#6b7280',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.05em'
+                    }}
+                  >
+                    Price
+                  </th>
+                  <th 
+                    className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                    style={{
+                      padding: '16px 24px',
+                      textAlign: 'left',
+                      fontSize: '11px',
+                      fontWeight: '500',
+                      color: '#6b7280',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.05em'
+                    }}
+                  >
+                    Stock
+                  </th>
+                  <th 
+                    className="px-6 py-4 text-right text-xs font-medium text-gray-500 uppercase tracking-wider"
+                    style={{
+                      padding: '16px 24px',
+                      textAlign: 'right',
+                      fontSize: '11px',
+                      fontWeight: '500',
+                      color: '#6b7280',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.05em'
+                    }}
+                  >
+                    Actions
+                  </th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-100">
+                {filteredProducts.map((product) => (
+                  <tr key={product.id} className="hover:bg-gray-50 transition-colors">
+                    <td 
+                      className="px-6 py-4 whitespace-nowrap text-sm font-mono text-gray-500"
+                      style={{
+                        padding: '16px 24px',
+                        whiteSpace: 'nowrap',
+                        fontSize: '14px',
+                        fontFamily: 'JetBrains Mono, monospace',
+                        color: '#6b7280'
+                      }}
+                    >
+                      P{String(product.id).padStart(3, '0')}
+                    </td>
+                    <td 
+                      className="px-6 py-4"
+                      style={{
+                        padding: '16px 24px'
+                      }}
+                    >
+                      <div>
+                        <div 
+                          className="font-medium text-gray-900 text-sm"
+                          style={{
+                            fontWeight: '500',
+                            color: '#111827',
+                            fontSize: '14px'
+                          }}
+                        >
+                          {product.name}
+                        </div>
+                        {product.barcode && (
+                          <div 
+                            className="text-xs text-gray-500 font-mono mt-1"
+                            style={{
+                              fontSize: '12px',
+                              color: '#6b7280',
+                              fontFamily: 'JetBrains Mono, monospace',
+                              marginTop: '4px'
+                            }}
+                          >
+                            {product.barcode}
+                          </div>
+                        )}
+                      </div>
+                    </td>
+                    <td 
+                      className="px-6 py-4 whitespace-nowrap"
+                      style={{
+                        padding: '16px 24px',
+                        whiteSpace: 'nowrap'
+                      }}
+                    >
+                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                        {product.category}
+                      </span>
+                    </td>
+                    <td 
+                      className="px-6 py-4 whitespace-nowrap text-sm text-gray-600"
+                      style={{
+                        padding: '16px 24px',
+                        whiteSpace: 'nowrap',
+                        fontSize: '14px',
+                        color: '#4b5563'
+                      }}
+                    >
+                      {product.size || '-'}
+                    </td>
+                    <td 
+                      className="px-6 py-4 whitespace-nowrap text-sm font-mono font-medium text-gray-900"
+                      style={{
+                        padding: '16px 24px',
+                        whiteSpace: 'nowrap',
+                        fontSize: '14px',
+                        fontFamily: 'JetBrains Mono, monospace',
+                        fontWeight: '500',
+                        color: '#111827'
+                      }}
+                    >
+                      ₹{product.price.toLocaleString()}
+                    </td>
+                    <td 
+                      className="px-6 py-4 whitespace-nowrap"
+                      style={{
+                        padding: '16px 24px',
+                        whiteSpace: 'nowrap'
+                      }}
+                    >
+                      <span
+                        className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                          product.stock === 0
+                            ? 'bg-red-100 text-red-700'
+                            : product.stock <= product.lowStockThreshold
+                            ? 'bg-yellow-100 text-yellow-700'
+                            : 'bg-green-100 text-green-700'
+                        }`}
+                      >
+                        {product.stock <= product.lowStockThreshold &&
+                          product.stock > 0 && <AlertTriangle size={12} />}
+                        {product.stock}
+                      </span>
+                    </td>
+                    <td 
+                      className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium"
+                      style={{
+                        padding: '16px 24px',
+                        whiteSpace: 'nowrap',
+                        textAlign: 'right',
+                        fontSize: '14px',
+                        fontWeight: '500'
+                      }}
+                    >
+                      <div className="flex items-center justify-end gap-2">
+                        <button
+                          onClick={() => handleEdit(product)}
+                          className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+                          title="Edit product"
+                        >
+                          <Edit2 size={16} />
+                        </button>
+                        <button
+                          onClick={() => handleDelete(product.id)}
+                          className="p-2 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors"
+                          title="Delete product"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </Card>
 

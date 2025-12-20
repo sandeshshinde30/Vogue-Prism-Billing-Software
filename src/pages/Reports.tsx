@@ -115,10 +115,44 @@ export function Reports() {
   };
 
   return (
-    <div className="space-y-6">
+    <div 
+      className="main-content space-y-6"
+      style={{
+        width: '100%',
+        maxWidth: 'none',
+        margin: '0',
+        padding: '0'
+      }}
+    >
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-gray-900">Reports</h1>
+      <div 
+        className="page-header flex flex-col sm:flex-row sm:items-center justify-between gap-4"
+        style={{
+          marginBottom: '24px'
+        }}
+      >
+        <div>
+          <h1 
+            className="page-title"
+            style={{
+              fontSize: '28px',
+              fontWeight: '700',
+              color: '#111827',
+              marginBottom: '4px'
+            }}
+          >
+            Reports
+          </h1>
+          <p 
+            className="page-subtitle"
+            style={{
+              fontSize: '14px',
+              color: '#6b7280'
+            }}
+          >
+            View sales analytics and export data
+          </p>
+        </div>
         <Button onClick={handleExport}>
           <Download size={18} className="mr-2" />
           Export Excel
@@ -126,9 +160,9 @@ export function Reports() {
       </div>
 
       {/* Date Range */}
-      <Card>
-        <div className="flex items-center gap-4">
-          <div className="flex gap-2">
+      <Card style={{ marginBottom: '24px' }}>
+        <div className="flex flex-col lg:flex-row items-start lg:items-center gap-4">
+          <div className="flex flex-wrap gap-2">
             {['today', 'week', 'month'].map((range) => (
               <button
                 key={range}
@@ -143,19 +177,23 @@ export function Reports() {
               </button>
             ))}
           </div>
-          <span className="text-gray-400">or</span>
-          <div className="flex items-center gap-2">
-            <Calendar size={18} className="text-gray-400" />
-            <input
-              type="date"
-              value={dateRange.from}
-              onChange={(e) => {
-                setDateRange({ ...dateRange, from: e.target.value });
-                setQuickRange('');
-              }}
-              className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
-            />
-            <span className="text-gray-400">to</span>
+          <div className="flex items-center gap-2 text-gray-400">
+            <span>or</span>
+          </div>
+          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2">
+            <div className="flex items-center gap-2">
+              <Calendar size={18} className="text-gray-400" />
+              <input
+                type="date"
+                value={dateRange.from}
+                onChange={(e) => {
+                  setDateRange({ ...dateRange, from: e.target.value });
+                  setQuickRange('');
+                }}
+                className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500"
+              />
+            </div>
+            <span className="text-gray-400 hidden sm:inline">to</span>
             <input
               type="date"
               value={dateRange.to}
@@ -163,14 +201,22 @@ export function Reports() {
                 setDateRange({ ...dateRange, to: e.target.value });
                 setQuickRange('');
               }}
-              className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
+              className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500"
             />
           </div>
         </div>
       </Card>
 
       {/* Summary Stats */}
-      <div className="grid grid-cols-4 gap-4">
+      <div 
+        className="stats-grid"
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))',
+          gap: '16px',
+          marginBottom: '24px'
+        }}
+      >
         <StatCard
           title="Total Sales"
           value={formatCurrency(summary.totalSales)}
@@ -194,28 +240,41 @@ export function Reports() {
       </div>
 
       {/* Sales Breakdown & Bill History */}
-      <div className="grid grid-cols-2 gap-6">
+      <div 
+        className="grid grid-cols-1 lg:grid-cols-2 gap-6"
+        style={{
+          marginBottom: '24px'
+        }}
+      >
         {/* Sales Breakdown */}
         <Card>
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">
-            Sales Breakdown
-          </h2>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold text-gray-900">
+              Sales Breakdown
+            </h2>
+          </div>
           {loading ? (
-            <div className="text-center py-8 text-gray-400">Loading...</div>
+            <div className="text-center py-8 text-gray-400">
+              <div className="animate-spin w-6 h-6 border-2 border-green-500 border-t-transparent rounded-full mx-auto mb-2"></div>
+              <p>Loading...</p>
+            </div>
           ) : salesReport.length === 0 ? (
-            <div className="text-center py-8 text-gray-400">No sales data</div>
+            <div className="text-center py-8 text-gray-400">
+              <Receipt size={48} className="mx-auto mb-4 opacity-50" />
+              <p>No sales data</p>
+            </div>
           ) : (
             <div className="overflow-auto max-h-96">
               <table className="w-full">
                 <thead className="sticky top-0 bg-white">
                   <tr className="border-b border-gray-200">
-                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">
+                    <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Product
                     </th>
-                    <th className="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase">
+                    <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Qty
                     </th>
-                    <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">
+                    <th className="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Amount
                     </th>
                   </tr>
@@ -223,20 +282,20 @@ export function Reports() {
                 <tbody className="divide-y divide-gray-100">
                   {salesReport.map((item, index) => (
                     <tr key={index} className="hover:bg-gray-50">
-                      <td className="px-3 py-2">
-                        <span className="font-medium text-gray-900">
+                      <td className="px-3 py-3">
+                        <div className="font-medium text-gray-900 text-sm">
                           {item.productName}
-                        </span>
+                        </div>
                         {item.size && (
-                          <span className="text-gray-500 ml-1">
+                          <div className="text-xs text-gray-500">
                             ({item.size})
-                          </span>
+                          </div>
                         )}
                       </td>
-                      <td className="px-3 py-2 text-center text-gray-600">
+                      <td className="px-3 py-3 text-center text-gray-600 text-sm">
                         {item.quantitySold}
                       </td>
-                      <td className="px-3 py-2 text-right font-mono font-medium text-gray-900">
+                      <td className="px-3 py-3 text-right font-mono font-medium text-gray-900 text-sm">
                         {formatCurrency(item.totalAmount)}
                       </td>
                     </tr>
@@ -249,28 +308,36 @@ export function Reports() {
 
         {/* Bill History */}
         <Card>
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">
-            Bill History
-          </h2>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold text-gray-900">
+              Bill History
+            </h2>
+          </div>
           {loading ? (
-            <div className="text-center py-8 text-gray-400">Loading...</div>
+            <div className="text-center py-8 text-gray-400">
+              <div className="animate-spin w-6 h-6 border-2 border-green-500 border-t-transparent rounded-full mx-auto mb-2"></div>
+              <p>Loading...</p>
+            </div>
           ) : bills.length === 0 ? (
-            <div className="text-center py-8 text-gray-400">No bills found</div>
+            <div className="text-center py-8 text-gray-400">
+              <Receipt size={48} className="mx-auto mb-4 opacity-50" />
+              <p>No bills found</p>
+            </div>
           ) : (
             <div className="overflow-auto max-h-96">
               <table className="w-full">
                 <thead className="sticky top-0 bg-white">
                   <tr className="border-b border-gray-200">
-                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">
+                    <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Bill #
                     </th>
-                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">
+                    <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Time
                     </th>
-                    <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">
+                    <th className="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Amount
                     </th>
-                    <th className="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase">
+                    <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Action
                     </th>
                   </tr>
@@ -278,19 +345,21 @@ export function Reports() {
                 <tbody className="divide-y divide-gray-100">
                   {bills.map((bill) => (
                     <tr key={bill.id} className="hover:bg-gray-50">
-                      <td className="px-3 py-2 font-medium text-gray-900">
+                      <td className="px-3 py-3 font-medium text-gray-900 text-sm">
                         {bill.billNumber}
                       </td>
-                      <td className="px-3 py-2 text-gray-600">
-                        {formatDate(bill.createdAt)} {formatTime(bill.createdAt)}
+                      <td className="px-3 py-3 text-gray-600 text-sm">
+                        <div>{formatDate(bill.createdAt)}</div>
+                        <div className="text-xs text-gray-500">{formatTime(bill.createdAt)}</div>
                       </td>
-                      <td className="px-3 py-2 text-right font-mono font-medium text-gray-900">
+                      <td className="px-3 py-3 text-right font-mono font-medium text-gray-900 text-sm">
                         {formatCurrency(bill.total)}
                       </td>
-                      <td className="px-3 py-2 text-center">
+                      <td className="px-3 py-3 text-center">
                         <button
                           onClick={() => handleViewBill(bill.id)}
-                          className="p-1.5 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded"
+                          className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+                          title="View bill details"
                         >
                           <Eye size={16} />
                         </button>

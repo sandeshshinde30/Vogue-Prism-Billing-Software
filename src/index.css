@@ -26,10 +26,145 @@
 
 body {
   font-family: var(--font-family-sans);
-  background-color: #f8fafc;
-  color: #1e293b;
+  background-color: #f9fafb;
+  color: #111827;
   overflow: hidden;
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Main layout consistency - CRITICAL PADDING FIX */
+main {
+  padding: 32px !important;
+  padding-top: 24px !important;
+  padding-bottom: 24px !important;
+  width: 100% !important;
+  max-width: none !important;
+  margin: 0 !important;
+  box-sizing: border-box !important;
+}
+
+/* Force consistent padding for all page containers */
+.main-content,
+.page-container,
+main > div {
+  width: 100% !important;
+  max-width: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  box-sizing: border-box !important;
+}
+
+/* Page container consistency */
+.page-container {
+  width: 100% !important;
+  max-width: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+/* Additional container fixes */
+.space-y-6 {
+  width: 100% !important;
+  max-width: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+/* Ensure consistent spacing */
+.space-y-6 > * + * {
+  margin-top: 1.5rem !important;
+}
+
+.space-y-4 > * + * {
+  margin-top: 1rem !important;
+}
+
+.space-y-3 > * + * {
+  margin-top: 0.75rem !important;
+}
+
+/* Header spacing fix */
+.page-header {
+  margin-bottom: 24px !important;
+}
+
+.page-title {
+  font-size: 28px !important;
+  font-weight: 700 !important;
+  color: #111827 !important;
+  margin-bottom: 4px !important;
+}
+
+.page-subtitle {
+  font-size: 14px !important;
+  color: #6b7280 !important;
+}
+
+/* Card consistency */
+.card {
+  background: white !important;
+  border: 1px solid #e5e7eb !important;
+  border-radius: 12px !important;
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1) !important;
+  margin-bottom: 24px !important;
+}
+
+/* Table improvements */
+table {
+  border-collapse: collapse !important;
+  width: 100% !important;
+}
+
+th, td {
+  border: none !important;
+  padding: 16px 24px !important;
+}
+
+th {
+  background-color: #f9fafb !important;
+  font-size: 11px !important;
+  font-weight: 500 !important;
+  color: #6b7280 !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.05em !important;
+}
+
+td {
+  font-size: 14px !important;
+  color: #111827 !important;
+}
+
+/* Grid consistency */
+.stats-grid {
+  display: grid !important;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)) !important;
+  gap: 16px !important;
+  margin-bottom: 24px !important;
+}
+
+/* Button consistency */
+button {
+  transition: all 0.15s ease !important;
+}
+
+button:active:not(:disabled) {
+  transform: scale(0.98) !important;
+}
+
+/* Input and form consistency */
+input, select, textarea {
+  transition: all 0.15s ease !important;
+  border: 1px solid #d1d5db !important;
+  border-radius: 8px !important;
+  padding: 8px 12px !important;
+  font-size: 14px !important;
+}
+
+input:focus, select:focus, textarea:focus {
+  outline: none !important;
+  border-color: #22c55e !important;
+  box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.1) !important;
 }
 
 /* Scrollbar */
@@ -43,12 +178,12 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
+  background: #d1d5db;
   border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #94a3b8;
+  background: #9ca3af;
 }
 
 /* Animations */
@@ -72,19 +207,45 @@ body {
   }
 }
 
-/* Transitions */
-button, input, select {
-  transition: all 0.15s ease;
+.animate-spin {
+  animation: spin 1s linear infinite;
 }
 
-/* Focus */
-input:focus, select:focus, textarea:focus {
-  outline: none;
+/* Responsive utilities */
+@media (max-width: 640px) {
+  main {
+    padding: 16px !important;
+  }
+  
+  .stats-grid {
+    grid-template-columns: 1fr !important;
+  }
+  
+  .responsive-flex {
+    flex-direction: column !important;
+  }
+  
+  .responsive-gap {
+    gap: 1rem !important;
+  }
+  
+  th, td {
+    padding: 12px 16px !important;
+  }
 }
 
-/* Button press */
-button:active:not(:disabled) {
-  transform: scale(0.98);
+@media (max-width: 1024px) {
+  .lg\:grid-cols-2 {
+    grid-template-columns: 1fr !important;
+  }
+  
+  .lg\:grid-cols-3 {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+  
+  .lg\:grid-cols-4 {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
 }
 
 /* Print */
@@ -101,4 +262,37 @@ button:active:not(:disabled) {
     top: 0;
     width: 100%;
   }
+}
+
+/* Fix for specific layout issues */
+.main-content {
+  width: 100% !important;
+  max-width: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+/* Billing page specific fixes */
+.billing-container {
+  height: calc(100vh - 120px) !important;
+  padding: 0 !important;
+  margin: 0 !important;
+}
+
+/* Ensure all direct children of main have consistent styling */
+main > * {
+  width: 100% !important;
+  max-width: none !important;
+}
+
+/* Fix any remaining container issues */
+.container,
+.max-w-7xl,
+.max-w-6xl,
+.max-w-5xl,
+.max-w-4xl {
+  max-width: none !important;
+  width: 100% !important;
+  margin: 0 !important;
+  padding: 0 !important;
 }
