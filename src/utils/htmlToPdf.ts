@@ -255,8 +255,7 @@ export const SAMPLE_BILL_TEMPLATE = `
  * @param settings - Store settings
  */
 export async function generatePDFFromFile(
-  templatePath: string,
-  billData: BillData,
+    billData: BillData,
   items: BillItem[],
   settings: Settings
 ): Promise<void> {
