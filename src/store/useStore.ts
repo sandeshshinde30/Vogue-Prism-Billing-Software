@@ -47,6 +47,10 @@ interface AppState {
   // Computed values
   getSubtotal: () => number;
   getTotal: () => number;
+  
+  // Manual total override
+  manualTotal: number | null;
+  setManualTotal: (total: number | null) => void;
 }
 
 export const useStore = create<AppState>((set, get) => ({
@@ -89,7 +93,7 @@ export const useStore = create<AppState>((set, get) => ({
         item.product.id === productId ? { ...item, quantity } : item
       ),
     })),
-  clearCart: () => set({ cart: [], discountPercent: 0, discountAmount: 0 }),
+  clearCart: () => set({ cart: [], discountPercent: 0, discountAmount: 0, manualTotal: null }),
 
   // Discount
   discountPercent: 0,
@@ -127,12 +131,20 @@ export const useStore = create<AppState>((set, get) => ({
   searchQuery: '',
   setSearchQuery: (query) => set({ searchQuery: query }),
 
+  // Manual total override
+  manualTotal: null,
+  setManualTotal: (total) => set({ manualTotal: total }),
+
   // Computed values
   getSubtotal: () => {
     const { cart } = get();
     return cart.reduce((sum, item) => sum + item.product.price * item.quantity, 0);
   },
   getTotal: () => {
+    const { manualTotal } = get();
+    if (manualTotal !== null) {
+      return manualTotal;
+    }
     const subtotal = get().getSubtotal();
     const { discountAmount } = get();
     return Math.max(0, subtotal - discountAmount);

@@ -8,14 +8,15 @@ export interface ProductData {
   price: number;
   stock: number;
   lowStockThreshold: number;
+  isActive?: boolean;
 }
 
 // CREATE - Add new product
 export function addProduct(data: ProductData) {
   const db = getDatabase();
   const stmt = db.prepare(`
-    INSERT INTO products (name, category, size, barcode, price, stock, lowStockThreshold, createdAt, updatedAt)
-    VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+    INSERT INTO products (name, category, size, barcode, price, stock, lowStockThreshold, isActive, createdAt, updatedAt)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
   `);
   
   const result = stmt.run(
@@ -25,50 +26,93 @@ export function addProduct(data: ProductData) {
     data.barcode || null,
     data.price,
     data.stock,
-    data.lowStockThreshold
+    data.lowStockThreshold,
+    data.isActive !== false ? 1 : 0
   );
   
   return result.lastInsertRowid;
 }
 
-// READ - Get all products
-export function getProducts() {
+// READ - Get all products (only active by default)
+export function getProducts(includeInactive: boolean = false) {
   const db = getDatabase();
-  const stmt = db.prepare('SELECT * FROM products ORDER BY id DESC');
-  return stmt.all();
+  let query = 'SELECT * FROM products';
+  if (!includeInactive) {
+    query += ' WHERE (isActive = 1 OR isActive IS NULL)'; // Handle legacy data
+  }
+  query += ' ORDER BY id DESC';
+  
+  const stmt = db.prepare(query);
+  const results = stmt.all();
+  
+  // Ensure isActive is properly set for all results
+  return results.map((product: any) => ({
+    ...product,
+    isActive: product.isActive === null ? true : Boolean(product.isActive)
+  }));
 }
 
 // READ - Get product by ID
 export function getProductById(id: number) {
   const db = getDatabase();
   const stmt = db.prepare('SELECT * FROM products WHERE id = ?');
-  return stmt.get(id);
+  const result = stmt.get(id);
+  
+  if (result) {
+    return {
+      ...result,
+      isActive: (result as any).isActive === null ? true : Boolean((result as any).isActive)
+    };
+  }
+  
+  return result;
 }
 
 // READ - Get product by barcode
 export function getProductByBarcode(barcode: string) {
   const db = getDatabase();
   const stmt = db.prepare('SELECT * FROM products WHERE barcode = ?');
-  return stmt.get(barcode);
+  const result = stmt.get(barcode);
+  
+  if (result) {
+    return {
+      ...result,
+      isActive: (result as any).isActive === null ? true : Boolean((result as any).isActive)
+    };
+  }
+  
+  return result;
 }
 
-// READ - Search products by name or barcode
+// READ - Search products by name or barcode (only active)
 export function searchProducts(query: string) {
   const db = getDatabase();
   const stmt = db.prepare(`
     SELECT * FROM products 
-    WHERE name LIKE ? OR barcode LIKE ? 
+    WHERE (name LIKE ? OR barcode LIKE ?) AND (isActive = 1 OR isActive IS NULL)
     ORDER BY name
   `);
   const searchTerm = `%${query}%`;
-  return stmt.all(searchTerm, searchTerm);
+  const results = stmt.all(searchTerm, searchTerm);
+  
+  // Ensure isActive is properly set
+  return results.map((product: any) => ({
+    ...product,
+    isActive: product.isActive === null ? true : Boolean(product.isActive)
+  }));
 }
 
-// READ - Get products by category
+// READ - Get products by category (only active)
 export function getProductsByCategory(category: string) {
   const db = getDatabase();
-  const stmt = db.prepare('SELECT * FROM products WHERE category = ? ORDER BY name');
-  return stmt.all(category);
+  const stmt = db.prepare('SELECT * FROM products WHERE category = ? AND (isActive = 1 OR isActive IS NULL) ORDER BY name');
+  const results = stmt.all(category);
+  
+  // Ensure isActive is properly set
+  return results.map((product: any) => ({
+    ...product,
+    isActive: product.isActive === null ? true : Boolean(product.isActive)
+  }));
 }
 
 // READ - Get low stock products
@@ -117,6 +161,10 @@ export function updateProduct(id: number, data: Partial<ProductData>) {
     fields.push('lowStockThreshold = ?');
     values.push(data.lowStockThreshold);
   }
+  if (data.isActive !== undefined) {
+    fields.push('isActive = ?');
+    values.push(data.isActive ? 1 : 0);
+  }
   
   fields.push('updatedAt = datetime(\'now\')');
   values.push(id);
@@ -153,10 +201,69 @@ export function updateStock(id: number, quantity: number, changeType: 'sale' | '
   return true;
 }
 
-// DELETE - Delete product
-export function deleteProduct(id: number) {
+// DELETE - Delete product (with validation) or deactivate if referenced
+export function deleteProduct(id: number, forceDeactivate: boolean = false) {
   const db = getDatabase();
-  const stmt = db.prepare('DELETE FROM products WHERE id = ?');
+  
+  // Check if product is referenced in any bills
+  const billCheckStmt = db.prepare(`
+    SELECT COUNT(*) as count FROM bill_items WHERE productId = ?
+  `);
+  const billCheck = billCheckStmt.get(id) as { count: number };
+  
+  if (billCheck.count > 0) {
+    if (forceDeactivate) {
+      // Deactivate instead of delete
+      const deactivateStmt = db.prepare(`
+        UPDATE products 
+        SET isActive = 0, updatedAt = datetime('now') 
+        WHERE id = ?
+      `);
+      const result = deactivateStmt.run(id);
+      return { 
+        success: result.changes > 0, 
+        deactivated: true,
+        message: 'Product deactivated successfully (was referenced in bills)'
+      };
+    } else {
+      throw new Error(`Cannot delete product. It is referenced in ${billCheck.count} bill(s). Use deactivate option instead.`);
+    }
+  }
+  
+  // Start transaction to delete product and related records
+  const transaction = db.transaction(() => {
+    // Delete stock logs first
+    const deleteLogsStmt = db.prepare('DELETE FROM stock_logs WHERE productId = ?');
+    deleteLogsStmt.run(id);
+    
+    // Delete the product
+    const deleteProductStmt = db.prepare('DELETE FROM products WHERE id = ?');
+    const result = deleteProductStmt.run(id);
+    
+    if (result.changes === 0) {
+      throw new Error('Product not found');
+    }
+    
+    return result.changes > 0;
+  });
+  
+  const success = transaction();
+  return { success, deleted: true, message: 'Product deleted successfully' };
+}
+
+// UTILITY - Deactivate product
+export function deactivateProduct(id: number) {
+  return deleteProduct(id, true);
+}
+
+// UTILITY - Reactivate product
+export function reactivateProduct(id: number) {
+  const db = getDatabase();
+  const stmt = db.prepare(`
+    UPDATE products 
+    SET isActive = 1, updatedAt = datetime('now') 
+    WHERE id = ?
+  `);
   const result = stmt.run(id);
   return result.changes > 0;
 }

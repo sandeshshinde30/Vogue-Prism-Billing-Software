@@ -7,10 +7,11 @@ import {
   Banknote,
   Smartphone,
   Eye,
+  FileText,
 } from 'lucide-react';
 import { Card, Button, StatCard, Modal } from '../components/common';
 import { Bill, BillItem } from '../types';
-import { exportToExcel, formatCurrency, formatDate, formatTime } from '../utils/export';
+import { exportToExcel, exportBillToPDF, formatCurrency, formatDate, formatTime } from '../utils/export';
 import { format } from 'date-fns';
 import toast from 'react-hot-toast';
 
@@ -45,8 +46,18 @@ export function Reports() {
   const loadReports = async () => {
     setLoading(true);
     try {
-      const [summaryData, reportData, billsData] = await Promise.all([
-        window.electronAPI.getDailySummary(dateRange.from),
+      let summaryData;
+      
+      // Use appropriate summary function based on date range
+      if (dateRange.from === dateRange.to) {
+        // Single day - use daily summary
+        summaryData = await window.electronAPI.getDailySummary(dateRange.from);
+      } else {
+        // Date range - use new date range summary
+        summaryData = await window.electronAPI.getDateRangeSummary(dateRange.from, dateRange.to);
+      }
+      
+      const [reportData, billsData] = await Promise.all([
         window.electronAPI.getSalesReport(dateRange.from, dateRange.to),
         window.electronAPI.getBills(dateRange.from, dateRange.to),
       ]);
@@ -111,6 +122,19 @@ export function Reports() {
       setSelectedBill(data as { bill: Bill; items: BillItem[] });
     } catch (error) {
       toast.error('Error loading bill details');
+    }
+  };
+
+  const handlePrintBill = async (billId: number) => {
+    try {
+      const data = await window.electronAPI.getBillById(billId);
+      if (data) {
+        const { bill, items } = data as { bill: Bill; items: BillItem[] };
+        exportBillToPDF(bill, items);
+        toast.success('PDF generated successfully');
+      }
+    } catch (error) {
+      toast.error('Error generating PDF');
     }
   };
 
@@ -338,7 +362,7 @@ export function Reports() {
                       Amount
                     </th>
                     <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Action
+                      Actions
                     </th>
                   </tr>
                 </thead>
@@ -356,13 +380,22 @@ export function Reports() {
                         {formatCurrency(bill.total)}
                       </td>
                       <td className="px-3 py-3 text-center">
-                        <button
-                          onClick={() => handleViewBill(bill.id)}
-                          className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
-                          title="View bill details"
-                        >
-                          <Eye size={16} />
-                        </button>
+                        <div className="flex items-center justify-center gap-1">
+                          <button
+                            onClick={() => handleViewBill(bill.id)}
+                            className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+                            title="View bill details"
+                          >
+                            <Eye size={16} />
+                          </button>
+                          <button
+                            onClick={() => handlePrintBill(bill.id)}
+                            className="p-2 text-blue-500 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition-colors"
+                            title="Export to PDF"
+                          >
+                            <FileText size={16} />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -444,7 +477,14 @@ export function Reports() {
               </div>
             </div>
 
-            <div className="flex justify-end pt-4">
+            <div className="flex justify-end gap-2 pt-4">
+              <Button 
+                variant="secondary" 
+                onClick={() => handlePrintBill(selectedBill.bill.id)}
+              >
+                <FileText size={16} className="mr-2" />
+                Export PDF
+              </Button>
               <Button variant="secondary" onClick={() => setSelectedBill(null)}>
                 Close
               </Button>

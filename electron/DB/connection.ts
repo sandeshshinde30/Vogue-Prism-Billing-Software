@@ -20,10 +20,25 @@ export async function initDatabase() {
       price REAL NOT NULL,
       stock INTEGER NOT NULL DEFAULT 0,
       lowStockThreshold INTEGER NOT NULL DEFAULT 5,
+      isActive INTEGER NOT NULL DEFAULT 1,
       createdAt TEXT NOT NULL DEFAULT (datetime('now')),
       updatedAt TEXT NOT NULL DEFAULT (datetime('now'))
     );
   `);
+
+  // Migration: Add isActive column if it doesn't exist
+  try {
+    const tableInfo = db.prepare("PRAGMA table_info(products)").all();
+    const hasIsActive = tableInfo.some((column: any) => column.name === 'isActive');
+    
+    if (!hasIsActive) {
+      console.log('Adding isActive column to products table...');
+      db.exec('ALTER TABLE products ADD COLUMN isActive INTEGER NOT NULL DEFAULT 1');
+      console.log('Migration completed: isActive column added');
+    }
+  } catch (error) {
+    console.error('Migration error:', error);
+  }
 
   // Create bills table
   db.exec(`

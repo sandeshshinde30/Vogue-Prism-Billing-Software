@@ -1,5 +1,4 @@
 import React from 'react';
-import { Percent, IndianRupee } from 'lucide-react';
 import { useStore } from '../../store/useStore';
 
 export function DiscountInput() {

@@ -17,10 +17,22 @@ async function initDatabase() {
       price REAL NOT NULL,
       stock INTEGER NOT NULL DEFAULT 0,
       lowStockThreshold INTEGER NOT NULL DEFAULT 5,
+      isActive INTEGER NOT NULL DEFAULT 1,
       createdAt TEXT NOT NULL DEFAULT (datetime('now')),
       updatedAt TEXT NOT NULL DEFAULT (datetime('now'))
     );
   `);
+  try {
+    const tableInfo = db.prepare("PRAGMA table_info(products)").all();
+    const hasIsActive = tableInfo.some((column) => column.name === "isActive");
+    if (!hasIsActive) {
+      console.log("Adding isActive column to products table...");
+      db.exec("ALTER TABLE products ADD COLUMN isActive INTEGER NOT NULL DEFAULT 1");
+      console.log("Migration completed: isActive column added");
+    }
+  } catch (error) {
+    console.error("Migration error:", error);
+  }
   db.exec(`
     CREATE TABLE IF NOT EXISTS bills (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -107,8 +119,8 @@ async function closeDatabase() {
 function addProduct(data) {
   const db2 = getDatabase();
   const stmt = db2.prepare(`
-    INSERT INTO products (name, category, size, barcode, price, stock, lowStockThreshold, createdAt, updatedAt)
-    VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+    INSERT INTO products (name, category, size, barcode, price, stock, lowStockThreshold, isActive, createdAt, updatedAt)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
   `);
   const result = stmt.run(
     data.name,
@@ -117,39 +129,71 @@ function addProduct(data) {
     data.barcode || null,
     data.price,
     data.stock,
-    data.lowStockThreshold
+    data.lowStockThreshold,
+    data.isActive !== false ? 1 : 0
   );
   return result.lastInsertRowid;
 }
-function getProducts() {
+function getProducts(includeInactive = false) {
   const db2 = getDatabase();
-  const stmt = db2.prepare("SELECT * FROM products ORDER BY id DESC");
-  return stmt.all();
+  let query = "SELECT * FROM products";
+  if (!includeInactive) {
+    query += " WHERE (isActive = 1 OR isActive IS NULL)";
+  }
+  query += " ORDER BY id DESC";
+  const stmt = db2.prepare(query);
+  const results = stmt.all();
+  return results.map((product) => ({
+    ...product,
+    isActive: product.isActive === null ? true : Boolean(product.isActive)
+  }));
 }
 function getProductById(id) {
   const db2 = getDatabase();
   const stmt = db2.prepare("SELECT * FROM products WHERE id = ?");
-  return stmt.get(id);
+  const result = stmt.get(id);
+  if (result) {
+    return {
+      ...result,
+      isActive: result.isActive === null ? true : Boolean(result.isActive)
+    };
+  }
+  return result;
 }
 function getProductByBarcode(barcode) {
   const db2 = getDatabase();
   const stmt = db2.prepare("SELECT * FROM products WHERE barcode = ?");
-  return stmt.get(barcode);
+  const result = stmt.get(barcode);
+  if (result) {
+    return {
+      ...result,
+      isActive: result.isActive === null ? true : Boolean(result.isActive)
+    };
+  }
+  return result;
 }
 function searchProducts(query) {
   const db2 = getDatabase();
   const stmt = db2.prepare(`
     SELECT * FROM products 
-    WHERE name LIKE ? OR barcode LIKE ? 
+    WHERE (name LIKE ? OR barcode LIKE ?) AND (isActive = 1 OR isActive IS NULL)
     ORDER BY name
   `);
   const searchTerm = `%${query}%`;
-  return stmt.all(searchTerm, searchTerm);
+  const results = stmt.all(searchTerm, searchTerm);
+  return results.map((product) => ({
+    ...product,
+    isActive: product.isActive === null ? true : Boolean(product.isActive)
+  }));
 }
 function getProductsByCategory(category) {
   const db2 = getDatabase();
-  const stmt = db2.prepare("SELECT * FROM products WHERE category = ? ORDER BY name");
-  return stmt.all(category);
+  const stmt = db2.prepare("SELECT * FROM products WHERE category = ? AND (isActive = 1 OR isActive IS NULL) ORDER BY name");
+  const results = stmt.all(category);
+  return results.map((product) => ({
+    ...product,
+    isActive: product.isActive === null ? true : Boolean(product.isActive)
+  }));
 }
 function getLowStockProducts() {
   const db2 = getDatabase();
@@ -192,6 +236,10 @@ function updateProduct(id, data) {
     fields.push("lowStockThreshold = ?");
     values.push(data.lowStockThreshold);
   }
+  if (data.isActive !== void 0) {
+    fields.push("isActive = ?");
+    values.push(data.isActive ? 1 : 0);
+  }
   fields.push("updatedAt = datetime('now')");
   values.push(id);
   const stmt = db2.prepare(`UPDATE products SET ${fields.join(", ")} WHERE id = ?`);
@@ -216,9 +264,52 @@ function updateStock(id, quantity, changeType, referenceId) {
   transaction();
   return true;
 }
-function deleteProduct(id) {
+function deleteProduct(id, forceDeactivate = false) {
   const db2 = getDatabase();
-  const stmt = db2.prepare("DELETE FROM products WHERE id = ?");
+  const billCheckStmt = db2.prepare(`
+    SELECT COUNT(*) as count FROM bill_items WHERE productId = ?
+  `);
+  const billCheck = billCheckStmt.get(id);
+  if (billCheck.count > 0) {
+    if (forceDeactivate) {
+      const deactivateStmt = db2.prepare(`
+        UPDATE products 
+        SET isActive = 0, updatedAt = datetime('now') 
+        WHERE id = ?
+      `);
+      const result = deactivateStmt.run(id);
+      return {
+        success: result.changes > 0,
+        deactivated: true,
+        message: "Product deactivated successfully (was referenced in bills)"
+      };
+    } else {
+      throw new Error(`Cannot delete product. It is referenced in ${billCheck.count} bill(s). Use deactivate option instead.`);
+    }
+  }
+  const transaction = db2.transaction(() => {
+    const deleteLogsStmt = db2.prepare("DELETE FROM stock_logs WHERE productId = ?");
+    deleteLogsStmt.run(id);
+    const deleteProductStmt = db2.prepare("DELETE FROM products WHERE id = ?");
+    const result = deleteProductStmt.run(id);
+    if (result.changes === 0) {
+      throw new Error("Product not found");
+    }
+    return result.changes > 0;
+  });
+  const success = transaction();
+  return { success, deleted: true, message: "Product deleted successfully" };
+}
+function deactivateProduct(id) {
+  return deleteProduct(id, true);
+}
+function reactivateProduct(id) {
+  const db2 = getDatabase();
+  const stmt = db2.prepare(`
+    UPDATE products 
+    SET isActive = 1, updatedAt = datetime('now') 
+    WHERE id = ?
+  `);
   const result = stmt.run(id);
   return result.changes > 0;
 }
@@ -314,7 +405,43 @@ function getDailySummary(date) {
     FROM bills 
     WHERE date(createdAt) = ?
   `);
-  return stmt.get(targetDate);
+  const result = stmt.get(targetDate);
+  if (!result || result.totalBills === 0) {
+    return {
+      totalSales: 0,
+      totalBills: 0,
+      cashSales: 0,
+      upiSales: 0,
+      itemsSold: 0
+    };
+  }
+  return result;
+}
+function getDateRangeSummary(dateFrom, dateTo) {
+  const db2 = getDatabase();
+  const stmt = db2.prepare(`
+    SELECT 
+      COALESCE(SUM(total), 0) as totalSales,
+      COUNT(*) as totalBills,
+      COALESCE(SUM(CASE WHEN paymentMode = 'cash' THEN total ELSE 0 END), 0) as cashSales,
+      COALESCE(SUM(CASE WHEN paymentMode = 'upi' THEN total ELSE 0 END), 0) as upiSales,
+      COALESCE(SUM(
+        (SELECT SUM(quantity) FROM bill_items WHERE billId = bills.id)
+      ), 0) as itemsSold
+    FROM bills 
+    WHERE date(createdAt) BETWEEN ? AND ?
+  `);
+  const result = stmt.get(dateFrom, dateTo);
+  if (!result || result.totalBills === 0) {
+    return {
+      totalSales: 0,
+      totalBills: 0,
+      cashSales: 0,
+      upiSales: 0,
+      itemsSold: 0
+    };
+  }
+  return result;
 }
 function getTopSelling(date, limit = 5) {
   const db2 = getDatabase();
@@ -740,9 +867,9 @@ function setupIpcHandlers() {
       throw error;
     }
   });
-  ipcMain.handle("products:getAll", async () => {
+  ipcMain.handle("products:getAll", async (_, includeInactive) => {
     try {
-      return getProducts();
+      return getProducts(includeInactive);
     } catch (error) {
       console.error("Error getting products:", error);
       throw error;
@@ -810,15 +937,30 @@ function setupIpcHandlers() {
       throw error;
     }
   });
-  ipcMain.handle("products:delete", async (_, id) => {
+  ipcMain.handle("products:delete", async (_, id, forceDeactivate) => {
     try {
-      const success = deleteProduct(id);
-      if (!success) {
-        throw new Error("Product not found");
-      }
-      return { success: true };
+      const result = deleteProduct(id, forceDeactivate);
+      return result;
     } catch (error) {
       console.error("Error deleting product:", error);
+      throw error;
+    }
+  });
+  ipcMain.handle("products:deactivate", async (_, id) => {
+    try {
+      const result = deactivateProduct(id);
+      return result;
+    } catch (error) {
+      console.error("Error deactivating product:", error);
+      throw error;
+    }
+  });
+  ipcMain.handle("products:reactivate", async (_, id) => {
+    try {
+      const success = reactivateProduct(id);
+      return { success };
+    } catch (error) {
+      console.error("Error reactivating product:", error);
       throw error;
     }
   });
@@ -863,6 +1005,14 @@ function setupIpcHandlers() {
       return getDailySummary(date);
     } catch (error) {
       console.error("Error getting daily summary:", error);
+      throw error;
+    }
+  });
+  ipcMain.handle("bills:getDateRangeSummary", async (_, dateFrom, dateTo) => {
+    try {
+      return getDateRangeSummary(dateFrom, dateTo);
+    } catch (error) {
+      console.error("Error getting date range summary:", error);
       throw error;
     }
   });
@@ -1006,23 +1156,110 @@ function setupIpcHandlers() {
   });
   ipcMain.handle("printer:getList", async () => {
     try {
+      const { webContents } = await import("electron");
+      const allWebContents = webContents.getAllWebContents();
+      if (allWebContents.length > 0) {
+        const printers = await allWebContents[0].getPrinters();
+        return printers.map((printer) => ({
+          name: printer.name,
+          isDefault: printer.isDefault || false,
+          status: printer.status || "unknown"
+        }));
+      }
       return [
-        { name: "Default Printer", isDefault: true },
-        { name: "Thermal Printer", isDefault: false }
+        { name: "Default Printer", isDefault: true, status: "available" },
+        { name: "Thermal Printer", isDefault: false, status: "unknown" }
       ];
     } catch (error) {
       console.error("Error getting printers:", error);
-      throw error;
+      return [
+        { name: "Default Printer", isDefault: true, status: "available" },
+        { name: "Thermal Printer", isDefault: false, status: "unknown" }
+      ];
     }
   });
   ipcMain.handle("printer:print", async (_, content, printerName) => {
     try {
-      console.log("Print content:", content);
-      console.log("Printer:", printerName || "default");
+      const { BrowserWindow: BrowserWindow2 } = await import("electron");
+      const printWindow = new BrowserWindow2({
+        show: false,
+        webPreferences: {
+          nodeIntegration: false,
+          contextIsolation: true
+        }
+      });
+      await printWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(content)}`);
+      const printOptions = {
+        silent: true,
+        printBackground: true,
+        deviceName: printerName || void 0,
+        margins: {
+          marginType: "none"
+        },
+        pageSize: "A4"
+      };
+      const success = await printWindow.webContents.print(printOptions);
+      printWindow.close();
       return { success: true };
     } catch (error) {
       console.error("Error printing:", error);
-      return { success: false, error: error instanceof Error ? error.message : "Print failed" };
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Print failed"
+      };
+    }
+  });
+  ipcMain.handle("printer:testPrint", async (_, printerName) => {
+    try {
+      const testContent = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <style>
+            body { font-family: monospace; font-size: 12px; margin: 0; padding: 10px; }
+            .center { text-align: center; }
+            .bold { font-weight: bold; }
+          </style>
+        </head>
+        <body>
+          <div class="center bold">TEST PRINT</div>
+          <div class="center">Vogue Prism POS</div>
+          <div class="center">${(/* @__PURE__ */ new Date()).toLocaleString()}</div>
+          <br>
+          <div>Printer: ${printerName || "Default"}</div>
+          <div>Status: Connected</div>
+          <br>
+          <div class="center">Test completed successfully!</div>
+        </body>
+        </html>
+      `;
+      const { BrowserWindow: BrowserWindow2 } = await import("electron");
+      const printWindow = new BrowserWindow2({
+        show: false,
+        webPreferences: {
+          nodeIntegration: false,
+          contextIsolation: true
+        }
+      });
+      await printWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(testContent)}`);
+      const printOptions = {
+        silent: true,
+        printBackground: true,
+        deviceName: printerName || void 0,
+        margins: {
+          marginType: "none"
+        },
+        pageSize: "A4"
+      };
+      const success = await printWindow.webContents.print(printOptions);
+      printWindow.close();
+      return { success: true };
+    } catch (error) {
+      console.error("Error in test print:", error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Test print failed"
+      };
     }
   });
   console.log("All IPC handlers set up successfully");

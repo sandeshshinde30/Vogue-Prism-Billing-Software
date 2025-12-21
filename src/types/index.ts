@@ -7,6 +7,7 @@ export interface Product {
   price: number;
   stock: number;
   lowStockThreshold: number;
+  isActive: boolean;
   createdAt: string;
   updatedAt: string;
 }

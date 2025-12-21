@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { User, Clock, Calendar } from 'lucide-react';
+import { Clock, Calendar } from 'lucide-react';
 import { format } from 'date-fns';
 
 export function TopBar() {

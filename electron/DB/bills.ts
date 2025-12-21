@@ -132,7 +132,7 @@ export function getRecentBills(limit: number = 5) {
   return stmt.all(limit);
 }
 
-// READ - Get daily summary
+// READ - Get daily summary with proper date handling
 export function getDailySummary(date?: string) {
   const db = getDatabase();
   const targetDate = date || new Date().toISOString().split('T')[0];
@@ -150,7 +150,53 @@ export function getDailySummary(date?: string) {
     WHERE date(createdAt) = ?
   `);
   
-  return stmt.get(targetDate);
+  const result = stmt.get(targetDate);
+  
+  // If no bills found, return zero values
+  if (!result || result.totalBills === 0) {
+    return {
+      totalSales: 0,
+      totalBills: 0,
+      cashSales: 0,
+      upiSales: 0,
+      itemsSold: 0
+    };
+  }
+  
+  return result;
+}
+
+// READ - Get summary for date range
+export function getDateRangeSummary(dateFrom: string, dateTo: string) {
+  const db = getDatabase();
+  
+  const stmt = db.prepare(`
+    SELECT 
+      COALESCE(SUM(total), 0) as totalSales,
+      COUNT(*) as totalBills,
+      COALESCE(SUM(CASE WHEN paymentMode = 'cash' THEN total ELSE 0 END), 0) as cashSales,
+      COALESCE(SUM(CASE WHEN paymentMode = 'upi' THEN total ELSE 0 END), 0) as upiSales,
+      COALESCE(SUM(
+        (SELECT SUM(quantity) FROM bill_items WHERE billId = bills.id)
+      ), 0) as itemsSold
+    FROM bills 
+    WHERE date(createdAt) BETWEEN ? AND ?
+  `);
+  
+  const result = stmt.get(dateFrom, dateTo);
+  
+  // If no bills found, return zero values
+  if (!result || result.totalBills === 0) {
+    return {
+      totalSales: 0,
+      totalBills: 0,
+      cashSales: 0,
+      upiSales: 0,
+      itemsSold: 0
+    };
+  }
+  
+  return result;
 }
 
 // READ - Get top selling products

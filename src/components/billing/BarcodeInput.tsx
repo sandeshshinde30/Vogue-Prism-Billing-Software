@@ -1,5 +1,4 @@
 import React, { useRef, useEffect } from 'react';
-import { Barcode } from 'lucide-react';
 import { useStore } from '../../store/useStore';
 import { Product } from '../../types';
 import toast from 'react-hot-toast';

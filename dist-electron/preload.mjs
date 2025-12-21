@@ -2,13 +2,15 @@
 const electron = require("electron");
 electron.contextBridge.exposeInMainWorld("electronAPI", {
   // Products
-  getProducts: () => electron.ipcRenderer.invoke("products:getAll"),
+  getProducts: (includeInactive) => electron.ipcRenderer.invoke("products:getAll", includeInactive),
   getProductByBarcode: (barcode) => electron.ipcRenderer.invoke("products:getByBarcode", barcode),
   searchProducts: (query) => electron.ipcRenderer.invoke("products:search", query),
   getProductsByCategory: (category) => electron.ipcRenderer.invoke("products:getByCategory", category),
   createProduct: (product) => electron.ipcRenderer.invoke("products:create", product),
   updateProduct: (product) => electron.ipcRenderer.invoke("products:update", product),
-  deleteProduct: (id) => electron.ipcRenderer.invoke("products:delete", id),
+  deleteProduct: (id, forceDeactivate) => electron.ipcRenderer.invoke("products:delete", id, forceDeactivate),
+  deactivateProduct: (id) => electron.ipcRenderer.invoke("products:deactivate", id),
+  reactivateProduct: (id) => electron.ipcRenderer.invoke("products:reactivate", id),
   updateStock: (id, quantity, changeType) => electron.ipcRenderer.invoke("products:updateStock", id, quantity, changeType),
   getLowStockProducts: () => electron.ipcRenderer.invoke("products:getLowStock"),
   // Bills
@@ -16,6 +18,7 @@ electron.contextBridge.exposeInMainWorld("electronAPI", {
   getBills: (dateFrom, dateTo) => electron.ipcRenderer.invoke("bills:getAll", dateFrom, dateTo),
   getBillById: (id) => electron.ipcRenderer.invoke("bills:getById", id),
   getDailySummary: (date) => electron.ipcRenderer.invoke("bills:getDailySummary", date),
+  getDateRangeSummary: (dateFrom, dateTo) => electron.ipcRenderer.invoke("bills:getDateRangeSummary", dateFrom, dateTo),
   getTopSelling: (date) => electron.ipcRenderer.invoke("bills:getTopSelling", date),
   getRecentBills: (limit) => electron.ipcRenderer.invoke("bills:getRecent", limit),
   // Reports
@@ -39,5 +42,6 @@ electron.contextBridge.exposeInMainWorld("electronAPI", {
   getDatabaseStats: () => electron.ipcRenderer.invoke("backup:getStats"),
   // Printer
   getPrinters: () => electron.ipcRenderer.invoke("printer:getList"),
-  print: (content, printerName) => electron.ipcRenderer.invoke("printer:print", content, printerName)
+  print: (content, printerName) => electron.ipcRenderer.invoke("printer:print", content, printerName),
+  testPrint: (printerName) => electron.ipcRenderer.invoke("printer:testPrint", printerName)
 });

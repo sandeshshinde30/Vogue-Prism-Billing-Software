@@ -2,13 +2,15 @@ import { Product, Bill, BillItem, DailySummary, Settings } from './index';
 
 export interface ElectronAPI {
   // Products
-  getProducts: () => Promise<Product[]>;
+  getProducts: (includeInactive?: boolean) => Promise<Product[]>;
   getProductByBarcode: (barcode: string) => Promise<Product | null>;
   searchProducts: (query: string) => Promise<Product[]>;
   getProductsByCategory: (category: string) => Promise<Product[]>;
   createProduct: (product: Partial<Product>) => Promise<Product>;
   updateProduct: (product: Product) => Promise<Product>;
-  deleteProduct: (id: number) => Promise<{ success: boolean }>;
+  deleteProduct: (id: number, forceDeactivate?: boolean) => Promise<{ success: boolean; deleted?: boolean; deactivated?: boolean; message?: string }>;
+  deactivateProduct: (id: number) => Promise<{ success: boolean; message?: string }>;
+  reactivateProduct: (id: number) => Promise<{ success: boolean }>;
   updateStock: (id: number, quantity: number, changeType: string) => Promise<{ success: boolean }>;
   getLowStockProducts: () => Promise<Product[]>;
 
@@ -24,6 +26,7 @@ export interface ElectronAPI {
   getBills: (dateFrom?: string, dateTo?: string) => Promise<Bill[]>;
   getBillById: (id: number) => Promise<{ bill: Bill; items: BillItem[] }>;
   getDailySummary: (date?: string) => Promise<DailySummary>;
+  getDateRangeSummary: (dateFrom: string, dateTo: string) => Promise<DailySummary>;
   getTopSelling: (date?: string) => Promise<{ productName: string; size: string; totalQty: number }[]>;
   getRecentBills: (limit?: number) => Promise<Bill[]>;
 
@@ -132,6 +135,7 @@ export interface ElectronAPI {
   // Printer
   getPrinters: () => Promise<{ name: string; isDefault: boolean }[]>;
   print: (content: string, printerName?: string) => Promise<{ success: boolean; error?: string }>;
+  testPrint: (printerName?: string) => Promise<{ success: boolean; error?: string }>;
 }
 
 declare global {

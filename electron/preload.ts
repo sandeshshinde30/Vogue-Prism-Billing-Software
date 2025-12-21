@@ -2,13 +2,15 @@ import { contextBridge, ipcRenderer } from 'electron';
 
 export interface ElectronAPI {
   // Products
-  getProducts: () => Promise<any[]>;
+  getProducts: (includeInactive?: boolean) => Promise<any[]>;
   getProductByBarcode: (barcode: string) => Promise<any>;
   searchProducts: (query: string) => Promise<any[]>;
   getProductsByCategory: (category: string) => Promise<any[]>;
   createProduct: (product: any) => Promise<any>;
   updateProduct: (product: any) => Promise<any>;
-  deleteProduct: (id: number) => Promise<{ success: boolean }>;
+  deleteProduct: (id: number, forceDeactivate?: boolean) => Promise<{ success: boolean; deleted?: boolean; deactivated?: boolean; message?: string }>;
+  deactivateProduct: (id: number) => Promise<{ success: boolean; message?: string }>;
+  reactivateProduct: (id: number) => Promise<{ success: boolean }>;
   updateStock: (id: number, quantity: number, changeType: string) => Promise<{ success: boolean }>;
   getLowStockProducts: () => Promise<any[]>;
 
@@ -17,6 +19,7 @@ export interface ElectronAPI {
   getBills: (dateFrom?: string, dateTo?: string) => Promise<any[]>;
   getBillById: (id: number) => Promise<any>;
   getDailySummary: (date?: string) => Promise<any>;
+  getDateRangeSummary: (dateFrom: string, dateTo: string) => Promise<any>;
   getTopSelling: (date?: string) => Promise<any[]>;
   getRecentBills: (limit?: number) => Promise<any[]>;
 
@@ -45,17 +48,20 @@ export interface ElectronAPI {
   // Printer
   getPrinters: () => Promise<{ name: string; isDefault: boolean }[]>;
   print: (content: string, printerName?: string) => Promise<{ success: boolean; error?: string }>;
+  testPrint: (printerName?: string) => Promise<{ success: boolean; error?: string }>;
 }
 
 contextBridge.exposeInMainWorld('electronAPI', {
   // Products
-  getProducts: () => ipcRenderer.invoke('products:getAll'),
+  getProducts: (includeInactive?: boolean) => ipcRenderer.invoke('products:getAll', includeInactive),
   getProductByBarcode: (barcode: string) => ipcRenderer.invoke('products:getByBarcode', barcode),
   searchProducts: (query: string) => ipcRenderer.invoke('products:search', query),
   getProductsByCategory: (category: string) => ipcRenderer.invoke('products:getByCategory', category),
   createProduct: (product: any) => ipcRenderer.invoke('products:create', product),
   updateProduct: (product: any) => ipcRenderer.invoke('products:update', product),
-  deleteProduct: (id: number) => ipcRenderer.invoke('products:delete', id),
+  deleteProduct: (id: number, forceDeactivate?: boolean) => ipcRenderer.invoke('products:delete', id, forceDeactivate),
+  deactivateProduct: (id: number) => ipcRenderer.invoke('products:deactivate', id),
+  reactivateProduct: (id: number) => ipcRenderer.invoke('products:reactivate', id),
   updateStock: (id: number, quantity: number, changeType: string) => 
     ipcRenderer.invoke('products:updateStock', id, quantity, changeType),
   getLowStockProducts: () => ipcRenderer.invoke('products:getLowStock'),
@@ -65,6 +71,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getBills: (dateFrom?: string, dateTo?: string) => ipcRenderer.invoke('bills:getAll', dateFrom, dateTo),
   getBillById: (id: number) => ipcRenderer.invoke('bills:getById', id),
   getDailySummary: (date?: string) => ipcRenderer.invoke('bills:getDailySummary', date),
+  getDateRangeSummary: (dateFrom: string, dateTo: string) => ipcRenderer.invoke('bills:getDateRangeSummary', dateFrom, dateTo),
   getTopSelling: (date?: string) => ipcRenderer.invoke('bills:getTopSelling', date),
   getRecentBills: (limit?: number) => ipcRenderer.invoke('bills:getRecent', limit),
 
@@ -100,4 +107,5 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Printer
   getPrinters: () => ipcRenderer.invoke('printer:getList'),
   print: (content: string, printerName?: string) => ipcRenderer.invoke('printer:print', content, printerName),
+  testPrint: (printerName?: string) => ipcRenderer.invoke('printer:testPrint', printerName),
 } as ElectronAPI);

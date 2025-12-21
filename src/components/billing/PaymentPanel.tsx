@@ -1,5 +1,5 @@
 import React from 'react';
-import { Banknote, Smartphone, CreditCard } from 'lucide-react';
+import { Banknote, Smartphone, CreditCard, Edit2, Check, X } from 'lucide-react';
 import { useStore } from '../../store/useStore';
 import { DiscountInput } from './DiscountInput';
 import { generateReceiptHTML } from '../../utils/printer';
@@ -14,12 +14,39 @@ export function PaymentPanel() {
     getTotal,
     discountPercent,
     discountAmount,
+    manualTotal,
+    setManualTotal,
     clearCart,
     settings,
   } = useStore();
 
   const subtotal = getSubtotal();
   const total = getTotal();
+  const [isEditingTotal, setIsEditingTotal] = React.useState(false);
+  const [editedTotal, setEditedTotal] = React.useState('');
+
+  const handleEditTotal = () => {
+    setEditedTotal(total.toString());
+    setIsEditingTotal(true);
+  };
+
+  const handleSaveTotal = () => {
+    const newTotal = parseFloat(editedTotal);
+    if (!isNaN(newTotal) && newTotal >= 0) {
+      setManualTotal(newTotal);
+    }
+    setIsEditingTotal(false);
+  };
+
+  const handleCancelEdit = () => {
+    setIsEditingTotal(false);
+    setEditedTotal('');
+  };
+
+  const handleResetTotal = () => {
+    setManualTotal(null);
+    setIsEditingTotal(false);
+  };
 
   const handlePayAndPrint = async () => {
     if (cart.length === 0) {
@@ -124,17 +151,73 @@ export function PaymentPanel() {
         >
           Total
         </span>
-        <span 
-          className="text-xl font-bold text-slate-800 font-mono"
-          style={{ 
-            fontSize: '20px', 
-            fontWeight: '700', 
-            color: '#1e293b',
-            fontFamily: 'JetBrains Mono, monospace'
-          }}
-        >
-          ₹{total.toLocaleString()}
-        </span>
+        <div className="flex items-center gap-2">
+          {isEditingTotal ? (
+            <div className="flex items-center gap-2">
+              <input
+                type="number"
+                value={editedTotal}
+                onChange={(e) => setEditedTotal(e.target.value)}
+                className="w-24 px-2 py-1 text-sm font-mono border border-gray-300 rounded focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                style={{
+                  width: '96px',
+                  padding: '4px 8px',
+                  fontSize: '14px',
+                  fontFamily: 'JetBrains Mono, monospace',
+                  border: '1px solid #d1d5db',
+                  borderRadius: '4px'
+                }}
+                autoFocus
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handleSaveTotal();
+                  if (e.key === 'Escape') handleCancelEdit();
+                }}
+              />
+              <button
+                onClick={handleSaveTotal}
+                className="p-1 text-green-600 hover:text-green-700"
+              >
+                <Check size={16} />
+              </button>
+              <button
+                onClick={handleCancelEdit}
+                className="p-1 text-red-600 hover:text-red-700"
+              >
+                <X size={16} />
+              </button>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2">
+              <span 
+                className="text-xl font-bold text-slate-800 font-mono"
+                style={{ 
+                  fontSize: '20px', 
+                  fontWeight: '700', 
+                  color: '#1e293b',
+                  fontFamily: 'JetBrains Mono, monospace'
+                }}
+              >
+                ₹{total.toLocaleString()}
+              </span>
+              <button
+                onClick={handleEditTotal}
+                className="p-1 text-gray-500 hover:text-gray-700"
+                title="Edit total"
+              >
+                <Edit2 size={16} />
+              </button>
+              {manualTotal !== null && (
+                <button
+                  onClick={handleResetTotal}
+                  className="px-2 py-1 text-xs text-blue-600 hover:text-blue-700 border border-blue-300 rounded"
+                  title="Reset to calculated total"
+                >
+                  Reset
+                </button>
+              )}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Payment Mode */}

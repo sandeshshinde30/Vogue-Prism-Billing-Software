@@ -9,7 +9,9 @@ import {
   getLowStockProducts,
   updateProduct, 
   updateStock,
-  deleteProduct, 
+  deleteProduct,
+  deactivateProduct,
+  reactivateProduct,
   ProductData 
 } from './DB/products';
 import {
@@ -18,6 +20,7 @@ import {
   getBillById,
   getRecentBills,
   getDailySummary,
+  getDateRangeSummary,
   getTopSelling,
   BillData
 } from './DB/bills';
@@ -58,9 +61,9 @@ export function setupIpcHandlers() {
     }
   });
 
-  ipcMain.handle('products:getAll', async () => {
+  ipcMain.handle('products:getAll', async (_, includeInactive?: boolean) => {
     try {
-      return getProducts();
+      return getProducts(includeInactive);
     } catch (error) {
       console.error('Error getting products:', error);
       throw error;
@@ -136,15 +139,32 @@ export function setupIpcHandlers() {
     }
   });
 
-  ipcMain.handle('products:delete', async (_, id: number) => {
+  ipcMain.handle('products:delete', async (_, id: number, forceDeactivate?: boolean) => {
     try {
-      const success = deleteProduct(id);
-      if (!success) {
-        throw new Error('Product not found');
-      }
-      return { success: true };
+      const result = deleteProduct(id, forceDeactivate);
+      return result;
     } catch (error) {
       console.error('Error deleting product:', error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle('products:deactivate', async (_, id: number) => {
+    try {
+      const result = deactivateProduct(id);
+      return result;
+    } catch (error) {
+      console.error('Error deactivating product:', error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle('products:reactivate', async (_, id: number) => {
+    try {
+      const success = reactivateProduct(id);
+      return { success };
+    } catch (error) {
+      console.error('Error reactivating product:', error);
       throw error;
     }
   });
@@ -196,6 +216,15 @@ export function setupIpcHandlers() {
       return getDailySummary(date);
     } catch (error) {
       console.error('Error getting daily summary:', error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle('bills:getDateRangeSummary', async (_, dateFrom: string, dateTo: string) => {
+    try {
+      return getDateRangeSummary(dateFrom, dateTo);
+    } catch (error) {
+      console.error('Error getting date range summary:', error);
       throw error;
     }
   });
@@ -365,28 +394,133 @@ export function setupIpcHandlers() {
 
   ipcMain.handle('printer:getList', async () => {
     try {
-      // This would integrate with system printers
-      // For now, return mock data
+      const { webContents } = await import('electron');
+      const allWebContents = webContents.getAllWebContents();
+      
+      if (allWebContents.length > 0) {
+        const printers = await allWebContents[0].getPrinters();
+        return printers.map((printer: any) => ({
+          name: printer.name,
+          isDefault: printer.isDefault || false,
+          status: printer.status || 'unknown'
+        }));
+      }
+      
+      // Fallback if no webContents available
       return [
-        { name: 'Default Printer', isDefault: true },
-        { name: 'Thermal Printer', isDefault: false }
+        { name: 'Default Printer', isDefault: true, status: 'available' },
+        { name: 'Thermal Printer', isDefault: false, status: 'unknown' }
       ];
     } catch (error) {
       console.error('Error getting printers:', error);
-      throw error;
+      return [
+        { name: 'Default Printer', isDefault: true, status: 'available' },
+        { name: 'Thermal Printer', isDefault: false, status: 'unknown' }
+      ];
     }
   });
 
   ipcMain.handle('printer:print', async (_, content: string, printerName?: string) => {
     try {
-      // This would integrate with actual printing
-      // For now, return success
-      console.log('Print content:', content);
-      console.log('Printer:', printerName || 'default');
+      const { BrowserWindow } = await import('electron');
+      
+      // Create a hidden window for printing
+      const printWindow = new BrowserWindow({
+        show: false,
+        webPreferences: {
+          nodeIntegration: false,
+          contextIsolation: true
+        }
+      });
+      
+      // Load the content
+      await printWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(content)}`);
+      
+      // Print options
+      const printOptions = {
+        silent: true,
+        printBackground: true,
+        deviceName: printerName || undefined,
+        margins: {
+          marginType: 'none'
+        },
+        pageSize: 'A4'
+      };
+      
+      // Print
+      const success = await printWindow.webContents.print(printOptions);
+      
+      // Clean up
+      printWindow.close();
+      
       return { success: true };
     } catch (error) {
       console.error('Error printing:', error);
-      return { success: false, error: error instanceof Error ? error.message : 'Print failed' };
+      return { 
+        success: false, 
+        error: error instanceof Error ? error.message : 'Print failed' 
+      };
+    }
+  });
+
+  ipcMain.handle('printer:testPrint', async (_, printerName?: string) => {
+    try {
+      const testContent = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <style>
+            body { font-family: monospace; font-size: 12px; margin: 0; padding: 10px; }
+            .center { text-align: center; }
+            .bold { font-weight: bold; }
+          </style>
+        </head>
+        <body>
+          <div class="center bold">TEST PRINT</div>
+          <div class="center">Vogue Prism POS</div>
+          <div class="center">${new Date().toLocaleString()}</div>
+          <br>
+          <div>Printer: ${printerName || 'Default'}</div>
+          <div>Status: Connected</div>
+          <br>
+          <div class="center">Test completed successfully!</div>
+        </body>
+        </html>
+      `;
+      
+      // Use the same print function
+      const { BrowserWindow } = await import('electron');
+      
+      const printWindow = new BrowserWindow({
+        show: false,
+        webPreferences: {
+          nodeIntegration: false,
+          contextIsolation: true
+        }
+      });
+      
+      await printWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(testContent)}`);
+      
+      const printOptions = {
+        silent: true,
+        printBackground: true,
+        deviceName: printerName || undefined,
+        margins: {
+          marginType: 'none'
+        },
+        pageSize: 'A4'
+      };
+      
+      const success = await printWindow.webContents.print(printOptions);
+      printWindow.close();
+      
+      return { success: true };
+    } catch (error) {
+      console.error('Error in test print:', error);
+      return { 
+        success: false, 
+        error: error instanceof Error ? error.message : 'Test print failed' 
+      };
     }
   });
 

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Download,
   Upload,
@@ -13,6 +13,19 @@ import toast from 'react-hot-toast';
 export function Backup() {
   const [exporting, setExporting] = useState(false);
   const [importing, setImporting] = useState(false);
+
+  const loadStats = async () => {
+    try {
+      const data = await window.electronAPI.getDatabaseStats();
+      console.log('Database stats:', data);
+    } catch (error) {
+      console.error('Error loading database stats:', error);
+    }
+  };
+
+  useEffect(() => {
+    loadStats();
+  }, []);
 
   const handleExport = async () => {
     setExporting(true);

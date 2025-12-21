@@ -5,6 +5,7 @@ import {
   Trash2,
   Package,
   AlertTriangle,
+  CheckCircle,
 } from 'lucide-react';
 import { Card, Button, Input, Select, Modal } from '../components/common';
 import { Product, CATEGORIES, SIZES } from '../types';
@@ -16,6 +17,7 @@ export function Products() {
   const [searchQuery, setSearchQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('');
   const [stockFilter, setStockFilter] = useState('');
+  const [statusFilter, setStatusFilter] = useState('active');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [loading, setLoading] = useState(true);
@@ -23,7 +25,8 @@ export function Products() {
   const loadProducts = async () => {
     setLoading(true);
     try {
-      const data = (await window.electronAPI.getProducts()) as Product[];
+      const includeInactive = statusFilter === 'all';
+      const data = (await window.electronAPI.getProducts(includeInactive)) as Product[];
       setProducts(data);
       setFilteredProducts(data);
     } catch (error) {
@@ -34,7 +37,7 @@ export function Products() {
 
   useEffect(() => {
     loadProducts();
-  }, []);
+  }, [statusFilter]);
 
   useEffect(() => {
     let filtered = products;
@@ -58,18 +61,62 @@ export function Products() {
       filtered = filtered.filter((p) => p.stock === 0);
     }
 
+    if (statusFilter === 'active') {
+      filtered = filtered.filter((p) => p.isActive);
+    } else if (statusFilter === 'inactive') {
+      filtered = filtered.filter((p) => !p.isActive);
+    }
+
     setFilteredProducts(filtered);
-  }, [searchQuery, categoryFilter, stockFilter, products]);
+  }, [searchQuery, categoryFilter, stockFilter, statusFilter, products]);
 
-  const handleDelete = async (id: number) => {
-    if (!confirm('Are you sure you want to delete this product?')) return;
+  const handleDelete = async (product: Product) => {
+    if (product.isActive) {
+      // Show options for active products
+      const action = confirm(
+        `Product "${product.name}" may be referenced in bills.\n\n` +
+        `Choose action:\n` +
+        `• OK = Deactivate (hide from lists but keep data)\n` +
+        `• Cancel = Keep active`
+      );
+      
+      if (!action) return;
+      
+      try {
+        const result = await window.electronAPI.deactivateProduct(product.id);
+        if (result.success) {
+          toast.success(result.message || 'Product deactivated');
+          loadProducts();
+        }
+      } catch (error) {
+        toast.error('Error deactivating product');
+      }
+    } else {
+      // For inactive products, offer permanent deletion
+      if (!confirm(`Permanently delete "${product.name}"? This cannot be undone.`)) return;
+      
+      try {
+        const result = await window.electronAPI.deleteProduct(product.id, false);
+        if (result.success) {
+          toast.success('Product deleted permanently');
+          loadProducts();
+        }
+      } catch (error) {
+        // If deletion fails, offer deactivation
+        toast.error('Cannot delete product (referenced in bills)');
+      }
+    }
+  };
 
+  const handleReactivate = async (id: number) => {
     try {
-      await window.electronAPI.deleteProduct(id);
-      setProducts(products.filter((p) => p.id !== id));
-      toast.success('Product deleted');
+      const result = await window.electronAPI.reactivateProduct(id);
+      if (result.success) {
+        toast.success('Product reactivated');
+        loadProducts();
+      }
     } catch (error) {
-      toast.error('Error deleting product');
+      toast.error('Error reactivating product');
     }
   };
 
@@ -192,6 +239,16 @@ export function Products() {
                 { value: '', label: 'All Stock' },
                 { value: 'low', label: 'Low Stock' },
                 { value: 'out', label: 'Out of Stock' },
+              ]}
+              className="w-full sm:w-40"
+            />
+            <Select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              options={[
+                { value: 'active', label: 'Active Only' },
+                { value: 'inactive', label: 'Inactive Only' },
+                { value: 'all', label: 'All Products' },
               ]}
               className="w-full sm:w-40"
             />
@@ -345,7 +402,7 @@ export function Products() {
               </thead>
               <tbody className="bg-white divide-y divide-gray-100">
                 {filteredProducts.map((product) => (
-                  <tr key={product.id} className="hover:bg-gray-50 transition-colors">
+                  <tr key={product.id} className={`hover:bg-gray-50 transition-colors ${!product.isActive ? 'opacity-60 bg-gray-50' : ''}`}>
                     <td 
                       className="px-6 py-4 whitespace-nowrap text-sm font-mono text-gray-500"
                       style={{
@@ -374,6 +431,11 @@ export function Products() {
                           }}
                         >
                           {product.name}
+                          {!product.isActive && (
+                            <span className="ml-2 px-2 py-0.5 text-xs bg-red-100 text-red-700 rounded">
+                              Inactive
+                            </span>
+                          )}
                         </div>
                         {product.barcode && (
                           <div 
@@ -464,13 +526,32 @@ export function Products() {
                         >
                           <Edit2 size={16} />
                         </button>
-                        <button
-                          onClick={() => handleDelete(product.id)}
-                          className="p-2 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors"
-                          title="Delete product"
-                        >
-                          <Trash2 size={16} />
-                        </button>
+                        {product.isActive ? (
+                          <button
+                            onClick={() => handleDelete(product)}
+                            className="p-2 text-orange-500 hover:text-orange-700 hover:bg-orange-50 rounded-lg transition-colors"
+                            title="Deactivate product"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        ) : (
+                          <>
+                            <button
+                              onClick={() => handleReactivate(product.id)}
+                              className="p-2 text-green-500 hover:text-green-700 hover:bg-green-50 rounded-lg transition-colors"
+                              title="Reactivate product"
+                            >
+                              <CheckCircle size={16} />
+                            </button>
+                            <button
+                              onClick={() => handleDelete(product)}
+                              className="p-2 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors"
+                              title="Delete permanently"
+                            >
+                              <Trash2 size={16} />
+                            </button>
+                          </>
+                        )}
                       </div>
                     </td>
                   </tr>
