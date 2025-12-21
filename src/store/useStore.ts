@@ -23,8 +23,12 @@ interface AppState {
   setDiscountAmount: (amount: number) => void;
 
   // Payment
-  paymentMode: 'cash' | 'upi';
-  setPaymentMode: (mode: 'cash' | 'upi') => void;
+  paymentMode: 'cash' | 'upi' | 'mixed';
+  cashAmount: number;
+  upiAmount: number;
+  setPaymentMode: (mode: 'cash' | 'upi' | 'mixed') => void;
+  setCashAmount: (amount: number) => void;
+  setUpiAmount: (amount: number) => void;
 
   // Settings
   settings: Settings | null;
@@ -93,7 +97,7 @@ export const useStore = create<AppState>((set, get) => ({
         item.product.id === productId ? { ...item, quantity } : item
       ),
     })),
-  clearCart: () => set({ cart: [], discountPercent: 0, discountAmount: 0, manualTotal: null }),
+  clearCart: () => set({ cart: [], discountPercent: 0, discountAmount: 0, manualTotal: null, cashAmount: 0, upiAmount: 0 }),
 
   // Discount
   discountPercent: 0,
@@ -111,7 +115,11 @@ export const useStore = create<AppState>((set, get) => ({
 
   // Payment
   paymentMode: 'cash',
+  cashAmount: 0,
+  upiAmount: 0,
   setPaymentMode: (mode) => set({ paymentMode: mode }),
+  setCashAmount: (amount) => set({ cashAmount: amount }),
+  setUpiAmount: (amount) => set({ upiAmount: amount }),
 
   // Settings
   settings: null,

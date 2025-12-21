@@ -22,6 +22,8 @@ import {
   getDailySummary,
   getDateRangeSummary,
   getTopSelling,
+  updateBill,
+  deleteBill,
   BillData
 } from './DB/bills';
 import {
@@ -46,6 +48,12 @@ import {
   importBackup,
   getDatabaseStats
 } from './DB/backup';
+import {
+  addActivityLog,
+  getActivityLogs,
+  getLogsCount,
+  cleanupOldLogs
+} from './DB/logs';
 
 export function setupIpcHandlers() {
   
@@ -234,6 +242,24 @@ export function setupIpcHandlers() {
       return getTopSelling(date);
     } catch (error) {
       console.error('Error getting top selling:', error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle('bills:update', async (_, billId: number, billData: Partial<BillData>) => {
+    try {
+      return updateBill(billId, billData);
+    } catch (error) {
+      console.error('Error updating bill:', error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle('bills:delete', async (_, billId: number) => {
+    try {
+      return deleteBill(billId);
+    } catch (error) {
+      console.error('Error deleting bill:', error);
       throw error;
     }
   });
@@ -521,6 +547,36 @@ export function setupIpcHandlers() {
         success: false, 
         error: error instanceof Error ? error.message : 'Test print failed' 
       };
+    }
+  });
+
+  // ===== LOGS HANDLERS =====
+
+  ipcMain.handle('logs:getActivity', async (_, limit?: number, offset?: number, entityType?: string, dateFrom?: string, dateTo?: string) => {
+    try {
+      return getActivityLogs(limit, offset, entityType, dateFrom, dateTo);
+    } catch (error) {
+      console.error('Error getting activity logs:', error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle('logs:getCount', async (_, entityType?: string, dateFrom?: string, dateTo?: string) => {
+    try {
+      return getLogsCount(entityType, dateFrom, dateTo);
+    } catch (error) {
+      console.error('Error getting logs count:', error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle('logs:cleanup', async () => {
+    try {
+      const deletedCount = cleanupOldLogs();
+      return { success: true, deletedCount };
+    } catch (error) {
+      console.error('Error cleaning up logs:', error);
+      throw error;
     }
   });
 

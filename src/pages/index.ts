@@ -5,3 +5,5 @@ export { Stock } from './Stock';
 export { Reports } from './Reports';
 export { Backup } from './Backup';
 export { Settings } from './Settings';
+export { Logs } from './Logs';
+export { BillManagement } from './BillManagement';

@@ -22,6 +22,8 @@ export interface ElectronAPI {
   getDateRangeSummary: (dateFrom: string, dateTo: string) => Promise<any>;
   getTopSelling: (date?: string) => Promise<any[]>;
   getRecentBills: (limit?: number) => Promise<any[]>;
+  updateBill: (billId: number, billData: any) => Promise<any>;
+  deleteBill: (billId: number) => Promise<{ success: boolean; message: string }>;
 
   // Reports
   getSalesReport: (dateFrom: string, dateTo: string) => Promise<any[]>;
@@ -49,6 +51,11 @@ export interface ElectronAPI {
   getPrinters: () => Promise<{ name: string; isDefault: boolean }[]>;
   print: (content: string, printerName?: string) => Promise<{ success: boolean; error?: string }>;
   testPrint: (printerName?: string) => Promise<{ success: boolean; error?: string }>;
+
+  // Logs
+  getActivityLogs: (limit?: number, offset?: number, entityType?: string, dateFrom?: string, dateTo?: string) => Promise<any[]>;
+  getLogsCount: (entityType?: string, dateFrom?: string, dateTo?: string) => Promise<{ count: number }>;
+  cleanupLogs: () => Promise<{ success: boolean; deletedCount: number }>;
 }
 
 contextBridge.exposeInMainWorld('electronAPI', {
@@ -74,6 +81,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getDateRangeSummary: (dateFrom: string, dateTo: string) => ipcRenderer.invoke('bills:getDateRangeSummary', dateFrom, dateTo),
   getTopSelling: (date?: string) => ipcRenderer.invoke('bills:getTopSelling', date),
   getRecentBills: (limit?: number) => ipcRenderer.invoke('bills:getRecent', limit),
+  updateBill: (billId: number, billData: any) => ipcRenderer.invoke('bills:update', billId, billData),
+  deleteBill: (billId: number) => ipcRenderer.invoke('bills:delete', billId),
 
   // Reports
   getSalesReport: (dateFrom: string, dateTo: string) => 
@@ -108,4 +117,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getPrinters: () => ipcRenderer.invoke('printer:getList'),
   print: (content: string, printerName?: string) => ipcRenderer.invoke('printer:print', content, printerName),
   testPrint: (printerName?: string) => ipcRenderer.invoke('printer:testPrint', printerName),
+
+  // Logs
+  getActivityLogs: (limit?: number, offset?: number, entityType?: string, dateFrom?: string, dateTo?: string) => 
+    ipcRenderer.invoke('logs:getActivity', limit, offset, entityType, dateFrom, dateTo),
+  getLogsCount: (entityType?: string, dateFrom?: string, dateTo?: string) => 
+    ipcRenderer.invoke('logs:getCount', entityType, dateFrom, dateTo),
+  cleanupLogs: () => ipcRenderer.invoke('logs:cleanup'),
 } as ElectronAPI);

@@ -15,13 +15,32 @@ interface ElectronAPI {
   getLowStockProducts: () => Promise<any[]>;
 
   // Bills
-  createBill: (billData: any) => Promise<any>;
+  createBill: (billData: {
+    items: Array<{
+      product: {
+        id: number;
+        name: string;
+        size?: string;
+        price: number;
+      };
+      quantity: number;
+    }>;
+    subtotal: number;
+    discountPercent: number;
+    discountAmount: number;
+    total: number;
+    paymentMode: 'cash' | 'upi' | 'mixed';
+    cashAmount?: number;
+    upiAmount?: number;
+  }) => Promise<any>;
   getBills: (dateFrom?: string, dateTo?: string) => Promise<any[]>;
   getBillById: (id: number) => Promise<any>;
   getDailySummary: (date?: string) => Promise<any>;
   getDateRangeSummary: (dateFrom: string, dateTo: string) => Promise<any>;
   getTopSelling: (date?: string) => Promise<any[]>;
   getRecentBills: (limit?: number) => Promise<any[]>;
+  updateBill: (billId: number, billData: any) => Promise<any>;
+  deleteBill: (billId: number) => Promise<{ success: boolean; message: string }>;
 
   // Reports
   getSalesReport: (dateFrom: string, dateTo: string) => Promise<any[]>;
@@ -49,6 +68,11 @@ interface ElectronAPI {
   getPrinters: () => Promise<{ name: string; isDefault: boolean }[]>;
   print: (content: string, printerName?: string) => Promise<{ success: boolean; error?: string }>;
   testPrint: (printerName?: string) => Promise<{ success: boolean; error?: string }>;
+
+  // Logs
+  getActivityLogs: (limit?: number, offset?: number, entityType?: string, dateFrom?: string, dateTo?: string) => Promise<any[]>;
+  getLogsCount: (entityType?: string, dateFrom?: string, dateTo?: string) => Promise<{ count: number }>;
+  cleanupLogs: () => Promise<{ success: boolean; deletedCount: number }>;
 }
 
 declare global {

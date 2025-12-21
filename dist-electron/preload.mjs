@@ -21,6 +21,8 @@ electron.contextBridge.exposeInMainWorld("electronAPI", {
   getDateRangeSummary: (dateFrom, dateTo) => electron.ipcRenderer.invoke("bills:getDateRangeSummary", dateFrom, dateTo),
   getTopSelling: (date) => electron.ipcRenderer.invoke("bills:getTopSelling", date),
   getRecentBills: (limit) => electron.ipcRenderer.invoke("bills:getRecent", limit),
+  updateBill: (billId, billData) => electron.ipcRenderer.invoke("bills:update", billId, billData),
+  deleteBill: (billId) => electron.ipcRenderer.invoke("bills:delete", billId),
   // Reports
   getSalesReport: (dateFrom, dateTo) => electron.ipcRenderer.invoke("reports:getSales", dateFrom, dateTo),
   exportData: (dateFrom, dateTo) => electron.ipcRenderer.invoke("reports:exportData", dateFrom, dateTo),
@@ -43,5 +45,9 @@ electron.contextBridge.exposeInMainWorld("electronAPI", {
   // Printer
   getPrinters: () => electron.ipcRenderer.invoke("printer:getList"),
   print: (content, printerName) => electron.ipcRenderer.invoke("printer:print", content, printerName),
-  testPrint: (printerName) => electron.ipcRenderer.invoke("printer:testPrint", printerName)
+  testPrint: (printerName) => electron.ipcRenderer.invoke("printer:testPrint", printerName),
+  // Logs
+  getActivityLogs: (limit, offset, entityType, dateFrom, dateTo) => electron.ipcRenderer.invoke("logs:getActivity", limit, offset, entityType, dateFrom, dateTo),
+  getLogsCount: (entityType, dateFrom, dateTo) => electron.ipcRenderer.invoke("logs:getCount", entityType, dateFrom, dateTo),
+  cleanupLogs: () => electron.ipcRenderer.invoke("logs:cleanup")
 });

@@ -10,10 +10,16 @@ export function PaymentPanel() {
     cart,
     paymentMode,
     setPaymentMode,
+    cashAmount,
+    upiAmount,
+    setCashAmount,
+    setUpiAmount,
     getSubtotal,
     getTotal,
     discountPercent,
     discountAmount,
+    setDiscountPercent,
+    setDiscountAmount,
     manualTotal,
     setManualTotal,
     clearCart,
@@ -24,6 +30,7 @@ export function PaymentPanel() {
   const total = getTotal();
   const [isEditingTotal, setIsEditingTotal] = React.useState(false);
   const [editedTotal, setEditedTotal] = React.useState('');
+  const [mixedPaymentError, setMixedPaymentError] = React.useState('');
 
   const handleEditTotal = () => {
     setEditedTotal(total.toString());
@@ -34,6 +41,13 @@ export function PaymentPanel() {
     const newTotal = parseFloat(editedTotal);
     if (!isNaN(newTotal) && newTotal >= 0) {
       setManualTotal(newTotal);
+      
+      // Adjust discount when total is manually changed
+      const newDiscountAmount = Math.max(0, subtotal - newTotal);
+      const newDiscountPercent = subtotal > 0 ? (newDiscountAmount / subtotal) * 100 : 0;
+      
+      setDiscountAmount(newDiscountAmount);
+      setDiscountPercent(Math.round(newDiscountPercent * 100) / 100);
     }
     setIsEditingTotal(false);
   };
@@ -48,15 +62,39 @@ export function PaymentPanel() {
     setIsEditingTotal(false);
   };
 
+  const handleMixedPaymentChange = () => {
+    const totalAmount = cashAmount + upiAmount;
+    if (Math.abs(totalAmount - total) > 0.01) {
+      setMixedPaymentError(`Total must equal ₹${total.toLocaleString()}. Current: ₹${totalAmount.toLocaleString()}`);
+    } else {
+      setMixedPaymentError('');
+    }
+  };
+
+  React.useEffect(() => {
+    if (paymentMode === 'mixed') {
+      handleMixedPaymentChange();
+    }
+  }, [cashAmount, upiAmount, total, paymentMode]);
+
   const handlePayAndPrint = async () => {
     if (cart.length === 0) {
       toast.error('Cart is empty');
       return;
     }
 
+    // Validate mixed payment
+    if (paymentMode === 'mixed') {
+      const totalAmount = cashAmount + upiAmount;
+      if (Math.abs(totalAmount - total) > 0.01) {
+        toast.error(`Payment amounts don't match total. Cash + UPI should equal ₹${total.toLocaleString()}`);
+        return;
+      }
+    }
+
     try {
       console.log('Creating bill with cart:', cart);
-      console.log('Payment details:', { subtotal, discountPercent, discountAmount, total, paymentMode });
+      console.log('Payment details:', { subtotal, discountPercent, discountAmount, total, paymentMode, cashAmount, upiAmount });
       
       const billData = {
         items: cart,
@@ -65,6 +103,8 @@ export function PaymentPanel() {
         discountAmount,
         total,
         paymentMode,
+        cashAmount: paymentMode === 'mixed' ? cashAmount : (paymentMode === 'cash' ? total : 0),
+        upiAmount: paymentMode === 'mixed' ? upiAmount : (paymentMode === 'upi' ? total : 0),
       };
 
       const bill = await window.electronAPI.createBill(billData);
@@ -81,7 +121,9 @@ export function PaymentPanel() {
             discountAmount,
             total,
             paymentMode,
-            settings
+            settings,
+            paymentMode === 'mixed' ? cashAmount : undefined,
+            paymentMode === 'mixed' ? upiAmount : undefined
           );
           await window.electronAPI.print(receiptHTML, settings?.printerName);
         } catch (printError) {
@@ -229,11 +271,15 @@ export function PaymentPanel() {
           Payment Mode (F8)
         </p>
         <div 
-          className="grid grid-cols-2 gap-2"
-          style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '8px' }}
+          className="grid grid-cols-3 gap-2"
+          style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px' }}
         >
           <button
-            onClick={() => setPaymentMode('cash')}
+            onClick={() => {
+              setPaymentMode('cash');
+              setCashAmount(total);
+              setUpiAmount(0);
+            }}
             className="h-10 flex items-center justify-center gap-2 text-sm font-medium rounded-lg transition-colors"
             style={{
               height: '40px',
@@ -250,22 +296,16 @@ export function PaymentPanel() {
               backgroundColor: paymentMode === 'cash' ? '#22c55e' : '#f1f5f9',
               color: paymentMode === 'cash' ? 'white' : '#475569'
             }}
-            onMouseEnter={(e) => {
-              if (paymentMode !== 'cash') {
-                e.currentTarget.style.backgroundColor = '#e2e8f0';
-              }
-            }}
-            onMouseLeave={(e) => {
-              if (paymentMode !== 'cash') {
-                e.currentTarget.style.backgroundColor = '#f1f5f9';
-              }
-            }}
           >
             <Banknote size={16} />
             Cash
           </button>
           <button
-            onClick={() => setPaymentMode('upi')}
+            onClick={() => {
+              setPaymentMode('upi');
+              setCashAmount(0);
+              setUpiAmount(total);
+            }}
             className="h-10 flex items-center justify-center gap-2 text-sm font-medium rounded-lg transition-colors"
             style={{
               height: '40px',
@@ -282,27 +322,83 @@ export function PaymentPanel() {
               backgroundColor: paymentMode === 'upi' ? '#22c55e' : '#f1f5f9',
               color: paymentMode === 'upi' ? 'white' : '#475569'
             }}
-            onMouseEnter={(e) => {
-              if (paymentMode !== 'upi') {
-                e.currentTarget.style.backgroundColor = '#e2e8f0';
-              }
-            }}
-            onMouseLeave={(e) => {
-              if (paymentMode !== 'upi') {
-                e.currentTarget.style.backgroundColor = '#f1f5f9';
-              }
-            }}
           >
             <Smartphone size={16} />
             UPI
           </button>
+          <button
+            onClick={() => {
+              setPaymentMode('mixed');
+              setCashAmount(Math.round(total / 2));
+              setUpiAmount(total - Math.round(total / 2));
+            }}
+            className="h-10 flex items-center justify-center gap-2 text-sm font-medium rounded-lg transition-colors"
+            style={{
+              height: '40px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '8px',
+              fontSize: '12px',
+              fontWeight: '500',
+              borderRadius: '8px',
+              border: 'none',
+              cursor: 'pointer',
+              transition: 'all 0.2s ease',
+              backgroundColor: paymentMode === 'mixed' ? '#22c55e' : '#f1f5f9',
+              color: paymentMode === 'mixed' ? 'white' : '#475569'
+            }}
+          >
+            <CreditCard size={16} />
+            Mixed
+          </button>
         </div>
+        
+        {/* Mixed Payment Fields */}
+        {paymentMode === 'mixed' && (
+          <div className="mt-3 space-y-2">
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="text-xs text-slate-500 mb-1 block">Cash Amount</label>
+                <input
+                  type="number"
+                  value={cashAmount || ''}
+                  onChange={(e) => setCashAmount(parseFloat(e.target.value) || 0)}
+                  className="w-full px-2 py-1 text-sm border border-slate-300 rounded focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                  placeholder="0"
+                  min="0"
+                  max={total}
+                />
+              </div>
+              <div>
+                <label className="text-xs text-slate-500 mb-1 block">UPI Amount</label>
+                <input
+                  type="number"
+                  value={upiAmount || ''}
+                  onChange={(e) => setUpiAmount(parseFloat(e.target.value) || 0)}
+                  className="w-full px-2 py-1 text-sm border border-slate-300 rounded focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                  placeholder="0"
+                  min="0"
+                  max={total}
+                />
+              </div>
+            </div>
+            {mixedPaymentError && (
+              <div className="text-xs text-red-600 bg-red-50 p-2 rounded">
+                {mixedPaymentError}
+              </div>
+            )}
+            <div className="text-xs text-slate-500 text-center">
+              Total: ₹{(cashAmount + upiAmount).toLocaleString()} / ₹{total.toLocaleString()}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Pay Button */}
       <button
         onClick={handlePayAndPrint}
-        disabled={cart.length === 0}
+        disabled={cart.length === 0 || (paymentMode === 'mixed' && mixedPaymentError !== '')}
         className="w-full h-14 flex items-center justify-center gap-3 bg-green-500 text-white rounded-xl font-semibold text-base hover:bg-green-600 disabled:bg-slate-200 disabled:text-slate-400 transition-colors"
         style={{
           width: '100%',

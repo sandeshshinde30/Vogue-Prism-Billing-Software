@@ -109,7 +109,7 @@ export function Reports() {
     try {
       const data = await window.electronAPI.exportData(dateRange.from, dateRange.to);
       const filename = `sales-report-${dateRange.from}-to-${dateRange.to}.xlsx`;
-      exportToExcel(data as Parameters<typeof exportToExcel>[0], filename);
+      exportToExcel(data, filename);
       toast.success('Report exported successfully');
     } catch (error) {
       toast.error('Error exporting report');

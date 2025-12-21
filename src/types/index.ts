@@ -24,7 +24,9 @@ export interface Bill {
   discountPercent: number;
   discountAmount: number;
   total: number;
-  paymentMode: 'cash' | 'upi';
+  paymentMode: 'cash' | 'upi' | 'mixed';
+  cashAmount?: number;
+  upiAmount?: number;
   status: 'completed' | 'cancelled' | 'held';
   createdAt: string;
 }

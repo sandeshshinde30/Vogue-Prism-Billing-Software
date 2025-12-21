@@ -5,8 +5,10 @@ import {
   Package,
   Boxes,
   FileBarChart,
+  Activity,
   Database,
   Settings,
+  FileEdit,
 } from 'lucide-react';
 
 const navItems = [
@@ -15,6 +17,8 @@ const navItems = [
   { to: '/products', icon: Package, label: 'Products' },
   { to: '/stock', icon: Boxes, label: 'Stock' },
   { to: '/reports', icon: FileBarChart, label: 'Reports' },
+  { to: '/logs', icon: Activity, label: 'Logs' },
+  { to: '/bill-management', icon: FileEdit, label: 'Bill Management' },
   { to: '/backup', icon: Database, label: 'Backup' },
   { to: '/settings', icon: Settings, label: 'Settings' },
 ];

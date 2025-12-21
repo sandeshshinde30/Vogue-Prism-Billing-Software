@@ -40,6 +40,106 @@ export async function initDatabase() {
     console.error('Migration error:', error);
   }
 
+  // Create activity_logs table
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS activity_logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      action TEXT NOT NULL,
+      entityType TEXT NOT NULL CHECK (entityType IN ('product', 'bill', 'setting', 'system')),
+      entityId INTEGER,
+      details TEXT NOT NULL,
+      oldValue TEXT,
+      newValue TEXT,
+      userId TEXT DEFAULT 'system',
+      createdAt TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+  `);
+  try {
+    const billsTableInfo = db.prepare("PRAGMA table_info(bills)").all();
+    const hasCashAmount = billsTableInfo.some((column: any) => column.name === 'cashAmount');
+    const hasUpiAmount = billsTableInfo.some((column: any) => column.name === 'upiAmount');
+    
+    if (!hasCashAmount) {
+      console.log('Adding cashAmount column to bills table...');
+      db.exec('ALTER TABLE bills ADD COLUMN cashAmount REAL DEFAULT 0');
+    }
+    
+    if (!hasUpiAmount) {
+      console.log('Adding upiAmount column to bills table...');
+      db.exec('ALTER TABLE bills ADD COLUMN upiAmount REAL DEFAULT 0');
+    }
+    
+    // Check if we need to update the paymentMode constraint
+    // We'll recreate the table if it has the old constraint
+    try {
+      // Test if we can insert a 'mixed' payment mode
+      const testStmt = db.prepare(`
+        INSERT INTO bills (billNumber, subtotal, discountPercent, discountAmount, total, paymentMode, cashAmount, upiAmount)
+        VALUES ('TEST_MIXED', 100, 0, 0, 100, 'mixed', 50, 50)
+      `);
+      testStmt.run();
+      
+      // If successful, delete the test record
+      db.exec("DELETE FROM bills WHERE billNumber = 'TEST_MIXED'");
+      console.log('Mixed payment mode already supported');
+    } catch (constraintError) {
+      console.log('Updating bills table to support mixed payment mode...');
+      
+      // Disable foreign key constraints temporarily
+      db.exec('PRAGMA foreign_keys = OFF;');
+      
+      // Drop backup table if it exists
+      db.exec('DROP TABLE IF EXISTS bills_backup;');
+      
+      // Backup existing data
+      db.exec(`
+        CREATE TABLE bills_backup AS SELECT * FROM bills;
+      `);
+      
+      // Drop the old table
+      db.exec('DROP TABLE bills;');
+      
+      // Recreate with updated constraint
+      db.exec(`
+        CREATE TABLE bills (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          billNumber TEXT NOT NULL UNIQUE,
+          subtotal REAL NOT NULL,
+          discountPercent REAL NOT NULL DEFAULT 0,
+          discountAmount REAL NOT NULL DEFAULT 0,
+          total REAL NOT NULL,
+          paymentMode TEXT NOT NULL CHECK (paymentMode IN ('cash', 'upi', 'mixed')),
+          cashAmount REAL DEFAULT 0,
+          upiAmount REAL DEFAULT 0,
+          status TEXT NOT NULL DEFAULT 'completed' CHECK (status IN ('completed', 'cancelled', 'held')),
+          createdAt TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+      `);
+      
+      // Restore data
+      db.exec(`
+        INSERT INTO bills (id, billNumber, subtotal, discountPercent, discountAmount, total, paymentMode, cashAmount, upiAmount, status, createdAt)
+        SELECT id, billNumber, subtotal, discountPercent, discountAmount, total, paymentMode, 
+               COALESCE(cashAmount, 0), COALESCE(upiAmount, 0), status, createdAt
+        FROM bills_backup;
+      `);
+      
+      // Drop backup table
+      db.exec('DROP TABLE bills_backup;');
+      
+      // Re-enable foreign key constraints
+      db.exec('PRAGMA foreign_keys = ON;');
+      
+      console.log('Bills table updated to support mixed payment mode');
+    }
+    
+    if (!hasCashAmount || !hasUpiAmount) {
+      console.log('Migration completed: payment columns added');
+    }
+  } catch (error) {
+    console.error('Bills migration error:', error);
+  }
+
   // Create bills table
   db.exec(`
     CREATE TABLE IF NOT EXISTS bills (
@@ -49,9 +149,11 @@ export async function initDatabase() {
       discountPercent REAL NOT NULL DEFAULT 0,
       discountAmount REAL NOT NULL DEFAULT 0,
       total REAL NOT NULL,
-      paymentMode TEXT NOT NULL CHECK (paymentMode IN ('cash', 'upi')),
+      paymentMode TEXT NOT NULL CHECK (paymentMode IN ('cash', 'upi', 'mixed')),
+      cashAmount REAL DEFAULT 0,
+      upiAmount REAL DEFAULT 0,
       status TEXT NOT NULL DEFAULT 'completed' CHECK (status IN ('completed', 'cancelled', 'held')),
-      createdAt TEXT NOT NULL DEFAULT (datetime('now'))
+      createdAt TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
     );
   `);
 

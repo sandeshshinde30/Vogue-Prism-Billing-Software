@@ -1,4 +1,5 @@
 import { getDatabase } from './connection';
+import { addActivityLog } from './logs';
 
 // READ - Get all settings as key-value pairs
 export function getSettings() {
@@ -26,17 +27,37 @@ export function getSetting(key: string) {
 // UPDATE - Update single setting
 export function updateSetting(key: string, value: string) {
   const db = getDatabase();
+  
+  // Get old value for logging
+  const oldValue = getSetting(key);
+  
   const stmt = db.prepare(`
     INSERT OR REPLACE INTO settings (key, value, updatedAt) 
     VALUES (?, ?, datetime('now'))
   `);
   const result = stmt.run(key, value);
+  
+  // Log the activity
+  if (result.changes > 0) {
+    addActivityLog(
+      'update',
+      'setting',
+      `Updated setting: ${key}`,
+      undefined,
+      oldValue,
+      value
+    );
+  }
+  
   return result.changes > 0;
 }
 
 // UPDATE - Update multiple settings at once
 export function updateAllSettings(settings: Record<string, string>) {
   const db = getDatabase();
+  
+  // Get old values for logging
+  const oldSettings = getSettings();
   
   const transaction = db.transaction(() => {
     const stmt = db.prepare(`
@@ -50,6 +71,17 @@ export function updateAllSettings(settings: Record<string, string>) {
   });
   
   transaction();
+  
+  // Log the activity
+  addActivityLog(
+    'update',
+    'setting',
+    `Updated multiple settings: ${Object.keys(settings).join(', ')}`,
+    undefined,
+    JSON.stringify(oldSettings),
+    JSON.stringify(settings)
+  );
+  
   return true;
 }
 

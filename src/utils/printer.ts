@@ -8,8 +8,10 @@ export function generateReceiptHTML(
   discountPercent: number,
   discountAmount: number,
   total: number,
-  paymentMode: 'cash' | 'upi',
-  settings: Settings | null
+  paymentMode: 'cash' | 'upi' | 'mixed',
+  settings: Settings | null,
+  cashAmount?: number,
+  upiAmount?: number
 ): string {
   const storeName = settings?.storeName || 'Vogue Prism';
   const address1 = settings?.addressLine1 || '';
@@ -151,6 +153,16 @@ export function generateReceiptHTML(
         <td class="left">Payment:</td>
         <td class="right">${paymentMode.toUpperCase()}</td>
       </tr>
+      ${paymentMode === 'mixed' && cashAmount !== undefined && upiAmount !== undefined ? `
+      <tr>
+        <td class="left">Cash:</td>
+        <td class="right">₹${cashAmount.toLocaleString()}</td>
+      </tr>
+      <tr>
+        <td class="left">UPI:</td>
+        <td class="right">₹${upiAmount.toLocaleString()}</td>
+      </tr>
+      ` : ''}
     </table>
   </div>
 

@@ -34,6 +34,78 @@ async function initDatabase() {
     console.error("Migration error:", error);
   }
   db.exec(`
+    CREATE TABLE IF NOT EXISTS activity_logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      action TEXT NOT NULL,
+      entityType TEXT NOT NULL CHECK (entityType IN ('product', 'bill', 'setting', 'system')),
+      entityId INTEGER,
+      details TEXT NOT NULL,
+      oldValue TEXT,
+      newValue TEXT,
+      userId TEXT DEFAULT 'system',
+      createdAt TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+  `);
+  try {
+    const billsTableInfo = db.prepare("PRAGMA table_info(bills)").all();
+    const hasCashAmount = billsTableInfo.some((column) => column.name === "cashAmount");
+    const hasUpiAmount = billsTableInfo.some((column) => column.name === "upiAmount");
+    if (!hasCashAmount) {
+      console.log("Adding cashAmount column to bills table...");
+      db.exec("ALTER TABLE bills ADD COLUMN cashAmount REAL DEFAULT 0");
+    }
+    if (!hasUpiAmount) {
+      console.log("Adding upiAmount column to bills table...");
+      db.exec("ALTER TABLE bills ADD COLUMN upiAmount REAL DEFAULT 0");
+    }
+    try {
+      const testStmt = db.prepare(`
+        INSERT INTO bills (billNumber, subtotal, discountPercent, discountAmount, total, paymentMode, cashAmount, upiAmount)
+        VALUES ('TEST_MIXED', 100, 0, 0, 100, 'mixed', 50, 50)
+      `);
+      testStmt.run();
+      db.exec("DELETE FROM bills WHERE billNumber = 'TEST_MIXED'");
+      console.log("Mixed payment mode already supported");
+    } catch (constraintError) {
+      console.log("Updating bills table to support mixed payment mode...");
+      db.exec("PRAGMA foreign_keys = OFF;");
+      db.exec("DROP TABLE IF EXISTS bills_backup;");
+      db.exec(`
+        CREATE TABLE bills_backup AS SELECT * FROM bills;
+      `);
+      db.exec("DROP TABLE bills;");
+      db.exec(`
+        CREATE TABLE bills (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          billNumber TEXT NOT NULL UNIQUE,
+          subtotal REAL NOT NULL,
+          discountPercent REAL NOT NULL DEFAULT 0,
+          discountAmount REAL NOT NULL DEFAULT 0,
+          total REAL NOT NULL,
+          paymentMode TEXT NOT NULL CHECK (paymentMode IN ('cash', 'upi', 'mixed')),
+          cashAmount REAL DEFAULT 0,
+          upiAmount REAL DEFAULT 0,
+          status TEXT NOT NULL DEFAULT 'completed' CHECK (status IN ('completed', 'cancelled', 'held')),
+          createdAt TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+      `);
+      db.exec(`
+        INSERT INTO bills (id, billNumber, subtotal, discountPercent, discountAmount, total, paymentMode, cashAmount, upiAmount, status, createdAt)
+        SELECT id, billNumber, subtotal, discountPercent, discountAmount, total, paymentMode, 
+               COALESCE(cashAmount, 0), COALESCE(upiAmount, 0), status, createdAt
+        FROM bills_backup;
+      `);
+      db.exec("DROP TABLE bills_backup;");
+      db.exec("PRAGMA foreign_keys = ON;");
+      console.log("Bills table updated to support mixed payment mode");
+    }
+    if (!hasCashAmount || !hasUpiAmount) {
+      console.log("Migration completed: payment columns added");
+    }
+  } catch (error) {
+    console.error("Bills migration error:", error);
+  }
+  db.exec(`
     CREATE TABLE IF NOT EXISTS bills (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       billNumber TEXT NOT NULL UNIQUE,
@@ -41,9 +113,11 @@ async function initDatabase() {
       discountPercent REAL NOT NULL DEFAULT 0,
       discountAmount REAL NOT NULL DEFAULT 0,
       total REAL NOT NULL,
-      paymentMode TEXT NOT NULL CHECK (paymentMode IN ('cash', 'upi')),
+      paymentMode TEXT NOT NULL CHECK (paymentMode IN ('cash', 'upi', 'mixed')),
+      cashAmount REAL DEFAULT 0,
+      upiAmount REAL DEFAULT 0,
       status TEXT NOT NULL DEFAULT 'completed' CHECK (status IN ('completed', 'cancelled', 'held')),
-      createdAt TEXT NOT NULL DEFAULT (datetime('now'))
+      createdAt TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
     );
   `);
   db.exec(`
@@ -116,6 +190,84 @@ async function closeDatabase() {
     console.log("Database closed");
   }
 }
+function addActivityLog(action, entityType, details, entityId, oldValue, newValue, userId) {
+  const db2 = getDatabase();
+  const stmt = db2.prepare(`
+    INSERT INTO activity_logs (action, entityType, entityId, details, oldValue, newValue, userId, createdAt)
+    VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
+  `);
+  const result = stmt.run(
+    action,
+    entityType,
+    entityId || null,
+    details,
+    oldValue || null,
+    newValue || null,
+    "system"
+  );
+  return result.lastInsertRowid;
+}
+function getActivityLogs(limit = 100, offset = 0, entityType, dateFrom, dateTo) {
+  const db2 = getDatabase();
+  let query = "SELECT * FROM activity_logs";
+  const params = [];
+  const conditions = [];
+  if (entityType) {
+    conditions.push("entityType = ?");
+    params.push(entityType);
+  }
+  if (dateFrom) {
+    conditions.push("date(createdAt) >= ?");
+    params.push(dateFrom);
+  }
+  if (dateTo) {
+    conditions.push("date(createdAt) <= ?");
+    params.push(dateTo);
+  }
+  if (conditions.length > 0) {
+    query += " WHERE " + conditions.join(" AND ");
+  }
+  query += " ORDER BY createdAt DESC LIMIT ? OFFSET ?";
+  params.push(limit, offset);
+  const stmt = db2.prepare(query);
+  return stmt.all(...params);
+}
+function getLogsCount(entityType, dateFrom, dateTo) {
+  const db2 = getDatabase();
+  let query = "SELECT COUNT(*) as count FROM activity_logs";
+  const params = [];
+  const conditions = [];
+  if (entityType) {
+    conditions.push("entityType = ?");
+    params.push(entityType);
+  }
+  if (dateFrom) {
+    conditions.push("date(createdAt) >= ?");
+    params.push(dateFrom);
+  }
+  if (dateTo) {
+    conditions.push("date(createdAt) <= ?");
+    params.push(dateTo);
+  }
+  if (conditions.length > 0) {
+    query += " WHERE " + conditions.join(" AND ");
+  }
+  const stmt = db2.prepare(query);
+  return stmt.get(...params);
+}
+function cleanupOldLogs() {
+  const db2 = getDatabase();
+  const stmt = db2.prepare(`
+    DELETE FROM activity_logs 
+    WHERE id NOT IN (
+      SELECT id FROM activity_logs 
+      ORDER BY createdAt DESC 
+      LIMIT 1000
+    )
+  `);
+  const result = stmt.run();
+  return result.changes;
+}
 function addProduct(data) {
   const db2 = getDatabase();
   const stmt = db2.prepare(`
@@ -132,7 +284,16 @@ function addProduct(data) {
     data.lowStockThreshold,
     data.isActive !== false ? 1 : 0
   );
-  return result.lastInsertRowid;
+  const productId = result.lastInsertRowid;
+  addActivityLog(
+    "create",
+    "product",
+    `Created product: ${data.name}`,
+    productId,
+    void 0,
+    JSON.stringify(data)
+  );
+  return productId;
 }
 function getProducts(includeInactive = false) {
   const db2 = getDatabase();
@@ -206,6 +367,7 @@ function getLowStockProducts() {
 }
 function updateProduct(id, data) {
   const db2 = getDatabase();
+  const oldProduct = getProductById(id);
   const fields = [];
   const values = [];
   if (data.name !== void 0) {
@@ -244,10 +406,21 @@ function updateProduct(id, data) {
   values.push(id);
   const stmt = db2.prepare(`UPDATE products SET ${fields.join(", ")} WHERE id = ?`);
   const result = stmt.run(...values);
+  if (result.changes > 0 && oldProduct) {
+    addActivityLog(
+      "update",
+      "product",
+      `Updated product: ${oldProduct.name}`,
+      id,
+      JSON.stringify(oldProduct),
+      JSON.stringify(data)
+    );
+  }
   return result.changes > 0;
 }
 function updateStock(id, quantity, changeType, referenceId) {
   const db2 = getDatabase();
+  const product = getProductById(id);
   const transaction = db2.transaction(() => {
     const updateStmt = db2.prepare(`
       UPDATE products 
@@ -262,10 +435,22 @@ function updateStock(id, quantity, changeType, referenceId) {
     logStmt.run(id, changeType, quantity, referenceId || null);
   });
   transaction();
+  if (product) {
+    const action = changeType === "sale" ? "Stock reduced (sale)" : changeType === "restock" ? "Stock increased (restock)" : "Stock adjusted";
+    addActivityLog(
+      "update",
+      "product",
+      `${action}: ${product.name} - Quantity: ${quantity > 0 ? "+" : ""}${quantity}`,
+      id,
+      void 0,
+      JSON.stringify({ changeType, quantity, referenceId })
+    );
+  }
   return true;
 }
 function deleteProduct(id, forceDeactivate = false) {
   const db2 = getDatabase();
+  const product = getProductById(id);
   const billCheckStmt = db2.prepare(`
     SELECT COUNT(*) as count FROM bill_items WHERE productId = ?
   `);
@@ -278,6 +463,16 @@ function deleteProduct(id, forceDeactivate = false) {
         WHERE id = ?
       `);
       const result = deactivateStmt.run(id);
+      if (result.changes > 0 && product) {
+        addActivityLog(
+          "deactivate",
+          "product",
+          `Deactivated product: ${product.name} (referenced in ${billCheck.count} bills)`,
+          id,
+          JSON.stringify(product),
+          void 0
+        );
+      }
       return {
         success: result.changes > 0,
         deactivated: true,
@@ -298,6 +493,16 @@ function deleteProduct(id, forceDeactivate = false) {
     return result.changes > 0;
   });
   const success = transaction();
+  if (success && product) {
+    addActivityLog(
+      "delete",
+      "product",
+      `Deleted product: ${product.name}`,
+      id,
+      JSON.stringify(product),
+      void 0
+    );
+  }
   return { success, deleted: true, message: "Product deleted successfully" };
 }
 function deactivateProduct(id) {
@@ -305,21 +510,32 @@ function deactivateProduct(id) {
 }
 function reactivateProduct(id) {
   const db2 = getDatabase();
+  const product = getProductById(id);
   const stmt = db2.prepare(`
     UPDATE products 
     SET isActive = 1, updatedAt = datetime('now') 
     WHERE id = ?
   `);
   const result = stmt.run(id);
+  if (result.changes > 0 && product) {
+    addActivityLog(
+      "reactivate",
+      "product",
+      `Reactivated product: ${product.name}`,
+      id,
+      void 0,
+      JSON.stringify({ isActive: true })
+    );
+  }
   return result.changes > 0;
 }
 function createBill(data) {
   const db2 = getDatabase();
+  const billNumber = generateBillNumber();
   const transaction = db2.transaction(() => {
-    const billNumber = generateBillNumber();
     const billStmt2 = db2.prepare(`
-      INSERT INTO bills (billNumber, subtotal, discountPercent, discountAmount, total, paymentMode, createdAt)
-      VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
+      INSERT INTO bills (billNumber, subtotal, discountPercent, discountAmount, total, paymentMode, cashAmount, upiAmount, createdAt)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now', 'localtime'))
     `);
     const billResult = billStmt2.run(
       billNumber,
@@ -327,7 +543,9 @@ function createBill(data) {
       data.discountPercent,
       data.discountAmount,
       data.total,
-      data.paymentMode
+      data.paymentMode,
+      data.cashAmount || 0,
+      data.upiAmount || 0
     );
     const billId2 = billResult.lastInsertRowid;
     const itemStmt = db2.prepare(`
@@ -352,6 +570,19 @@ function createBill(data) {
   const billId = transaction();
   const billStmt = db2.prepare("SELECT * FROM bills WHERE id = ?");
   const bill = billStmt.get(billId);
+  addActivityLog(
+    "create",
+    "bill",
+    `Created bill: ${billNumber} - Total: ₹${data.total} (${data.paymentMode})`,
+    billId,
+    void 0,
+    JSON.stringify({
+      billNumber,
+      total: data.total,
+      paymentMode: data.paymentMode,
+      itemCount: data.items.length
+    })
+  );
   return bill;
 }
 function getBills(dateFrom, dateTo) {
@@ -397,8 +628,20 @@ function getDailySummary(date) {
     SELECT 
       COALESCE(SUM(total), 0) as totalSales,
       COUNT(*) as totalBills,
-      COALESCE(SUM(CASE WHEN paymentMode = 'cash' THEN total ELSE 0 END), 0) as cashSales,
-      COALESCE(SUM(CASE WHEN paymentMode = 'upi' THEN total ELSE 0 END), 0) as upiSales,
+      COALESCE(SUM(
+        CASE 
+          WHEN paymentMode = 'cash' THEN total
+          WHEN paymentMode = 'mixed' THEN COALESCE(cashAmount, 0)
+          ELSE 0 
+        END
+      ), 0) as cashSales,
+      COALESCE(SUM(
+        CASE 
+          WHEN paymentMode = 'upi' THEN total
+          WHEN paymentMode = 'mixed' THEN COALESCE(upiAmount, 0)
+          ELSE 0 
+        END
+      ), 0) as upiSales,
       COALESCE(SUM(
         (SELECT SUM(quantity) FROM bill_items WHERE billId = bills.id)
       ), 0) as itemsSold
@@ -423,8 +666,20 @@ function getDateRangeSummary(dateFrom, dateTo) {
     SELECT 
       COALESCE(SUM(total), 0) as totalSales,
       COUNT(*) as totalBills,
-      COALESCE(SUM(CASE WHEN paymentMode = 'cash' THEN total ELSE 0 END), 0) as cashSales,
-      COALESCE(SUM(CASE WHEN paymentMode = 'upi' THEN total ELSE 0 END), 0) as upiSales,
+      COALESCE(SUM(
+        CASE 
+          WHEN paymentMode = 'cash' THEN total
+          WHEN paymentMode = 'mixed' THEN COALESCE(cashAmount, 0)
+          ELSE 0 
+        END
+      ), 0) as cashSales,
+      COALESCE(SUM(
+        CASE 
+          WHEN paymentMode = 'upi' THEN total
+          WHEN paymentMode = 'mixed' THEN COALESCE(upiAmount, 0)
+          ELSE 0 
+        END
+      ), 0) as upiSales,
       COALESCE(SUM(
         (SELECT SUM(quantity) FROM bill_items WHERE billId = bills.id)
       ), 0) as itemsSold
@@ -481,6 +736,113 @@ function generateBillNumber() {
   }
   return `${prefix}${nextNumber.toString().padStart(4, "0")}`;
 }
+function updateBill(billId, data) {
+  const db2 = getDatabase();
+  const originalBill = getBillById(billId);
+  if (!originalBill) {
+    throw new Error("Bill not found");
+  }
+  const transaction = db2.transaction(() => {
+    if (data.items) {
+      const oldItemsStmt = db2.prepare("SELECT * FROM bill_items WHERE billId = ?");
+      const oldItems = oldItemsStmt.all(billId);
+      for (const oldItem of oldItems) {
+        updateStock(oldItem.productId, oldItem.quantity, "adjustment");
+      }
+      db2.prepare("DELETE FROM bill_items WHERE billId = ?").run(billId);
+      const itemStmt = db2.prepare(`
+        INSERT INTO bill_items (billId, productId, productName, size, quantity, unitPrice, totalPrice)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `);
+      for (const item of data.items) {
+        const totalPrice = item.product.price * item.quantity;
+        itemStmt.run(
+          billId,
+          item.product.id,
+          item.product.name,
+          item.product.size || null,
+          item.quantity,
+          item.product.price,
+          totalPrice
+        );
+        updateStock(item.product.id, -item.quantity, "sale", billId);
+      }
+    }
+    const updateFields = [];
+    const updateValues = [];
+    if (data.subtotal !== void 0) {
+      updateFields.push("subtotal = ?");
+      updateValues.push(data.subtotal);
+    }
+    if (data.discountPercent !== void 0) {
+      updateFields.push("discountPercent = ?");
+      updateValues.push(data.discountPercent);
+    }
+    if (data.discountAmount !== void 0) {
+      updateFields.push("discountAmount = ?");
+      updateValues.push(data.discountAmount);
+    }
+    if (data.total !== void 0) {
+      updateFields.push("total = ?");
+      updateValues.push(data.total);
+    }
+    if (data.paymentMode !== void 0) {
+      updateFields.push("paymentMode = ?");
+      updateValues.push(data.paymentMode);
+    }
+    if (data.cashAmount !== void 0) {
+      updateFields.push("cashAmount = ?");
+      updateValues.push(data.cashAmount);
+    }
+    if (data.upiAmount !== void 0) {
+      updateFields.push("upiAmount = ?");
+      updateValues.push(data.upiAmount);
+    }
+    if (updateFields.length > 0) {
+      updateValues.push(billId);
+      const updateStmt = db2.prepare(`
+        UPDATE bills SET ${updateFields.join(", ")} WHERE id = ?
+      `);
+      updateStmt.run(...updateValues);
+    }
+  });
+  transaction();
+  addActivityLog(
+    "update",
+    "bill",
+    `Updated bill: ${originalBill.bill.billNumber}`,
+    billId,
+    JSON.stringify(originalBill),
+    JSON.stringify(data)
+  );
+  return getBillById(billId);
+}
+function deleteBill(billId) {
+  const db2 = getDatabase();
+  const billData = getBillById(billId);
+  if (!billData) {
+    throw new Error("Bill not found");
+  }
+  const transaction = db2.transaction(() => {
+    const itemsStmt = db2.prepare("SELECT * FROM bill_items WHERE billId = ?");
+    const items = itemsStmt.all(billId);
+    for (const item of items) {
+      updateStock(item.productId, item.quantity, "adjustment");
+    }
+    db2.prepare("DELETE FROM bill_items WHERE billId = ?").run(billId);
+    db2.prepare("DELETE FROM bills WHERE id = ?").run(billId);
+  });
+  transaction();
+  addActivityLog(
+    "delete",
+    "bill",
+    `Deleted bill: ${billData.bill.billNumber} - Total: ₹${billData.bill.total}`,
+    billId,
+    JSON.stringify(billData),
+    void 0
+  );
+  return { success: true, message: "Bill deleted and stock restored" };
+}
 function getSettings() {
   const db2 = getDatabase();
   const stmt = db2.prepare("SELECT key, value FROM settings");
@@ -499,15 +861,27 @@ function getSetting(key) {
 }
 function updateSetting(key, value) {
   const db2 = getDatabase();
+  const oldValue = getSetting(key);
   const stmt = db2.prepare(`
     INSERT OR REPLACE INTO settings (key, value, updatedAt) 
     VALUES (?, ?, datetime('now'))
   `);
   const result = stmt.run(key, value);
+  if (result.changes > 0) {
+    addActivityLog(
+      "update",
+      "setting",
+      `Updated setting: ${key}`,
+      void 0,
+      oldValue,
+      value
+    );
+  }
   return result.changes > 0;
 }
 function updateAllSettings(settings) {
   const db2 = getDatabase();
+  const oldSettings = getSettings();
   const transaction = db2.transaction(() => {
     const stmt = db2.prepare(`
       INSERT OR REPLACE INTO settings (key, value, updatedAt) 
@@ -518,6 +892,14 @@ function updateAllSettings(settings) {
     }
   });
   transaction();
+  addActivityLog(
+    "update",
+    "setting",
+    `Updated multiple settings: ${Object.keys(settings).join(", ")}`,
+    void 0,
+    JSON.stringify(oldSettings),
+    JSON.stringify(settings)
+  );
   return true;
 }
 function getTypedSettings() {
@@ -566,8 +948,13 @@ function exportData(dateFrom, dateTo) {
       bi.quantity,
       bi.unitPrice as unit_price,
       bi.totalPrice as total_price,
+      b.subtotal,
+      b.discountPercent as discount_rate,
+      b.discountAmount as discount_amount,
+      b.total as final_total,
       b.paymentMode as payment_mode,
-      b.total as bill_total
+      b.cashAmount as cash_amount,
+      b.upiAmount as upi_amount
     FROM bill_items bi
     JOIN bills b ON bi.billId = b.id
     WHERE date(b.createdAt) BETWEEN ? AND ?
@@ -1024,6 +1411,22 @@ function setupIpcHandlers() {
       throw error;
     }
   });
+  ipcMain.handle("bills:update", async (_, billId, billData) => {
+    try {
+      return updateBill(billId, billData);
+    } catch (error) {
+      console.error("Error updating bill:", error);
+      throw error;
+    }
+  });
+  ipcMain.handle("bills:delete", async (_, billId) => {
+    try {
+      return deleteBill(billId);
+    } catch (error) {
+      console.error("Error deleting bill:", error);
+      throw error;
+    }
+  });
   ipcMain.handle("settings:getAll", async () => {
     try {
       return getSettings();
@@ -1260,6 +1663,31 @@ function setupIpcHandlers() {
         success: false,
         error: error instanceof Error ? error.message : "Test print failed"
       };
+    }
+  });
+  ipcMain.handle("logs:getActivity", async (_, limit, offset, entityType, dateFrom, dateTo) => {
+    try {
+      return getActivityLogs(limit, offset, entityType, dateFrom, dateTo);
+    } catch (error) {
+      console.error("Error getting activity logs:", error);
+      throw error;
+    }
+  });
+  ipcMain.handle("logs:getCount", async (_, entityType, dateFrom, dateTo) => {
+    try {
+      return getLogsCount(entityType, dateFrom, dateTo);
+    } catch (error) {
+      console.error("Error getting logs count:", error);
+      throw error;
+    }
+  });
+  ipcMain.handle("logs:cleanup", async () => {
+    try {
+      const deletedCount = cleanupOldLogs();
+      return { success: true, deletedCount };
+    } catch (error) {
+      console.error("Error cleaning up logs:", error);
+      throw error;
     }
   });
   console.log("All IPC handlers set up successfully");

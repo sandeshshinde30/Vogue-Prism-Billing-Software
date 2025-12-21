@@ -22,7 +22,7 @@ export function getSalesReport(dateFrom: string, dateTo: string) {
   return stmt.all(dateFrom, dateTo);
 }
 
-// READ - Export data for Excel
+// READ - Export data for Excel with enhanced fields
 export function exportData(dateFrom: string, dateTo: string) {
   const db = getDatabase();
   
@@ -35,8 +35,13 @@ export function exportData(dateFrom: string, dateTo: string) {
       bi.quantity,
       bi.unitPrice as unit_price,
       bi.totalPrice as total_price,
+      b.subtotal,
+      b.discountPercent as discount_rate,
+      b.discountAmount as discount_amount,
+      b.total as final_total,
       b.paymentMode as payment_mode,
-      b.total as bill_total
+      b.cashAmount as cash_amount,
+      b.upiAmount as upi_amount
     FROM bill_items bi
     JOIN bills b ON bi.billId = b.id
     WHERE date(b.createdAt) BETWEEN ? AND ?

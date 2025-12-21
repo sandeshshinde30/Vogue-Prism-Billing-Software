@@ -9,6 +9,13 @@ interface ExportRow {
   quantity: number;
   unit_price: number;
   total_price: number;
+  subtotal: number;
+  discount_rate: number;
+  discount_amount: number;
+  final_total: number;
+  payment_mode: string;
+  cash_amount?: number;
+  upi_amount?: number;
 }
 
 export function exportToExcel(data: ExportRow[], filename: string): void {
@@ -19,7 +26,14 @@ export function exportToExcel(data: ExportRow[], filename: string): void {
     'Size': row.size || '-',
     'Quantity': row.quantity,
     'Unit Price': row.unit_price,
-    'Amount': row.total_price,
+    'Line Total': row.total_price,
+    'Bill Subtotal': row.subtotal,
+    'Discount %': row.discount_rate,
+    'Discount Amount': row.discount_amount,
+    'Final Total': row.final_total,
+    'Payment Mode': row.payment_mode.toUpperCase(),
+    'Cash Amount': row.cash_amount || 0,
+    'UPI Amount': row.upi_amount || 0,
   }));
 
   const worksheet = XLSX.utils.json_to_sheet(formattedData);
@@ -34,7 +48,14 @@ export function exportToExcel(data: ExportRow[], filename: string): void {
     { wch: 8 },  // Size
     { wch: 10 }, // Quantity
     { wch: 12 }, // Unit Price
-    { wch: 12 }, // Amount
+    { wch: 12 }, // Line Total
+    { wch: 15 }, // Bill Subtotal
+    { wch: 12 }, // Discount %
+    { wch: 15 }, // Discount Amount
+    { wch: 15 }, // Final Total
+    { wch: 12 }, // Payment Mode
+    { wch: 12 }, // Cash Amount
+    { wch: 12 }, // UPI Amount
   ];
   worksheet['!cols'] = colWidths;
 

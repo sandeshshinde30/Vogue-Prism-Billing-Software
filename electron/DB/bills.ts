@@ -1,5 +1,6 @@
 import { getDatabase } from './connection';
 import { updateStock } from './products';
+import { addActivityLog } from './logs';
 
 export interface BillData {
   items: Array<{
@@ -15,22 +16,24 @@ export interface BillData {
   discountPercent: number;
   discountAmount: number;
   total: number;
-  paymentMode: 'cash' | 'upi';
+  paymentMode: 'cash' | 'upi' | 'mixed';
+  cashAmount?: number;
+  upiAmount?: number;
 }
 
 // CREATE - Create new bill with items
 export function createBill(data: BillData) {
   const db = getDatabase();
   
+  // Generate bill number outside transaction so it's available for logging
+  const billNumber = generateBillNumber();
+  
   // Start transaction to ensure data consistency
   const transaction = db.transaction(() => {
-    // Generate bill number
-    const billNumber = generateBillNumber();
-    
-    // Insert bill
+    // Insert bill with local time
     const billStmt = db.prepare(`
-      INSERT INTO bills (billNumber, subtotal, discountPercent, discountAmount, total, paymentMode, createdAt)
-      VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
+      INSERT INTO bills (billNumber, subtotal, discountPercent, discountAmount, total, paymentMode, cashAmount, upiAmount, createdAt)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now', 'localtime'))
     `);
     
     const billResult = billStmt.run(
@@ -39,7 +42,9 @@ export function createBill(data: BillData) {
       data.discountPercent,
       data.discountAmount,
       data.total,
-      data.paymentMode
+      data.paymentMode,
+      data.cashAmount || 0,
+      data.upiAmount || 0
     );
     
     const billId = billResult.lastInsertRowid as number;
@@ -76,6 +81,21 @@ export function createBill(data: BillData) {
   // Get the created bill and return just the bill object (not the full structure)
   const billStmt = db.prepare('SELECT * FROM bills WHERE id = ?');
   const bill = billStmt.get(billId);
+  
+  // Log the activity
+  addActivityLog(
+    'create',
+    'bill',
+    `Created bill: ${billNumber} - Total: ₹${data.total} (${data.paymentMode})`,
+    billId,
+    undefined,
+    JSON.stringify({
+      billNumber,
+      total: data.total,
+      paymentMode: data.paymentMode,
+      itemCount: data.items.length
+    })
+  );
   
   return bill;
 }
@@ -141,8 +161,20 @@ export function getDailySummary(date?: string) {
     SELECT 
       COALESCE(SUM(total), 0) as totalSales,
       COUNT(*) as totalBills,
-      COALESCE(SUM(CASE WHEN paymentMode = 'cash' THEN total ELSE 0 END), 0) as cashSales,
-      COALESCE(SUM(CASE WHEN paymentMode = 'upi' THEN total ELSE 0 END), 0) as upiSales,
+      COALESCE(SUM(
+        CASE 
+          WHEN paymentMode = 'cash' THEN total
+          WHEN paymentMode = 'mixed' THEN COALESCE(cashAmount, 0)
+          ELSE 0 
+        END
+      ), 0) as cashSales,
+      COALESCE(SUM(
+        CASE 
+          WHEN paymentMode = 'upi' THEN total
+          WHEN paymentMode = 'mixed' THEN COALESCE(upiAmount, 0)
+          ELSE 0 
+        END
+      ), 0) as upiSales,
       COALESCE(SUM(
         (SELECT SUM(quantity) FROM bill_items WHERE billId = bills.id)
       ), 0) as itemsSold
@@ -174,8 +206,20 @@ export function getDateRangeSummary(dateFrom: string, dateTo: string) {
     SELECT 
       COALESCE(SUM(total), 0) as totalSales,
       COUNT(*) as totalBills,
-      COALESCE(SUM(CASE WHEN paymentMode = 'cash' THEN total ELSE 0 END), 0) as cashSales,
-      COALESCE(SUM(CASE WHEN paymentMode = 'upi' THEN total ELSE 0 END), 0) as upiSales,
+      COALESCE(SUM(
+        CASE 
+          WHEN paymentMode = 'cash' THEN total
+          WHEN paymentMode = 'mixed' THEN COALESCE(cashAmount, 0)
+          ELSE 0 
+        END
+      ), 0) as cashSales,
+      COALESCE(SUM(
+        CASE 
+          WHEN paymentMode = 'upi' THEN total
+          WHEN paymentMode = 'mixed' THEN COALESCE(upiAmount, 0)
+          ELSE 0 
+        END
+      ), 0) as upiSales,
       COALESCE(SUM(
         (SELECT SUM(quantity) FROM bill_items WHERE billId = bills.id)
       ), 0) as itemsSold
@@ -248,4 +292,152 @@ function generateBillNumber(): string {
   }
   
   return `${prefix}${nextNumber.toString().padStart(4, '0')}`;
+}
+
+// UPDATE - Edit existing bill
+export function updateBill(billId: number, data: Partial<BillData>) {
+  const db = getDatabase();
+  
+  // Get the original bill and items
+  const originalBill = getBillById(billId);
+  if (!originalBill) {
+    throw new Error('Bill not found');
+  }
+  
+  const transaction = db.transaction(() => {
+    // If items are being updated, we need to restore old stock and apply new stock changes
+    if (data.items) {
+      // Restore stock for old items
+      const oldItemsStmt = db.prepare('SELECT * FROM bill_items WHERE billId = ?');
+      const oldItems = oldItemsStmt.all(billId);
+      
+      for (const oldItem of oldItems as any[]) {
+        // Restore stock (add back the quantity that was sold)
+        updateStock(oldItem.productId, oldItem.quantity, 'adjustment');
+      }
+      
+      // Delete old items
+      db.prepare('DELETE FROM bill_items WHERE billId = ?').run(billId);
+      
+      // Insert new items and update stock
+      const itemStmt = db.prepare(`
+        INSERT INTO bill_items (billId, productId, productName, size, quantity, unitPrice, totalPrice)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `);
+      
+      for (const item of data.items) {
+        const totalPrice = item.product.price * item.quantity;
+        
+        itemStmt.run(
+          billId,
+          item.product.id,
+          item.product.name,
+          item.product.size || null,
+          item.quantity,
+          item.product.price,
+          totalPrice
+        );
+        
+        // Update product stock (negative quantity for sale)
+        updateStock(item.product.id, -item.quantity, 'sale', billId);
+      }
+    }
+    
+    // Update bill details
+    const updateFields: string[] = [];
+    const updateValues: any[] = [];
+    
+    if (data.subtotal !== undefined) {
+      updateFields.push('subtotal = ?');
+      updateValues.push(data.subtotal);
+    }
+    if (data.discountPercent !== undefined) {
+      updateFields.push('discountPercent = ?');
+      updateValues.push(data.discountPercent);
+    }
+    if (data.discountAmount !== undefined) {
+      updateFields.push('discountAmount = ?');
+      updateValues.push(data.discountAmount);
+    }
+    if (data.total !== undefined) {
+      updateFields.push('total = ?');
+      updateValues.push(data.total);
+    }
+    if (data.paymentMode !== undefined) {
+      updateFields.push('paymentMode = ?');
+      updateValues.push(data.paymentMode);
+    }
+    if (data.cashAmount !== undefined) {
+      updateFields.push('cashAmount = ?');
+      updateValues.push(data.cashAmount);
+    }
+    if (data.upiAmount !== undefined) {
+      updateFields.push('upiAmount = ?');
+      updateValues.push(data.upiAmount);
+    }
+    
+    if (updateFields.length > 0) {
+      updateValues.push(billId);
+      const updateStmt = db.prepare(`
+        UPDATE bills SET ${updateFields.join(', ')} WHERE id = ?
+      `);
+      updateStmt.run(...updateValues);
+    }
+  });
+  
+  transaction();
+  
+  // Log the activity
+  addActivityLog(
+    'update',
+    'bill',
+    `Updated bill: ${originalBill.bill.billNumber}`,
+    billId,
+    JSON.stringify(originalBill),
+    JSON.stringify(data)
+  );
+  
+  return getBillById(billId);
+}
+
+// DELETE - Delete bill and restore stock
+export function deleteBill(billId: number) {
+  const db = getDatabase();
+  
+  // Get the bill and items before deletion
+  const billData = getBillById(billId);
+  if (!billData) {
+    throw new Error('Bill not found');
+  }
+  
+  const transaction = db.transaction(() => {
+    // Restore stock for all items
+    const itemsStmt = db.prepare('SELECT * FROM bill_items WHERE billId = ?');
+    const items = itemsStmt.all(billId);
+    
+    for (const item of items as any[]) {
+      // Restore stock (add back the quantity that was sold)
+      updateStock(item.productId, item.quantity, 'adjustment');
+    }
+    
+    // Delete bill items
+    db.prepare('DELETE FROM bill_items WHERE billId = ?').run(billId);
+    
+    // Delete the bill
+    db.prepare('DELETE FROM bills WHERE id = ?').run(billId);
+  });
+  
+  transaction();
+  
+  // Log the activity
+  addActivityLog(
+    'delete',
+    'bill',
+    `Deleted bill: ${billData.bill.billNumber} - Total: ₹${billData.bill.total}`,
+    billId,
+    JSON.stringify(billData),
+    undefined
+  );
+  
+  return { success: true, message: 'Bill deleted and stock restored' };
 }

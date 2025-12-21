@@ -1,4 +1,5 @@
 import { getDatabase } from './connection';
+import { addActivityLog } from './logs';
 
 export interface ProductData {
   name: string;
@@ -30,7 +31,19 @@ export function addProduct(data: ProductData) {
     data.isActive !== false ? 1 : 0
   );
   
-  return result.lastInsertRowid;
+  const productId = result.lastInsertRowid as number;
+  
+  // Log the activity
+  addActivityLog(
+    'create',
+    'product',
+    `Created product: ${data.name}`,
+    productId,
+    undefined,
+    JSON.stringify(data)
+  );
+  
+  return productId;
 }
 
 // READ - Get all products (only active by default)
@@ -130,6 +143,9 @@ export function getLowStockProducts() {
 export function updateProduct(id: number, data: Partial<ProductData>) {
   const db = getDatabase();
   
+  // Get old product data for logging
+  const oldProduct = getProductById(id);
+  
   const fields = [];
   const values = [];
   
@@ -172,12 +188,27 @@ export function updateProduct(id: number, data: Partial<ProductData>) {
   const stmt = db.prepare(`UPDATE products SET ${fields.join(', ')} WHERE id = ?`);
   const result = stmt.run(...values);
   
+  // Log the activity
+  if (result.changes > 0 && oldProduct) {
+    addActivityLog(
+      'update',
+      'product',
+      `Updated product: ${oldProduct.name}`,
+      id,
+      JSON.stringify(oldProduct),
+      JSON.stringify(data)
+    );
+  }
+  
   return result.changes > 0;
 }
 
 // UPDATE - Update stock and log the change
 export function updateStock(id: number, quantity: number, changeType: 'sale' | 'restock' | 'adjustment', referenceId?: number) {
   const db = getDatabase();
+  
+  // Get product info for logging
+  const product = getProductById(id);
   
   // Start transaction
   const transaction = db.transaction(() => {
@@ -198,12 +229,31 @@ export function updateStock(id: number, quantity: number, changeType: 'sale' | '
   });
   
   transaction();
+  
+  // Log the activity
+  if (product) {
+    const action = changeType === 'sale' ? 'Stock reduced (sale)' : 
+                   changeType === 'restock' ? 'Stock increased (restock)' : 
+                   'Stock adjusted';
+    addActivityLog(
+      'update',
+      'product',
+      `${action}: ${product.name} - Quantity: ${quantity > 0 ? '+' : ''}${quantity}`,
+      id,
+      undefined,
+      JSON.stringify({ changeType, quantity, referenceId })
+    );
+  }
+  
   return true;
 }
 
 // DELETE - Delete product (with validation) or deactivate if referenced
 export function deleteProduct(id: number, forceDeactivate: boolean = false) {
   const db = getDatabase();
+  
+  // Get product info for logging
+  const product = getProductById(id);
   
   // Check if product is referenced in any bills
   const billCheckStmt = db.prepare(`
@@ -220,6 +270,19 @@ export function deleteProduct(id: number, forceDeactivate: boolean = false) {
         WHERE id = ?
       `);
       const result = deactivateStmt.run(id);
+      
+      // Log the activity
+      if (result.changes > 0 && product) {
+        addActivityLog(
+          'deactivate',
+          'product',
+          `Deactivated product: ${product.name} (referenced in ${billCheck.count} bills)`,
+          id,
+          JSON.stringify(product),
+          undefined
+        );
+      }
+      
       return { 
         success: result.changes > 0, 
         deactivated: true,
@@ -248,6 +311,19 @@ export function deleteProduct(id: number, forceDeactivate: boolean = false) {
   });
   
   const success = transaction();
+  
+  // Log the activity
+  if (success && product) {
+    addActivityLog(
+      'delete',
+      'product',
+      `Deleted product: ${product.name}`,
+      id,
+      JSON.stringify(product),
+      undefined
+    );
+  }
+  
   return { success, deleted: true, message: 'Product deleted successfully' };
 }
 
@@ -259,11 +335,28 @@ export function deactivateProduct(id: number) {
 // UTILITY - Reactivate product
 export function reactivateProduct(id: number) {
   const db = getDatabase();
+  
+  // Get product info for logging
+  const product = getProductById(id);
+  
   const stmt = db.prepare(`
     UPDATE products 
     SET isActive = 1, updatedAt = datetime('now') 
     WHERE id = ?
   `);
   const result = stmt.run(id);
+  
+  // Log the activity
+  if (result.changes > 0 && product) {
+    addActivityLog(
+      'reactivate',
+      'product',
+      `Reactivated product: ${product.name}`,
+      id,
+      undefined,
+      JSON.stringify({ isActive: true })
+    );
+  }
+  
   return result.changes > 0;
 }

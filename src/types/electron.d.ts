@@ -21,7 +21,9 @@ export interface ElectronAPI {
     discountPercent: number;
     discountAmount: number;
     total: number;
-    paymentMode: 'cash' | 'upi';
+    paymentMode: 'cash' | 'upi' | 'mixed';
+    cashAmount?: number;
+    upiAmount?: number;
   }) => Promise<Bill>;
   getBills: (dateFrom?: string, dateTo?: string) => Promise<Bill[]>;
   getBillById: (id: number) => Promise<{ bill: Bill; items: BillItem[] }>;
@@ -29,6 +31,8 @@ export interface ElectronAPI {
   getDateRangeSummary: (dateFrom: string, dateTo: string) => Promise<DailySummary>;
   getTopSelling: (date?: string) => Promise<{ productName: string; size: string; totalQty: number }[]>;
   getRecentBills: (limit?: number) => Promise<Bill[]>;
+  updateBill: (billId: number, billData: any) => Promise<{ bill: Bill; items: BillItem[] }>;
+  deleteBill: (billId: number) => Promise<{ success: boolean; message: string }>;
 
   // Reports
   getSalesReport: (dateFrom: string, dateTo: string) => Promise<{
@@ -46,8 +50,13 @@ export interface ElectronAPI {
     quantity: number;
     unit_price: number;
     total_price: number;
+    subtotal: number;
+    discount_rate: number;
+    discount_amount: number;
+    final_total: number;
     payment_mode: string;
-    bill_total: number;
+    cash_amount?: number;
+    upi_amount?: number;
   }[]>;
   getStockMovementReport: (dateFrom: string, dateTo: string) => Promise<{
     productName: string;
@@ -131,6 +140,11 @@ export interface ElectronAPI {
     settings: { count: number };
     database_size: { bytes: number; mb: number };
   }>;
+
+  // Logs
+  getActivityLogs: (limit?: number, offset?: number, entityType?: string, dateFrom?: string, dateTo?: string) => Promise<any[]>;
+  getLogsCount: (entityType?: string, dateFrom?: string, dateTo?: string) => Promise<{ count: number }>;
+  cleanupLogs: () => Promise<{ success: boolean; deletedCount: number }>;
 
   // Printer
   getPrinters: () => Promise<{ name: string; isDefault: boolean }[]>;
