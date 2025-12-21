@@ -28,6 +28,9 @@ export function PaymentPanel() {
     }
 
     try {
+      console.log('Creating bill with cart:', cart);
+      console.log('Payment details:', { subtotal, discountPercent, discountAmount, total, paymentMode });
+      
       const billData = {
         items: cart,
         subtotal,
@@ -38,26 +41,33 @@ export function PaymentPanel() {
       };
 
       const bill = await window.electronAPI.createBill(billData);
+      console.log('Bill created successfully:', bill);
 
-      if (settings?.autoPrint !== false) {
-        const receiptHTML = generateReceiptHTML(
-          bill as { billNumber: string; createdAt: string },
-          cart,
-          subtotal,
-          discountPercent,
-          discountAmount,
-          total,
-          paymentMode,
-          settings
-        );
-        await window.electronAPI.print(receiptHTML, settings?.printerName);
+      // Only try to print if settings are available and autoPrint is enabled
+      if (settings && settings.autoPrint !== false) {
+        try {
+          const receiptHTML = generateReceiptHTML(
+            bill as { billNumber: string; createdAt: string },
+            cart,
+            subtotal,
+            discountPercent,
+            discountAmount,
+            total,
+            paymentMode,
+            settings
+          );
+          await window.electronAPI.print(receiptHTML, settings?.printerName);
+        } catch (printError) {
+          console.error('Print error (non-critical):', printError);
+          // Don't fail the whole operation if printing fails
+        }
       }
 
       toast.success(`Bill ${(bill as { billNumber: string }).billNumber} saved!`);
       clearCart();
     } catch (error) {
-      toast.error('Error creating bill');
-      console.error(error);
+      console.error('Bill creation error:', error);
+      toast.error(`Error creating bill: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   };
 
@@ -244,7 +254,7 @@ export function PaymentPanel() {
         }}
       >
         <CreditCard size={20} />
-        <span>Pay & Print (F12)</span>
+        <span>Save & Print (F12)</span>
       </button>
     </div>
   );

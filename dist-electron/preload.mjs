@@ -17,17 +17,26 @@ electron.contextBridge.exposeInMainWorld("electronAPI", {
   getBillById: (id) => electron.ipcRenderer.invoke("bills:getById", id),
   getDailySummary: (date) => electron.ipcRenderer.invoke("bills:getDailySummary", date),
   getTopSelling: (date) => electron.ipcRenderer.invoke("bills:getTopSelling", date),
-  getRecentBills: (limit) => electron.ipcRenderer.invoke("bills:getRecentBills", limit),
+  getRecentBills: (limit) => electron.ipcRenderer.invoke("bills:getRecent", limit),
   // Reports
-  getSalesReport: (dateFrom, dateTo) => electron.ipcRenderer.invoke("reports:getSalesReport", dateFrom, dateTo),
+  getSalesReport: (dateFrom, dateTo) => electron.ipcRenderer.invoke("reports:getSales", dateFrom, dateTo),
   exportData: (dateFrom, dateTo) => electron.ipcRenderer.invoke("reports:exportData", dateFrom, dateTo),
+  getStockMovementReport: (dateFrom, dateTo) => electron.ipcRenderer.invoke("reports:getStockMovement", dateFrom, dateTo),
+  getCategorySales: (dateFrom, dateTo) => electron.ipcRenderer.invoke("reports:getCategorySales", dateFrom, dateTo),
+  getPaymentModeSummary: (dateFrom, dateTo) => electron.ipcRenderer.invoke("reports:getPaymentModeSummary", dateFrom, dateTo),
+  getHourlySales: (date) => electron.ipcRenderer.invoke("reports:getHourlySales", date),
+  getLowStockAlert: () => electron.ipcRenderer.invoke("reports:getLowStockAlert"),
+  getProductPerformance: (dateFrom, dateTo, limit) => electron.ipcRenderer.invoke("reports:getProductPerformance", dateFrom, dateTo, limit),
   // Settings
   getSettings: () => electron.ipcRenderer.invoke("settings:getAll"),
+  getSetting: (key) => electron.ipcRenderer.invoke("settings:get", key),
   updateSetting: (key, value) => electron.ipcRenderer.invoke("settings:update", key, value),
   updateAllSettings: (settings) => electron.ipcRenderer.invoke("settings:updateAll", settings),
+  getTypedSettings: () => electron.ipcRenderer.invoke("settings:getTyped"),
   // Backup
   exportBackup: () => electron.ipcRenderer.invoke("backup:export"),
   importBackup: () => electron.ipcRenderer.invoke("backup:import"),
+  getDatabaseStats: () => electron.ipcRenderer.invoke("backup:getStats"),
   // Printer
   getPrinters: () => electron.ipcRenderer.invoke("printer:getList"),
   print: (content, printerName) => electron.ipcRenderer.invoke("printer:print", content, printerName)

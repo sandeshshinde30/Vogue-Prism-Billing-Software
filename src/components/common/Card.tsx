@@ -4,9 +4,10 @@ interface CardProps {
   children: React.ReactNode;
   className?: string;
   padding?: 'none' | 'sm' | 'md' | 'lg';
+  style?: React.CSSProperties;
 }
 
-export function Card({ children, className = '', padding = 'md' }: CardProps) {
+export function Card({ children, className = '', padding = 'md', style }: CardProps) {
   const paddingStyles = {
     none: { padding: '0' },
     sm: { padding: '16px' },
@@ -28,7 +29,8 @@ export function Card({ children, className = '', padding = 'md' }: CardProps) {
         backgroundColor: 'white',
         border: '1px solid #e2e8f0',
         borderRadius: '12px',
-        ...paddingStyles[padding]
+        ...paddingStyles[padding],
+        ...style
       }}
     >
       {children}

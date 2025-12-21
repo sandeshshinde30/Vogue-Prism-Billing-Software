@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Search, Package, Save, AlertTriangle } from 'lucide-react';
+import { Search, Package, AlertTriangle } from 'lucide-react';
 import { Card, Input, Select, StatCard } from '../components/common';
 import { Product } from '../types';
 import toast from 'react-hot-toast';
@@ -9,7 +9,6 @@ export function Stock() {
   const [filteredProducts, setFilteredProducts] = useState<Product[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [filter, setFilter] = useState('all');
-  const [adjustments, setAdjustments] = useState<Record<number, number>>({});
   const [loading, setLoading] = useState(true);
 
   const loadProducts = async () => {
@@ -17,7 +16,7 @@ export function Stock() {
     try {
       const data = (await window.electronAPI.getProducts()) as Product[];
       setProducts(data);
-    } catch (error) {
+    } catch {
       toast.error('Error loading products');
     }
     setLoading(false);
@@ -31,11 +30,11 @@ export function Stock() {
     let filtered = products;
 
     if (searchQuery) {
-      const query = searchQuery.toLowerCase();
+      const q = searchQuery.toLowerCase();
       filtered = filtered.filter(
         (p) =>
-          p.name.toLowerCase().includes(query) ||
-          p.barcode?.toLowerCase().includes(query)
+          p.name.toLowerCase().includes(q) ||
+          p.barcode?.toLowerCase().includes(q)
       );
     }
 
@@ -43,41 +42,14 @@ export function Stock() {
       filtered = filtered.filter(
         (p) => p.stock <= p.lowStockThreshold && p.stock > 0
       );
-    } else if (filter === 'out') {
+    }
+
+    if (filter === 'out') {
       filtered = filtered.filter((p) => p.stock === 0);
     }
 
     setFilteredProducts(filtered);
-  }, [searchQuery, filter, products]);
-
-  const handleAdjustmentChange = (productId: number, value: number) => {
-    setAdjustments({ ...adjustments, [productId]: value });
-  };
-
-  const handleSaveStock = async (product: Product) => {
-    const adjustment = adjustments[product.id] || 0;
-    if (adjustment === 0) return;
-
-    try {
-      await window.electronAPI.updateStock(product.id, adjustment, 'adjustment');
-      
-      // Update local state
-      setProducts(
-        products.map((p) =>
-          p.id === product.id ? { ...p, stock: p.stock + adjustment } : p
-        )
-      );
-      
-      // Clear adjustment
-      const newAdjustments = { ...adjustments };
-      delete newAdjustments[product.id];
-      setAdjustments(newAdjustments);
-
-      toast.success(`Stock updated for ${product.name}`);
-    } catch (error) {
-      toast.error('Error updating stock');
-    }
-  };
+  }, [products, searchQuery, filter]);
 
   const totalItems = products.length;
   const inStock = products.filter((p) => p.stock > p.lowStockThreshold).length;
@@ -87,89 +59,43 @@ export function Stock() {
   const outOfStock = products.filter((p) => p.stock === 0).length;
 
   return (
-    <div 
-      className="main-content space-y-6"
-      style={{
-        width: '100%',
-        maxWidth: 'none',
-        margin: '0',
-        padding: '0'
-      }}
-    >
+    <div className="space-y-6">
       {/* Header */}
-      <div 
-        className="page-header"
-        style={{
-          marginBottom: '24px'
-        }}
-      >
-        <h1 
-          className="page-title"
-          style={{
-            fontSize: '28px',
-            fontWeight: '700',
-            color: '#111827',
-            marginBottom: '4px'
-          }}
-        >
-          Stock Management
-        </h1>
-        <p 
-          className="page-subtitle"
-          style={{
-            fontSize: '14px',
-            color: '#6b7280'
-          }}
-        >
-          Monitor and adjust your inventory levels
+      <div>
+        <h1 className="text-2xl font-bold">Stock Management</h1>
+        <p className="text-sm text-gray-500">
+          View and monitor inventory levels
         </p>
       </div>
 
       {/* Stats */}
-      <div 
-        className="stats-grid"
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))',
-          gap: '16px',
-          marginBottom: '24px'
-        }}
-      >
-        <StatCard
-          title="Total Items"
-          value={totalItems}
-          icon={<Package size={24} />}
-        />
-        <StatCard
-          title="In Stock"
-          value={inStock}
-          icon={<Package size={24} />}
-        />
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <StatCard title="Total Items" value={totalItems} icon={<Package />} />
+        <StatCard title="In Stock" value={inStock} icon={<Package />} />
         <StatCard
           title="Low Stock"
           value={lowStock}
-          icon={<AlertTriangle size={24} />}
+          icon={<AlertTriangle />}
           variant="warning"
         />
         <StatCard
           title="Out of Stock"
           value={outOfStock}
-          icon={<AlertTriangle size={24} />}
+          icon={<AlertTriangle />}
           variant="danger"
         />
       </div>
 
       {/* Filters */}
-      <Card style={{ marginBottom: '24px' }}>
-        <div className="flex flex-col sm:flex-row gap-4">
-          <div className="flex-1">
-            <Input
-              placeholder="Scan barcode or search..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              icon={<Search size={18} />}
-            />
-          </div>
+      <Card>
+        <div className="flex gap-4">
+          <Input
+            placeholder="Scan barcode or search..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            icon={<Search size={18} />}
+          />
+
           <Select
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
@@ -178,258 +104,91 @@ export function Stock() {
               { value: 'low', label: 'Low Stock' },
               { value: 'out', label: 'Out of Stock' },
             ]}
-            className="w-full sm:w-48"
+            className="w-48"
           />
         </div>
       </Card>
 
-      {/* Stock Table */}
-      <Card padding="none" style={{ marginBottom: '24px' }}>
+      {/* Table */}
+      <Card padding="none">
         {loading ? (
-          <div 
-            className="flex items-center justify-center h-48 text-gray-400"
-            style={{
-              height: '192px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center'
-            }}
-          >
-            <div className="text-center">
-              <Package size={48} className="mx-auto mb-4 opacity-50" />
-              <p>Loading products...</p>
-            </div>
+          <div className="h-48 flex items-center justify-center text-gray-400">
+            Loading products...
           </div>
         ) : filteredProducts.length === 0 ? (
-          <div 
-            className="flex flex-col items-center justify-center h-48 text-gray-400"
-            style={{
-              height: '192px',
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              justifyContent: 'center'
-            }}
-          >
-            <Package size={48} className="mb-4 opacity-50" />
-            <p className="text-lg font-medium">No products found</p>
-            <p className="text-sm">Try adjusting your search or filters</p>
+          <div className="h-48 flex items-center justify-center text-gray-400">
+            No products found
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table 
-              className="w-full min-w-[900px]"
-              style={{
-                width: '100%',
-                minWidth: '900px',
-                borderCollapse: 'collapse'
-              }}
-            >
-              <thead>
-                <tr className="bg-gray-50 border-b border-gray-200">
-                  <th 
-                    className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                    style={{
-                      padding: '16px 24px',
-                      textAlign: 'left',
-                      fontSize: '11px',
-                      fontWeight: '500',
-                      color: '#6b7280',
-                      textTransform: 'uppercase',
-                      letterSpacing: '0.05em'
-                    }}
-                  >
+            <table className="w-full min-w-[900px] border-collapse">
+              <thead className="bg-gray-50 border border-gray-300">
+                <tr>
+                  <th className="px-6 py-4 text-left text-xs uppercase">
                     Product
                   </th>
-                  <th 
-                    className="px-6 py-4 text-center text-xs font-medium text-gray-500 uppercase tracking-wider"
-                    style={{
-                      padding: '16px 24px',
-                      textAlign: 'center',
-                      fontSize: '11px',
-                      fontWeight: '500',
-                      color: '#6b7280',
-                      textTransform: 'uppercase',
-                      letterSpacing: '0.05em'
-                    }}
-                  >
-                    Current Stock
+                  <th className="px-6 py-4 text-center text-xs uppercase">
+                    Category
                   </th>
-                  <th 
-                    className="px-6 py-4 text-center text-xs font-medium text-gray-500 uppercase tracking-wider"
-                    style={{
-                      padding: '16px 24px',
-                      textAlign: 'center',
-                      fontSize: '11px',
-                      fontWeight: '500',
-                      color: '#6b7280',
-                      textTransform: 'uppercase',
-                      letterSpacing: '0.05em'
-                    }}
-                  >
-                    Adjust
+                  <th className="px-6 py-4 text-center text-xs uppercase">
+                    Size
                   </th>
-                  <th 
-                    className="px-6 py-4 text-center text-xs font-medium text-gray-500 uppercase tracking-wider"
-                    style={{
-                      padding: '16px 24px',
-                      textAlign: 'center',
-                      fontSize: '11px',
-                      fontWeight: '500',
-                      color: '#6b7280',
-                      textTransform: 'uppercase',
-                      letterSpacing: '0.05em'
-                    }}
-                  >
-                    New Stock
+                  <th className="px-6 py-4 text-center text-xs uppercase">
+                    Price
                   </th>
-                  <th 
-                    className="px-6 py-4 text-center text-xs font-medium text-gray-500 uppercase tracking-wider"
-                    style={{
-                      padding: '16px 24px',
-                      textAlign: 'center',
-                      fontSize: '11px',
-                      fontWeight: '500',
-                      color: '#6b7280',
-                      textTransform: 'uppercase',
-                      letterSpacing: '0.05em'
-                    }}
-                  >
-                    Action
+                  <th className="px-6 py-4 text-center text-xs uppercase">
+                    Stock
                   </th>
                 </tr>
               </thead>
-              <tbody className="bg-white divide-y divide-gray-100">
-                {filteredProducts.map((product) => {
-                  const adjustment = adjustments[product.id] || 0;
-                  const newStock = product.stock + adjustment;
 
-                  return (
-                    <tr key={product.id} className="hover:bg-gray-50 transition-colors">
-                      <td 
-                        className="px-6 py-4"
-                        style={{
-                          padding: '16px 24px'
-                        }}
-                      >
-                        <div className="flex items-center gap-3">
-                          <div>
-                            <div 
-                              className="font-medium text-gray-900 text-sm"
-                              style={{
-                                fontWeight: '500',
-                                color: '#111827',
-                                fontSize: '14px'
-                              }}
-                            >
-                              {product.name}
-                            </div>
-                            <div className="flex items-center gap-2 mt-1">
-                              <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">
-                                {product.category}
-                              </span>
-                              {product.size && (
-                                <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-600">
-                                  {product.size}
-                                </span>
-                              )}
-                            </div>
-                          </div>
+              <tbody className="">
+                {filteredProducts.map((product) => (
+                  <tr key={product.id} className="hover:bg-gray-50">
+                    {/* Product */}
+                    <td className="px-6 py-4">
+                      <div className="font-medium">{product.name}</div>
+                      <div className="text-xs text-gray-500">
+                        ID: {product.id}
+                      </div>
+                      {product.barcode && (
+                        <div className="text-xs text-gray-400">
+                          {product.barcode}
                         </div>
-                      </td>
-                      <td 
-                        className="px-6 py-4 text-center"
-                        style={{
-                          padding: '16px 24px',
-                          textAlign: 'center'
-                        }}
+                      )}
+                    </td>
+
+                    {/* Category */}
+                    <td className="px-6 py-4 text-center">
+                      {product.category}
+                    </td>
+
+                    {/* Size */}
+                    <td className="px-6 py-4 text-center">
+                      {product.size || '-'}
+                    </td>
+
+                    {/* Price */}
+                    <td className="px-6 py-4 text-center font-mono">
+                      ₹{product.price}
+                    </td>
+
+                    {/* Stock */}
+                    <td className="px-6 py-4 text-center">
+                      <span
+                        className={`px-3 py-1 rounded-full text-sm ${
+                          product.stock === 0
+                            ? 'bg-red-100 text-red-700'
+                            : product.stock <= product.lowStockThreshold
+                            ? 'bg-yellow-100 text-yellow-700'
+                            : 'bg-green-100 text-green-700'
+                        }`}
                       >
-                        <span
-                          className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm font-medium ${
-                            product.stock === 0
-                              ? 'bg-red-100 text-red-700'
-                              : product.stock <= product.lowStockThreshold
-                              ? 'bg-yellow-100 text-yellow-700'
-                              : 'bg-green-100 text-green-700'
-                          }`}
-                        >
-                          {product.stock}
-                        </span>
-                      </td>
-                      <td 
-                        className="px-6 py-4"
-                        style={{
-                          padding: '16px 24px'
-                        }}
-                      >
-                        <div className="flex items-center justify-center gap-2">
-                          <button
-                            onClick={() =>
-                              handleAdjustmentChange(product.id, adjustment - 1)
-                            }
-                            className="w-8 h-8 flex items-center justify-center bg-gray-100 text-gray-600 rounded-lg hover:bg-gray-200 transition-colors"
-                          >
-                            −
-                          </button>
-                          <input
-                            type="number"
-                            value={adjustment}
-                            onChange={(e) =>
-                              handleAdjustmentChange(
-                                product.id,
-                                parseInt(e.target.value) || 0
-                              )
-                            }
-                            className="w-20 text-center border border-gray-300 rounded-lg py-1 font-mono text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                          />
-                          <button
-                            onClick={() =>
-                              handleAdjustmentChange(product.id, adjustment + 1)
-                            }
-                            className="w-8 h-8 flex items-center justify-center bg-gray-100 text-gray-600 rounded-lg hover:bg-gray-200 transition-colors"
-                          >
-                            +
-                          </button>
-                        </div>
-                      </td>
-                      <td 
-                        className="px-6 py-4 text-center"
-                        style={{
-                          padding: '16px 24px',
-                          textAlign: 'center'
-                        }}
-                      >
-                        <span
-                          className={`font-mono font-semibold text-sm ${
-                            newStock < 0
-                              ? 'text-red-600'
-                              : adjustment !== 0
-                              ? 'text-green-600'
-                              : 'text-gray-600'
-                          }`}
-                        >
-                          {newStock}
-                        </span>
-                      </td>
-                      <td 
-                        className="px-6 py-4 text-center"
-                        style={{
-                          padding: '16px 24px',
-                          textAlign: 'center'
-                        }}
-                      >
-                        <button
-                          onClick={() => handleSaveStock(product)}
-                          disabled={adjustment === 0 || newStock < 0}
-                          className="inline-flex items-center gap-1 px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
-                        >
-                          <Save size={14} />
-                          Save
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })}
+                        {product.stock}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>

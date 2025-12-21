@@ -58,7 +58,7 @@ export function BarcodeInput() {
         className="relative"
         style={{ position: 'relative' }}
       >
-        <Barcode 
+        {/* <Barcode 
           size={18} 
           className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
           style={{
@@ -69,7 +69,7 @@ export function BarcodeInput() {
             color: '#94a3b8',
             pointerEvents: 'none'
           }}
-        />
+        /> */}
         <input
           ref={inputRef}
           name="barcode"

@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import {
   Plus,
-  Search,
   Edit2,
   Trash2,
   Package,
@@ -87,16 +86,30 @@ export function Products() {
   const handleSave = async (productData: Partial<Product>) => {
     try {
       if (editingProduct) {
-        const updated = await window.electronAPI.updateProduct({
-          ...editingProduct,
-          ...productData,
-        });
+        const updateData: any = { id: editingProduct.id };
+        if (productData.name !== undefined) updateData.name = productData.name;
+        if (productData.category !== undefined) updateData.category = productData.category;
+        if (productData.size !== undefined) updateData.size = productData.size;
+        if (productData.barcode !== undefined) updateData.barcode = productData.barcode;
+        if (productData.price !== undefined) updateData.price = productData.price;
+        if (productData.stock !== undefined) updateData.stock = productData.stock;
+        if (productData.lowStockThreshold !== undefined) updateData.lowStockThreshold = productData.lowStockThreshold;
+        
+        const updated = await window.electronAPI.updateProduct(updateData);
         setProducts(
           products.map((p) => (p.id === editingProduct.id ? (updated as Product) : p))
         );
         toast.success('Product updated');
       } else {
-        const created = await window.electronAPI.createProduct(productData);
+        const created = await window.electronAPI.createProduct({
+          name: productData.name!,
+          category: productData.category!,
+          size: productData.size,
+          barcode: productData.barcode,
+          price: productData.price!,
+          stock: productData.stock!,
+          lowStockThreshold: productData.lowStockThreshold!,
+        });
         setProducts([...products, created as Product]);
         toast.success('Product created');
       }
@@ -489,7 +502,7 @@ interface ProductModalProps {
 function ProductModal({ isOpen, onClose, product, onSave }: ProductModalProps) {
   const [formData, setFormData] = useState({
     name: '',
-    category: CATEGORIES[0],
+    category: CATEGORIES[0] as string,
     size: '',
     barcode: '',
     price: '',
@@ -511,7 +524,7 @@ function ProductModal({ isOpen, onClose, product, onSave }: ProductModalProps) {
     } else {
       setFormData({
         name: '',
-        category: CATEGORIES[0],
+        category: CATEGORIES[0] as string,
         size: '',
         barcode: '',
         price: '',
@@ -559,14 +572,14 @@ function ProductModal({ isOpen, onClose, product, onSave }: ProductModalProps) {
             label="Category *"
             value={formData.category}
             onChange={(e) =>
-              setFormData({ ...formData, category: e.target.value })
+              setFormData({ ...formData, category: e.target.value as any })
             }
             options={CATEGORIES.map((c) => ({ value: c, label: c }))}
           />
           <Select
             label="Size"
             value={formData.size}
-            onChange={(e) => setFormData({ ...formData, size: e.target.value })}
+            onChange={(e) => setFormData({ ...formData, size: e.target.value as any })}
             options={[
               { value: '', label: 'No Size' },
               ...SIZES.map((s) => ({ value: s, label: s })),

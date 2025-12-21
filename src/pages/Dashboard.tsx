@@ -107,8 +107,11 @@ export function Dashboard() {
         </div>
         <button
           onClick={loadDashboardData}
-          className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-600 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
-        >
+          className="inline-flex cursor-pointer items-center gap-2 px-4 py-2 text-sm font-medium text-gray-600 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+            style={{
+              padding:'10px'
+            }}
+       >
           <RefreshCw size={16} />
           Refresh
         </button>

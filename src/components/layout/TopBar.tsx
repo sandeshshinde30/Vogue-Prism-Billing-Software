@@ -12,7 +12,10 @@ export function TopBar() {
 
   return (
     <header className="h-14 bg-white border-b border-gray-200 flex items-center justify-between px-6 flex-shrink-0">
-      <div className="text-sm text-gray-600">
+      <div className="text-sm text-gray-600"
+      style={{
+        padding:'10px'
+      }}>
         <span className="font-medium text-gray-800">Vogue Prism</span>
         <span className="mx-2 text-gray-300">•</span>
         <span>Clothing Store</span>
@@ -34,12 +37,7 @@ export function TopBar() {
 
         <div className="hidden sm:block h-6 w-px bg-gray-200" />
 
-        <div className="flex items-center gap-2">
-          <div className="w-8 h-8 bg-green-500 rounded-full flex items-center justify-center">
-            <User size={15} className="text-white" />
-          </div>
-          <span className="text-sm font-medium text-gray-700">Admin</span>
-        </div>
+       
       </div>
     </header>
   );

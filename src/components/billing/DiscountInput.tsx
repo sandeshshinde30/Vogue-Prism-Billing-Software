@@ -41,7 +41,7 @@ export function DiscountInput() {
           className="flex-1 relative"
           style={{ flex: '1', position: 'relative' }}
         >
-          <Percent 
+          {/* <Percent 
             size={14} 
             className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
             style={{
@@ -52,7 +52,7 @@ export function DiscountInput() {
               color: '#94a3b8',
               pointerEvents: 'none'
             }}
-          />
+          /> */}
           <input
             type="number"
             value={discountPercent || ''}
@@ -98,7 +98,7 @@ export function DiscountInput() {
           className="flex-1 relative"
           style={{ flex: '1', position: 'relative' }}
         >
-          <IndianRupee 
+          {/* <IndianRupee 
             size={14} 
             className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
             style={{
@@ -109,7 +109,7 @@ export function DiscountInput() {
               color: '#94a3b8',
               pointerEvents: 'none'
             }}
-          />
+          /> */}
           <input
             type="number"
             value={discountAmount || ''}

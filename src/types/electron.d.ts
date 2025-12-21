@@ -43,16 +43,91 @@ export interface ElectronAPI {
     quantity: number;
     unit_price: number;
     total_price: number;
+    payment_mode: string;
+    bill_total: number;
+  }[]>;
+  getStockMovementReport: (dateFrom: string, dateTo: string) => Promise<{
+    productName: string;
+    size: string;
+    category: string;
+    changeType: string;
+    quantityChange: number;
+    createdAt: string;
+    referenceNumber: string | null;
+  }[]>;
+  getCategorySales: (dateFrom: string, dateTo: string) => Promise<{
+    category: string;
+    uniqueProducts: number;
+    totalQuantity: number;
+    totalAmount: number;
+  }[]>;
+  getPaymentModeSummary: (dateFrom: string, dateTo: string) => Promise<{
+    paymentMode: string;
+    billCount: number;
+    totalAmount: number;
+    averageAmount: number;
+  }[]>;
+  getHourlySales: (date: string) => Promise<{
+    hour: string;
+    billCount: number;
+    totalAmount: number;
+  }[]>;
+  getLowStockAlert: () => Promise<{
+    id: number;
+    name: string;
+    category: string;
+    size: string;
+    stock: number;
+    lowStockThreshold: number;
+    shortfall: number;
+  }[]>;
+  getProductPerformance: (dateFrom: string, dateTo: string, limit?: number) => Promise<{
+    productName: string;
+    size: string;
+    category: string;
+    currentPrice: number;
+    billCount: number;
+    totalQuantity: number;
+    totalRevenue: number;
+    averagePrice: number;
   }[]>;
 
   // Settings
   getSettings: () => Promise<Record<string, string>>;
+  getSetting: (key: string) => Promise<string>;
   updateSetting: (key: string, value: string) => Promise<{ success: boolean }>;
   updateAllSettings: (settings: Record<string, string>) => Promise<{ success: boolean }>;
+  getTypedSettings: () => Promise<Settings>;
 
   // Backup
-  exportBackup: () => Promise<{ success: boolean; path?: string; cancelled?: boolean; error?: string }>;
-  importBackup: () => Promise<{ success: boolean; requiresRestart?: boolean; cancelled?: boolean; error?: string }>;
+  exportBackup: () => Promise<{ 
+    success: boolean; 
+    path?: string; 
+    cancelled?: boolean; 
+    error?: string;
+    recordCount?: {
+      products: number;
+      bills: number;
+      bill_items: number;
+      stock_logs: number;
+      settings: number;
+    };
+  }>;
+  importBackup: () => Promise<{ 
+    success: boolean; 
+    requiresRestart?: boolean; 
+    cancelled?: boolean; 
+    error?: string;
+    message?: string;
+  }>;
+  getDatabaseStats: () => Promise<{
+    products: { count: number };
+    bills: { count: number };
+    bill_items: { count: number };
+    stock_logs: { count: number };
+    settings: { count: number };
+    database_size: { bytes: number; mb: number };
+  }>;
 
   // Printer
   getPrinters: () => Promise<{ name: string; isDefault: boolean }[]>;
