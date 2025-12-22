@@ -9,10 +9,12 @@ import {
   Eye,
   AlertTriangle,
   RefreshCw,
+  Printer,
 } from 'lucide-react';
 import { Card, Button, Input, Modal } from '../components/common';
 import { PasswordModal } from '../components/common/PasswordModal';
 import { BillEditModal } from '../components/billing/BillEditModal';
+import { BillPreview } from '../components/billing/BillPreview';
 import { formatDateTime, formatCurrency } from '../utils/export';
 import toast from 'react-hot-toast';
 
@@ -48,6 +50,9 @@ export function BillManagement() {
   const [dateTo, setDateTo] = useState('');
   const [selectedBill, setSelectedBill] = useState<{ bill: Bill; items: BillItem[] } | null>(null);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [printingBill, setPrintingBill] = useState<number | null>(null);
+  const [showBillPreview, setShowBillPreview] = useState(false);
+  const [previewBillData, setPreviewBillData] = useState<any>(null);
   const [pendingAction, setPendingAction] = useState<{ type: 'edit' | 'delete'; bill: Bill } | null>(null);
   const [showBillModal, setShowBillModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
@@ -116,6 +121,48 @@ export function BillManagement() {
     } catch (error) {
       toast.error('Error loading bill details');
     }
+  };
+
+  const handlePrintBill = async (bill: Bill) => {
+    setPrintingBill(bill.id);
+    try {
+      // Get bill details with items
+      const billData = await window.electronAPI.getBillById(bill.id);
+      const settings = await window.electronAPI.getSettings();
+      
+      // Convert bill data to thermal printer format
+      const thermalBillData = {
+        billNumber: bill.billNumber,
+        date: new Date(bill.createdAt).toLocaleString(),
+        storeName: settings?.storeName || 'Vogue Prism',
+        storeAddress: `${settings?.addressLine1 || ''}\n${settings?.addressLine2 || ''}`.trim(),
+        phone: settings?.phone || '',
+        gstNumber: settings?.gstNumber || '',
+        items: billData.items.map((item: BillItem) => ({
+          name: item.productName,
+          quantity: item.quantity,
+          unitPrice: item.unitPrice,
+          totalPrice: item.totalPrice
+        })),
+        subtotal: bill.subtotal,
+        discountPercent: bill.discountPercent,
+        discountAmount: bill.discountAmount,
+        total: bill.total,
+        paymentMode: bill.paymentMode,
+        cashAmount: bill.cashAmount,
+        upiAmount: bill.upiAmount,
+        changeAmount: bill.paymentMode === 'cash' && bill.cashAmount && bill.cashAmount > bill.total 
+          ? bill.cashAmount - bill.total : undefined
+      };
+      
+      // Show preview instead of direct print
+      setPreviewBillData(thermalBillData);
+      setShowBillPreview(true);
+    } catch (error) {
+      console.error('Error preparing bill for print:', error);
+      toast.error('Error preparing bill for print');
+    }
+    setPrintingBill(null);
   };
 
   const filteredBills = bills.filter(bill =>
@@ -263,13 +310,25 @@ export function BillManagement() {
                           variant="secondary"
                           size="sm"
                           onClick={() => handleViewBill(bill.id)}
+                          title="View Bill"
                         >
                           <Eye size={14} />
                         </Button>
                         <Button
                           variant="secondary"
                           size="sm"
+                          onClick={() => handlePrintBill(bill)}
+                          disabled={printingBill === bill.id}
+                          title="Print Bill"
+                          className="text-blue-600 hover:text-blue-700"
+                        >
+                          <Printer size={14} />
+                        </Button>
+                        <Button
+                          variant="secondary"
+                          size="sm"
                           onClick={() => requestPasswordForAction('edit', bill)}
+                          title="Edit Bill"
                         >
                           <Edit size={14} />
                         </Button>
@@ -278,6 +337,7 @@ export function BillManagement() {
                           size="sm"
                           onClick={() => requestPasswordForAction('delete', bill)}
                           className="text-red-600 hover:text-red-700"
+                          title="Delete Bill"
                         >
                           <Trash2 size={14} />
                         </Button>
@@ -317,6 +377,17 @@ export function BillManagement() {
             loadBills(); // Refresh the list
             setShowEditModal(false);
             setSelectedBill(null);
+          }}
+        />
+      )}
+
+      {/* Bill Preview Modal */}
+      {showBillPreview && previewBillData && (
+        <BillPreview
+          billData={previewBillData}
+          onClose={() => {
+            setShowBillPreview(false);
+            setPreviewBillData(null);
           }}
         />
       )}

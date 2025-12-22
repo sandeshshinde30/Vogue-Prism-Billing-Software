@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Save, Printer, TestTube, Package, Receipt } from 'lucide-react';
-import { Card, Button, Input, Select } from '../components/common';
+import { Save, Printer, Package, Receipt } from 'lucide-react';
+import { Card, Button, Input } from '../components/common';
 import { useStore } from '../store/useStore';
 import type { Settings as SettingsType } from '../types';
 import toast from 'react-hot-toast';
@@ -8,12 +8,10 @@ import toast from 'react-hot-toast';
 export function Settings() {
   const { setSettings } = useStore();
   const [formData, setFormData] = useState<Record<string, string>>({});
-  const [printers, setPrinters] = useState<{ name: string; isDefault: boolean }[]>([]);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     loadSettings();
-    loadPrinters();
   }, []);
 
   const loadSettings = async () => {
@@ -23,15 +21,6 @@ export function Settings() {
       setSettings(data as unknown as SettingsType);
     } catch (error) {
       toast.error('Error loading settings');
-    }
-  };
-
-  const loadPrinters = async () => {
-    try {
-      const data = await window.electronAPI.getPrinters();
-      setPrinters(data);
-    } catch (error) {
-      console.error('Error loading printers:', error);
     }
   };
 
@@ -49,25 +38,6 @@ export function Settings() {
       toast.error('Error saving settings');
     }
     setSaving(false);
-  };
-
-  const handleTestPrint = async () => {
-    try {
-      const testContent = `
-        <html>
-        <body style="font-family: monospace; text-align: center; padding: 20px;">
-          <h2>${formData.storeName || 'Vogue Prism'}</h2>
-          <p>Test Print</p>
-          <p>${new Date().toLocaleString()}</p>
-          <p>If you can read this, your printer is working!</p>
-        </body>
-        </html>
-      `;
-      await window.electronAPI.print(testContent, formData.printerName);
-      toast.success('Test print sent');
-    } catch (error) {
-      toast.error('Error sending test print');
-    }
   };
 
   return (
@@ -223,61 +193,23 @@ export function Settings() {
             </div>
             <div>
               <h2 className="text-lg font-semibold text-gray-900">Printer Settings</h2>
-              <p className="text-sm text-gray-600">Configure receipt printing options</p>
+              <p className="text-sm text-gray-600">Manage and configure your printers</p>
             </div>
           </div>
-          <Button variant="secondary" onClick={handleTestPrint}>
-            <TestTube size={18} className="mr-2" />
-            Test Print
-          </Button>
         </div>
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <div className="space-y-4">
-            <Select
-              label="Printer"
-              value={formData.printerName || ''}
-              onChange={(e) => handleChange('printerName', e.target.value)}
-              options={[
-                { value: '', label: 'Default Printer' },
-                ...printers.map((p) => ({
-                  value: p.name,
-                  label: p.name + (p.isDefault ? ' (Default)' : ''),
-                })),
-              ]}
-            />
-            <Select
-              label="Paper Width"
-              value={formData.paperWidth || '58mm'}
-              onChange={(e) => handleChange('paperWidth', e.target.value)}
-              options={[
-                { value: '58mm', label: '58mm (Thermal)' },
-                { value: '80mm', label: '80mm (Thermal)' },
-              ]}
-            />
-          </div>
-          <div className="flex items-center justify-center">
-            <div className="bg-gray-50 rounded-lg p-6 text-center">
-              <div className="w-12 h-12 bg-gray-200 rounded-lg mx-auto mb-3 flex items-center justify-center">
-                <Printer size={24} className="text-gray-500" />
-              </div>
-              <label className="flex items-center justify-center gap-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={formData.autoPrint === 'true'}
-                  onChange={(e) =>
-                    handleChange('autoPrint', e.target.checked ? 'true' : 'false')
-                  }
-                  className="w-4 h-4 text-green-600 rounded focus:ring-green-500"
-                />
-                <span className="text-sm font-medium text-gray-700">
-                  Auto-print receipt on bill save
-                </span>
-              </label>
-              <p className="text-xs text-gray-500 mt-2">
-                Automatically print receipts when bills are saved
-              </p>
-            </div>
-          </div>
+        <div className="text-center py-8">
+          <Printer className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+          <h3 className="text-lg font-medium text-gray-900 mb-2">Advanced Printer Management</h3>
+          <p className="text-gray-600 mb-6">
+            Configure printers, test printing, and manage print settings in the dedicated Printer Management section.
+          </p>
+          <Button 
+            onClick={() => window.location.hash = '#/printer-management'}
+            className="flex items-center gap-2 mx-auto"
+          >
+            <Printer className="w-4 h-4" />
+            Open Printer Management
+          </Button>
         </div>
       </Card>
     </div>

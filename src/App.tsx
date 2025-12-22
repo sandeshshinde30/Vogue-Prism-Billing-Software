@@ -12,6 +12,7 @@ import {
   Settings,
   Logs,
   BillManagement,
+  PrinterManagement,
 } from './pages';
 import { useStore } from './store/useStore';
 import { Settings as SettingsType } from './types';
@@ -68,6 +69,7 @@ function App() {
           <Route path="bill-management" element={<BillManagement />} />
           <Route path="backup" element={<Backup />} />
           <Route path="settings" element={<Settings />} />
+          <Route path="printer-management" element={<PrinterManagement />} />
         </Route>
       </Routes>
     </HashRouter>

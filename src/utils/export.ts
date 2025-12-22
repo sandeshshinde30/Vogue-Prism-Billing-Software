@@ -62,89 +62,50 @@ export function exportToExcel(data: ExportRow[], filename: string): void {
   XLSX.writeFile(workbook, filename);
 }
 
-export function exportBillToPDF(
-  bill: { billNumber: string; createdAt: string; total: number; paymentMode: string; subtotal: number; discountAmount: number; discountPercent: number },
-  items: Array<{ productName: string; size?: string; quantity: number; unitPrice: number; totalPrice: number }>,
-  storeName: string = 'Vogue Prism'
-): void {
-  const doc = new jsPDF();
-  
-  // Set font
-  doc.setFont('helvetica');
-  
-  // Header
-  doc.setFontSize(20);
-  doc.setTextColor(0, 0, 0);
-  doc.text(storeName, 105, 20, { align: 'center' });
-  
-  doc.setFontSize(12);
-  doc.text('INVOICE', 105, 30, { align: 'center' });
-  
-  // Bill details
-  doc.setFontSize(10);
-  doc.text(`Bill No: ${bill.billNumber}`, 20, 45);
-  doc.text(`Date: ${formatDateTime(bill.createdAt)}`, 20, 52);
-  doc.text(`Payment: ${bill.paymentMode.toUpperCase()}`, 20, 59);
-  
-  // Table header
-  let yPos = 75;
-  doc.setFontSize(9);
-  doc.setTextColor(100, 100, 100);
-  doc.text('Item', 20, yPos);
-  doc.text('Qty', 120, yPos);
-  doc.text('Rate', 140, yPos);
-  doc.text('Amount', 170, yPos);
-  
-  // Draw line under header
-  doc.line(20, yPos + 2, 190, yPos + 2);
-  
-  // Items
-  yPos += 10;
-  doc.setTextColor(0, 0, 0);
-  
-  items.forEach((item) => {
-    const itemName = item.size ? `${item.productName} (${item.size})` : item.productName;
+export async function exportBillToPDF(
+  bill: { billNumber: string; createdAt: string; total: number; paymentMode: string; subtotal: number; discountAmount: number; discountPercent: number; cashAmount?: number; upiAmount?: number },
+  items: Array<{ productName: string; size?: string; quantity: number; unitPrice: number; totalPrice: number }>
+): Promise<void> {
+  try {
+    // Get store settings
+    const settings = await window.electronAPI.getSettings();
     
-    // Wrap long item names
-    const splitText = doc.splitTextToSize(itemName, 90);
-    doc.text(splitText, 20, yPos);
+    // Convert to BillData format
+    const billData = {
+      billNumber: bill.billNumber,
+      date: formatDateTime(bill.createdAt),
+      storeName: settings?.storeName || 'Vogue Prism',
+      storeAddress: `${settings?.addressLine1 || ''}\n${settings?.addressLine2 || ''}`.trim(),
+      phone: settings?.phone || '',
+      gstNumber: settings?.gstNumber || '',
+      items: items.map(item => ({
+        name: item.productName,
+        quantity: item.quantity,
+        unitPrice: item.unitPrice,
+        totalPrice: item.totalPrice
+      })),
+      subtotal: bill.subtotal,
+      discountPercent: bill.discountPercent || 0,
+      discountAmount: bill.discountAmount || 0,
+      total: bill.total,
+      paymentMode: bill.paymentMode,
+      cashAmount: bill.cashAmount,
+      upiAmount: bill.upiAmount,
+      changeAmount: bill.paymentMode === 'cash' && bill.cashAmount && bill.cashAmount > bill.total 
+        ? bill.cashAmount - bill.total : undefined
+    };
     
-    doc.text(item.quantity.toString(), 120, yPos);
-    doc.text(`₹${item.unitPrice.toLocaleString()}`, 140, yPos);
-    doc.text(`₹${item.totalPrice.toLocaleString()}`, 170, yPos);
+    // Use the PDFExporter to export
+    const { PDFExporter } = await import('./pdfExport');
+    const result = await PDFExporter.exportBillToPDF(billData, settings);
     
-    yPos += splitText.length * 5 + 3;
-  });
-  
-  // Totals
-  yPos += 10;
-  doc.line(20, yPos, 190, yPos);
-  yPos += 8;
-  
-  doc.text('Subtotal:', 140, yPos);
-  doc.text(`₹${bill.subtotal.toLocaleString()}`, 170, yPos);
-  
-  if (bill.discountAmount > 0) {
-    yPos += 7;
-    doc.text(`Discount (${bill.discountPercent}%):`, 140, yPos);
-    doc.text(`-₹${bill.discountAmount.toLocaleString()}`, 170, yPos);
+    if (!result.success) {
+      throw new Error(result.error || 'PDF export failed');
+    }
+  } catch (error) {
+    console.error('Error exporting bill to PDF:', error);
+    throw error;
   }
-  
-  yPos += 7;
-  doc.setFontSize(12);
-  doc.setFont('helvetica', 'bold');
-  doc.text('Total:', 140, yPos);
-  doc.text(`₹${bill.total.toLocaleString()}`, 170, yPos);
-  
-  // Footer
-  yPos += 20;
-  doc.setFontSize(8);
-  doc.setFont('helvetica', 'normal');
-  doc.setTextColor(100, 100, 100);
-  doc.text('Thank you for your business!', 105, yPos, { align: 'center' });
-  
-  // Save the PDF
-  doc.save(`${bill.billNumber}.pdf`);
 }
 
 export function formatCurrency(amount: number): string {

@@ -9,6 +9,7 @@ import {
   Database,
   Settings,
   FileEdit,
+  Printer,
 } from 'lucide-react';
 
 const navItems = [
@@ -20,6 +21,7 @@ const navItems = [
   { to: '/logs', icon: Activity, label: 'Logs' },
   { to: '/bill-management', icon: FileEdit, label: 'Bill Management' },
   { to: '/backup', icon: Database, label: 'Backup' },
+  { to: '/printer-management', icon: Printer, label: 'Printer Management' },
   { to: '/settings', icon: Settings, label: 'Settings' },
 ];
 

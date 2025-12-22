@@ -48,9 +48,13 @@ export interface ElectronAPI {
   getDatabaseStats: () => Promise<any>;
 
   // Printer
-  getPrinters: () => Promise<{ name: string; isDefault: boolean }[]>;
-  print: (content: string, printerName?: string) => Promise<{ success: boolean; error?: string }>;
-  testPrint: (printerName?: string) => Promise<{ success: boolean; error?: string }>;
+  getPrinters: () => Promise<PrinterInfo[]>;
+  refreshPrinters: () => Promise<PrinterInfo[]>;
+  testPrint: (printerName: string, content?: string) => Promise<{ success: boolean; error?: string }>;
+  print: (content: string, printerName?: string, options?: any) => Promise<{ success: boolean; error?: string }>;
+  getPrinterStatus: (printerName: string) => Promise<{ status: string; details?: any }>;
+  setPrinterSettings: (settings: any) => Promise<{ success: boolean }>;
+  getPrinterSettings: () => Promise<any>;
 
   // Logs
   getActivityLogs: (limit?: number, offset?: number, entityType?: string, dateFrom?: string, dateTo?: string) => Promise<any[]>;
@@ -115,8 +119,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // Printer
   getPrinters: () => ipcRenderer.invoke('printer:getList'),
-  print: (content: string, printerName?: string) => ipcRenderer.invoke('printer:print', content, printerName),
-  testPrint: (printerName?: string) => ipcRenderer.invoke('printer:testPrint', printerName),
+  refreshPrinters: () => ipcRenderer.invoke('printer:refresh'),
+  testPrint: (printerName: string, content?: string) => ipcRenderer.invoke('printer:testPrint', printerName, content),
+  print: (content: string, printerName?: string, options?: any) => ipcRenderer.invoke('printer:print', content, printerName, options),
+  getPrinterStatus: (printerName: string) => ipcRenderer.invoke('printer:getStatus', printerName),
+  setPrinterSettings: (settings: any) => ipcRenderer.invoke('printer:setSettings', settings),
+  getPrinterSettings: () => ipcRenderer.invoke('printer:getSettings'),
 
   // Logs
   getActivityLogs: (limit?: number, offset?: number, entityType?: string, dateFrom?: string, dateTo?: string) => 

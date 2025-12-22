@@ -1,4 +1,6 @@
 import { ipcMain } from 'electron';
+import { exec } from 'child_process';
+import { promisify } from 'util';
 import { 
   addProduct, 
   getProducts, 
@@ -56,6 +58,20 @@ import {
 } from './DB/logs';
 
 export function setupIpcHandlers() {
+  
+  // Clear any existing printer handlers to prevent duplicates
+  const printerHandlers = [
+    'printer:getList', 'printer:refresh', 'printer:getStatus', 
+    'printer:testPrint', 'printer:print', 'printer:getSettings', 'printer:setSettings'
+  ];
+  
+  printerHandlers.forEach(handler => {
+    try {
+      ipcMain.removeHandler(handler);
+    } catch (error) {
+      // Handler doesn't exist, which is fine
+    }
+  });
   
   // ===== PRODUCT HANDLERS =====
   
@@ -418,35 +434,273 @@ export function setupIpcHandlers() {
 
   // ===== PRINTER HANDLERS =====
 
-  ipcMain.handle('printer:getList', async () => {
+  const execAsync = promisify(exec);
+
+  // Get available printers using CUPS (Linux)
+  // Helper function for printer discovery
+  const discoverPrinters = async () => {
+    const printers: any[] = [];
+    
+    // Try to get printers from CUPS first (Linux)
     try {
-      const { webContents } = await import('electron');
-      const allWebContents = webContents.getAllWebContents();
+      const { stdout: cupsOutput } = await execAsync('lpstat -p -d');
+      const lines = cupsOutput.split('\n').filter(line => line.trim());
       
-      if (allWebContents.length > 0) {
-        const printers = await allWebContents[0].getPrinters();
-        return printers.map((printer: any) => ({
-          name: printer.name,
-          isDefault: printer.isDefault || false,
-          status: printer.status || 'unknown'
-        }));
+      let defaultPrinter = '';
+      const printerLines: string[] = [];
+      
+      for (const line of lines) {
+        if (line.startsWith('system default destination:')) {
+          defaultPrinter = line.split(':')[1].trim();
+        } else if (line.startsWith('printer ')) {
+          printerLines.push(line);
+        }
       }
       
-      // Fallback if no webContents available
-      return [
-        { name: 'Default Printer', isDefault: true, status: 'available' },
-        { name: 'Thermal Printer', isDefault: false, status: 'unknown' }
-      ];
+      // Get detailed printer info
+      for (const line of printerLines) {
+        const match = line.match(/printer (\S+) (.+)/);
+        if (match) {
+          const name = match[1];
+          const description = match[2];
+          
+          try {
+            // Get printer details
+            const { stdout: detailsOutput } = await execAsync(`lpoptions -p ${name} -l`);
+            const { stdout: statusOutput } = await execAsync(`lpstat -p ${name}`);
+            
+            // Parse status
+            let status = 'unknown';
+            if (statusOutput.includes('is idle')) status = 'idle';
+            else if (statusOutput.includes('is printing')) status = 'printing';
+            else if (statusOutput.includes('disabled')) status = 'offline';
+            
+            // Get device URI and other details
+            let deviceUri = '';
+            let makeModel = '';
+            try {
+              const { stdout: uriOutput } = await execAsync(`lpoptions -p ${name} | grep device-uri`);
+              const uriMatch = uriOutput.match(/device-uri=(\S+)/);
+              if (uriMatch) deviceUri = uriMatch[1];
+            } catch (e) {
+              // Ignore URI errors
+            }
+            
+            try {
+              const { stdout: modelOutput } = await execAsync(`lpoptions -p ${name} | grep printer-make-and-model`);
+              const modelMatch = modelOutput.match(/printer-make-and-model=(.+)/);
+              if (modelMatch) makeModel = modelMatch[1];
+            } catch (e) {
+              // Ignore model errors
+            }
+            
+            printers.push({
+              name,
+              displayName: name,
+              description: description.replace(/is\s+(idle|printing|disabled).*/, '').trim(),
+              location: deviceUri.includes('usb://') ? 'USB' : deviceUri.includes('network://') ? 'Network' : 'Local',
+              status,
+              isDefault: name === defaultPrinter,
+              deviceUri,
+              makeModel,
+              paperSize: name.toLowerCase().includes('80') ? '80mm' : name.toLowerCase().includes('58') ? '58mm' : 'Unknown',
+              driverName: makeModel,
+              isNetworkPrinter: deviceUri.includes('ipp://') || deviceUri.includes('http://') || deviceUri.includes('socket://'),
+              capabilities: detailsOutput.split('\n').filter(line => line.includes('/')).map(line => line.split('/')[0])
+            });
+          } catch (detailError) {
+            // Add basic printer info even if details fail
+            printers.push({
+              name,
+              displayName: name,
+              description: description.replace(/is\s+(idle|printing|disabled).*/, '').trim(),
+              location: 'Unknown',
+              status: 'unknown',
+              isDefault: name === defaultPrinter,
+              deviceUri: '',
+              makeModel: '',
+              paperSize: 'Unknown',
+              driverName: '',
+              isNetworkPrinter: false,
+              capabilities: []
+            });
+          }
+        }
+      }
+    } catch (cupsError) {
+      console.log('CUPS not available, trying Electron printers...');
+    }
+    
+    // Fallback to Electron's printer API
+    if (printers.length === 0) {
+      try {
+        const { webContents } = await import('electron');
+        const allWebContents = webContents.getAllWebContents();
+        
+        if (allWebContents.length > 0) {
+          const electronPrinters = await allWebContents[0].getPrinters();
+          for (const printer of electronPrinters) {
+            printers.push({
+              name: printer.name,
+              displayName: printer.displayName || printer.name,
+              description: printer.description || 'System Printer',
+              location: 'System',
+              status: printer.status === 0 ? 'idle' : printer.status === 1 ? 'printing' : 'unknown',
+              isDefault: printer.isDefault || false,
+              deviceUri: '',
+              makeModel: '',
+              paperSize: 'Unknown',
+              driverName: '',
+              isNetworkPrinter: false,
+              capabilities: []
+            });
+          }
+        }
+      } catch (electronError) {
+        console.error('Error getting Electron printers:', electronError);
+      }
+    }
+    
+    // If still no printers, add a default entry
+    if (printers.length === 0) {
+      printers.push({
+        name: 'Default',
+        displayName: 'Default Printer',
+        description: 'System Default Printer',
+        location: 'System',
+        status: 'unknown',
+        isDefault: true,
+        deviceUri: '',
+        makeModel: '',
+        paperSize: 'Unknown',
+        driverName: '',
+        isNetworkPrinter: false,
+        capabilities: []
+      });
+    }
+    
+    return printers;
+  };
+
+  ipcMain.handle('printer:getList', async () => {
+    try {
+      return await discoverPrinters();
     } catch (error) {
       console.error('Error getting printers:', error);
-      return [
-        { name: 'Default Printer', isDefault: true, status: 'available' },
-        { name: 'Thermal Printer', isDefault: false, status: 'unknown' }
-      ];
+      return [{
+        name: 'Default',
+        displayName: 'Default Printer',
+        description: 'System Default Printer',
+        location: 'System',
+        status: 'unknown',
+        isDefault: true,
+        deviceUri: '',
+        makeModel: '',
+        paperSize: 'Unknown',
+        driverName: '',
+        isNetworkPrinter: false,
+        capabilities: []
+      }];
     }
   });
 
-  ipcMain.handle('printer:print', async (_, content: string, printerName?: string) => {
+  // Refresh printer list
+  ipcMain.handle('printer:refresh', async () => {
+    try {
+      return await discoverPrinters();
+    } catch (error) {
+      console.error('Error refreshing printers:', error);
+      return [{
+        name: 'Default',
+        displayName: 'Default Printer',
+        description: 'System Default Printer',
+        location: 'System',
+        status: 'unknown',
+        isDefault: true,
+        deviceUri: '',
+        makeModel: '',
+        paperSize: 'Unknown',
+        driverName: '',
+        isNetworkPrinter: false,
+        capabilities: []
+      }];
+    }
+  });
+
+  // Get printer status
+  ipcMain.handle('printer:getStatus', async (_, printerName: string) => {
+    try {
+      const { stdout } = await execAsync(`lpstat -p ${printerName}`);
+      
+      let status = 'unknown';
+      let details = stdout.trim();
+      
+      if (stdout.includes('is idle')) {
+        status = 'idle';
+      } else if (stdout.includes('is printing')) {
+        status = 'printing';
+      } else if (stdout.includes('disabled')) {
+        status = 'offline';
+      }
+      
+      return { status, details };
+    } catch (error) {
+      return { status: 'error', details: `Error checking printer status: ${error}` };
+    }
+  });
+
+  // Test print with sample bill
+  ipcMain.handle('printer:testPrint', async (_, printerName: string, customContent?: string) => {
+    try {
+      const testContent = customContent || `
+═══════════════════════════════════
+        VOGUE PRISM BILLING
+═══════════════════════════════════
+Test Print - ${new Date().toLocaleString()}
+
+Printer: ${printerName}
+Status: Connected ✓
+
+Sample Bill Receipt:
+───────────────────────────────────
+Item 1: Sample Product      ₹100.00
+Item 2: Test Item           ₹50.00
+                           ─────────
+Subtotal:                   ₹150.00
+Tax (18%):                   ₹27.00
+                           ─────────
+Total:                      ₹177.00
+
+Payment: Cash               ₹200.00
+Change:                      ₹23.00
+
+Thank you for your business!
+═══════════════════════════════════
+      `;
+
+      // Create temporary file for printing
+      const fs = await import('fs');
+      const path = await import('path');
+      const os = await import('os');
+      
+      const tempFile = path.join(os.tmpdir(), `test-print-${Date.now()}.txt`);
+      fs.writeFileSync(tempFile, testContent);
+      
+      // Print using lp command (Linux)
+      await execAsync(`lp -d ${printerName} "${tempFile}"`);
+      
+      // Clean up temp file
+      fs.unlinkSync(tempFile);
+      
+      return { success: true };
+    } catch (error) {
+      console.error('Test print error:', error);
+      return { success: false, error: `Test print failed: ${error}` };
+    }
+  });
+
+  // Print content
+  ipcMain.handle('printer:print', async (_, content: string, printerName?: string, options?: any) => {
     try {
       const { BrowserWindow } = await import('electron');
       
@@ -489,67 +743,6 @@ export function setupIpcHandlers() {
     }
   });
 
-  ipcMain.handle('printer:testPrint', async (_, printerName?: string) => {
-    try {
-      const testContent = `
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <style>
-            body { font-family: monospace; font-size: 12px; margin: 0; padding: 10px; }
-            .center { text-align: center; }
-            .bold { font-weight: bold; }
-          </style>
-        </head>
-        <body>
-          <div class="center bold">TEST PRINT</div>
-          <div class="center">Vogue Prism POS</div>
-          <div class="center">${new Date().toLocaleString()}</div>
-          <br>
-          <div>Printer: ${printerName || 'Default'}</div>
-          <div>Status: Connected</div>
-          <br>
-          <div class="center">Test completed successfully!</div>
-        </body>
-        </html>
-      `;
-      
-      // Use the same print function
-      const { BrowserWindow } = await import('electron');
-      
-      const printWindow = new BrowserWindow({
-        show: false,
-        webPreferences: {
-          nodeIntegration: false,
-          contextIsolation: true
-        }
-      });
-      
-      await printWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(testContent)}`);
-      
-      const printOptions = {
-        silent: true,
-        printBackground: true,
-        deviceName: printerName || undefined,
-        margins: {
-          marginType: 'none'
-        },
-        pageSize: 'A4'
-      };
-      
-      const success = await printWindow.webContents.print(printOptions);
-      printWindow.close();
-      
-      return { success: true };
-    } catch (error) {
-      console.error('Error in test print:', error);
-      return { 
-        success: false, 
-        error: error instanceof Error ? error.message : 'Test print failed' 
-      };
-    }
-  });
-
   // ===== LOGS HANDLERS =====
 
   ipcMain.handle('logs:getActivity', async (_, limit?: number, offset?: number, entityType?: string, dateFrom?: string, dateTo?: string) => {
@@ -577,6 +770,55 @@ export function setupIpcHandlers() {
     } catch (error) {
       console.error('Error cleaning up logs:', error);
       throw error;
+    }
+  });
+
+  // ===== PRINTER SETTINGS HANDLERS =====
+
+  ipcMain.handle('printer:getSettings', async () => {
+    try {
+      const settings = getSettings();
+      return {
+        selectedPrinter: settings.selectedPrinter || '',
+        paperWidth: settings.paperWidth || '80mm',
+        autoPrint: settings.autoPrint === 'true',
+        printDensity: settings.printDensity || 'medium',
+        cutPaper: settings.cutPaper === 'true',
+        printSpeed: settings.printSpeed || 'medium',
+        encoding: settings.encoding || 'utf8'
+      };
+    } catch (error) {
+      console.error('Error getting printer settings:', error);
+      return {
+        selectedPrinter: '',
+        paperWidth: '80mm',
+        autoPrint: false,
+        printDensity: 'medium',
+        cutPaper: true,
+        printSpeed: 'medium',
+        encoding: 'utf8'
+      };
+    }
+  });
+
+  ipcMain.handle('printer:setSettings', async (_, settings: any) => {
+    try {
+      const settingsToUpdate: Record<string, string> = {};
+      
+      if (settings.selectedPrinter !== undefined) settingsToUpdate.selectedPrinter = settings.selectedPrinter;
+      if (settings.paperWidth !== undefined) settingsToUpdate.paperWidth = settings.paperWidth;
+      if (settings.autoPrint !== undefined) settingsToUpdate.autoPrint = settings.autoPrint.toString();
+      if (settings.printDensity !== undefined) settingsToUpdate.printDensity = settings.printDensity;
+      if (settings.cutPaper !== undefined) settingsToUpdate.cutPaper = settings.cutPaper.toString();
+      if (settings.printSpeed !== undefined) settingsToUpdate.printSpeed = settings.printSpeed;
+      if (settings.encoding !== undefined) settingsToUpdate.encoding = settings.encoding;
+      
+      updateAllSettings(settingsToUpdate);
+      
+      return { success: true };
+    } catch (error) {
+      console.error('Error saving printer settings:', error);
+      return { success: false, error: `Failed to save printer settings: ${error}` };
     }
   });
 

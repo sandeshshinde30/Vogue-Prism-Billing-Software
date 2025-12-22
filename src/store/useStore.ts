@@ -77,15 +77,31 @@ export const useStore = create<AppState>((set, get) => ({
     set((state) => {
       const existing = state.cart.find((item) => item.product.id === product.id);
       if (existing) {
+        const newQuantity = existing.quantity + 1;
+        const totalPrice = newQuantity * product.price;
         return {
           cart: state.cart.map((item) =>
             item.product.id === product.id
-              ? { ...item, quantity: item.quantity + 1 }
+              ? { 
+                  ...item, 
+                  quantity: newQuantity,
+                  unitPrice: product.price,
+                  totalPrice: totalPrice,
+                  productName: product.name
+                }
               : item
           ),
         };
       }
-      return { cart: [...state.cart, { product, quantity: 1 }] };
+      return { 
+        cart: [...state.cart, { 
+          product, 
+          quantity: 1,
+          productName: product.name,
+          unitPrice: product.price,
+          totalPrice: product.price
+        }] 
+      };
     }),
   removeFromCart: (productId) =>
     set((state) => ({
@@ -94,7 +110,13 @@ export const useStore = create<AppState>((set, get) => ({
   updateCartQuantity: (productId, quantity) =>
     set((state) => ({
       cart: state.cart.map((item) =>
-        item.product.id === productId ? { ...item, quantity } : item
+        item.product.id === productId 
+          ? { 
+              ...item, 
+              quantity,
+              totalPrice: quantity * item.unitPrice
+            } 
+          : item
       ),
     })),
   clearCart: () => set({ cart: [], discountPercent: 0, discountAmount: 0, manualTotal: null, cashAmount: 0, upiAmount: 0 }),

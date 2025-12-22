@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
-import { Search, Package, AlertTriangle } from 'lucide-react';
-import { Card, Input, Select, StatCard } from '../components/common';
+import { Search, Package, AlertTriangle, Download, FileSpreadsheet } from 'lucide-react';
+import { Card, Input, Select, StatCard, Button } from '../components/common';
 import { Product } from '../types';
+import { StockExporter } from '../utils/stockExport';
 import toast from 'react-hot-toast';
 
 export function Stock() {
@@ -10,6 +11,7 @@ export function Stock() {
   const [searchQuery, setSearchQuery] = useState('');
   const [filter, setFilter] = useState('all');
   const [loading, setLoading] = useState(true);
+  const [exporting, setExporting] = useState(false);
 
   const loadProducts = async () => {
     setLoading(true);
@@ -20,6 +22,81 @@ export function Stock() {
       toast.error('Error loading products');
     }
     setLoading(false);
+  };
+
+  const handleExportAll = async () => {
+    setExporting(true);
+    try {
+      StockExporter.exportToExcel(products);
+      toast.success('Stock report exported successfully');
+    } catch (error) {
+      toast.error('Failed to export stock report');
+      console.error('Export error:', error);
+    }
+    setExporting(false);
+  };
+
+  const handleExportFiltered = async () => {
+    setExporting(true);
+    try {
+      let filename = '';
+      let productsToExport = filteredProducts;
+      
+      switch (filter) {
+        case 'low':
+          filename = `low-stock-report-${new Date().toISOString().split('T')[0]}.xlsx`;
+          break;
+        case 'out':
+          filename = `out-of-stock-report-${new Date().toISOString().split('T')[0]}.xlsx`;
+          break;
+        default:
+          filename = `filtered-stock-report-${new Date().toISOString().split('T')[0]}.xlsx`;
+      }
+      
+      if (productsToExport.length === 0) {
+        toast.error('No products to export');
+        return;
+      }
+      
+      StockExporter.exportToExcel(productsToExport, filename);
+      toast.success(`${productsToExport.length} products exported successfully`);
+    } catch (error) {
+      toast.error('Failed to export filtered report');
+      console.error('Export error:', error);
+    }
+    setExporting(false);
+  };
+
+  const handleExportLowStock = async () => {
+    setExporting(true);
+    try {
+      StockExporter.exportLowStockReport(products);
+      toast.success('Low stock report exported successfully');
+    } catch (error) {
+      if (error instanceof Error && error.message.includes('No low stock products')) {
+        toast.error('No low stock products found');
+      } else {
+        toast.error('Failed to export low stock report');
+      }
+      console.error('Export error:', error);
+    }
+    setExporting(false);
+  };
+
+  const handleExportOutOfStock = async () => {
+    setExporting(true);
+    try {
+      StockExporter.exportOutOfStockReport(products);
+      toast.success('Out of stock report exported successfully');
+    } catch (error) {
+      if (error instanceof Error && error.message.includes('No out of stock products')) {
+        toast.error('No out of stock products found');
+      } else {
+        toast.error('Failed to export out of stock report');
+      }
+      console.error('Export error:', error);
+    }
+    setExporting(false);
   };
 
   useEffect(() => {
@@ -61,11 +138,62 @@ export function Stock() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold">Stock Management</h1>
-        <p className="text-sm text-gray-500">
-          View and monitor inventory levels
-        </p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold">Stock Management</h1>
+          <p className="text-sm text-gray-500">
+            View and monitor inventory levels
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button
+            onClick={handleExportAll}
+            disabled={exporting || products.length === 0}
+            variant="secondary"
+            className="flex items-center gap-2"
+          >
+            <FileSpreadsheet size={18} />
+            Export All
+          </Button>
+          <div className="relative group">
+            <Button
+              disabled={exporting}
+              variant="secondary"
+              className="flex items-center gap-2"
+            >
+              <Download size={18} />
+              Quick Export
+            </Button>
+            <div className="absolute right-0 top-full mt-1 w-48 bg-white border border-gray-200 rounded-md shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-10">
+              <div className="py-1">
+                <button
+                  onClick={handleExportLowStock}
+                  disabled={exporting}
+                  className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2"
+                >
+                  <AlertTriangle size={14} className="text-yellow-500" />
+                  Low Stock Report
+                </button>
+                <button
+                  onClick={handleExportOutOfStock}
+                  disabled={exporting}
+                  className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2"
+                >
+                  <AlertTriangle size={14} className="text-red-500" />
+                  Out of Stock Report
+                </button>
+                <button
+                  onClick={handleExportFiltered}
+                  disabled={exporting || filteredProducts.length === 0}
+                  className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2"
+                >
+                  <FileSpreadsheet size={14} />
+                  Current View ({filteredProducts.length} items)
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* Stats */}

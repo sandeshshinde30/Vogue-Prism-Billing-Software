@@ -2,7 +2,6 @@ import React from 'react';
 import { Banknote, Smartphone, CreditCard, Edit2, Check, X } from 'lucide-react';
 import { useStore } from '../../store/useStore';
 import { DiscountInput } from './DiscountInput';
-import { generateReceiptHTML } from '../../utils/printer';
 import toast from 'react-hot-toast';
 
 export function PaymentPanel() {
@@ -110,26 +109,45 @@ export function PaymentPanel() {
       const bill = await window.electronAPI.createBill(billData);
       console.log('Bill created successfully:', bill);
 
-      // Only try to print if settings are available and autoPrint is enabled
-      if (settings && settings.autoPrint !== false) {
-        try {
-          const receiptHTML = generateReceiptHTML(
-            bill as { billNumber: string; createdAt: string },
-            cart,
+      // Auto-print receipt if enabled
+      try {
+        const printerSettings = await window.electronAPI.getPrinterSettings();
+        if (printerSettings && printerSettings.autoPrint) {
+          const { printBill } = await import('../../utils/thermalPrinter');
+          
+          // Convert bill data to thermal printer format
+          const thermalBillData = {
+            billNumber: (bill as { billNumber: string }).billNumber,
+            date: new Date((bill as { createdAt: string }).createdAt).toLocaleString(),
+            storeName: settings?.storeName || 'Vogue Prism',
+            storeAddress: `${settings?.addressLine1 || ''}\n${settings?.addressLine2 || ''}`.trim(),
+            phone: settings?.phone || '',
+            gstNumber: settings?.gstNumber || '',
+            items: cart.map(item => ({
+              name: item.productName,
+              quantity: item.quantity,
+              unitPrice: item.unitPrice,
+              totalPrice: item.totalPrice
+            })),
             subtotal,
             discountPercent,
             discountAmount,
             total,
             paymentMode,
-            settings,
-            paymentMode === 'mixed' ? cashAmount : undefined,
-            paymentMode === 'mixed' ? upiAmount : undefined
-          );
-          await window.electronAPI.print(receiptHTML, settings?.printerName);
-        } catch (printError) {
-          console.error('Print error (non-critical):', printError);
-          // Don't fail the whole operation if printing fails
+            cashAmount: paymentMode === 'mixed' ? cashAmount : (paymentMode === 'cash' ? total : undefined),
+            upiAmount: paymentMode === 'mixed' ? upiAmount : (paymentMode === 'upi' ? total : undefined),
+            changeAmount: paymentMode === 'cash' && cashAmount > total ? cashAmount - total : undefined
+          };
+          
+          const printResult = await printBill(thermalBillData);
+          if (!printResult.success) {
+            console.error('Auto-print failed:', printResult.error);
+            toast.error('Bill saved but printing failed');
+          }
         }
+      } catch (printError) {
+        console.error('Print error (non-critical):', printError);
+        // Don't fail the whole operation if printing fails
       }
 
       toast.success(`Bill ${(bill as { billNumber: string }).billNumber} saved!`);

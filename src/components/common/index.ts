@@ -5,3 +5,4 @@ export { Card } from './Card';
 export { StatCard } from './StatCard';
 export { Modal } from './Modal';
 export { PasswordModal } from './PasswordModal';
+export { CategorySizeSelect } from './CategorySizeSelect';

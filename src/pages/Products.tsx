@@ -7,8 +7,8 @@ import {
   AlertTriangle,
   CheckCircle,
 } from 'lucide-react';
-import { Card, Button, Input, Select, Modal } from '../components/common';
-import { Product, CATEGORIES, SIZES } from '../types';
+import { Card, Button, Input, Select, Modal, CategorySizeSelect } from '../components/common';
+import { Product, CATEGORIES } from '../types';
 import toast from 'react-hot-toast';
 
 export function Products() {
@@ -657,14 +657,10 @@ function ProductModal({ isOpen, onClose, product, onSave }: ProductModalProps) {
             }
             options={CATEGORIES.map((c) => ({ value: c, label: c }))}
           />
-          <Select
-            label="Size"
+          <CategorySizeSelect
+            category={formData.category}
             value={formData.size}
             onChange={(e) => setFormData({ ...formData, size: e.target.value as any })}
-            options={[
-              { value: '', label: 'No Size' },
-              ...SIZES.map((s) => ({ value: s, label: s })),
-            ]}
           />
         </div>
 
