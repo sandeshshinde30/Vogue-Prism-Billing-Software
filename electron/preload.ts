@@ -51,6 +51,7 @@ export interface ElectronAPI {
   getPrinters: () => Promise<PrinterInfo[]>;
   refreshPrinters: () => Promise<PrinterInfo[]>;
   testPrint: (printerName: string, content?: string) => Promise<{ success: boolean; error?: string }>;
+  debugTest: (printerName: string) => Promise<{ success: boolean; message?: string; error?: string }>;
   print: (content: string, printerName?: string, options?: any) => Promise<{ success: boolean; error?: string }>;
   getPrinterStatus: (printerName: string) => Promise<{ status: string; details?: any }>;
   setPrinterSettings: (settings: any) => Promise<{ success: boolean }>;

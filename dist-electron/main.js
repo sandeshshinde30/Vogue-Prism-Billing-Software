@@ -1905,94 +1905,204 @@ Payment:                                CASH
 
 `;
       content = content.replace(/₹/g, "Rs.");
-      const cutCommand = Buffer.from([29, 86, 0]);
+      const escInit = Buffer.from([27, 64]);
+      const escWakeUp = Buffer.from([27, 61, 1]);
+      const escAlign = Buffer.from([27, 97, 0]);
+      const escFont = Buffer.from([27, 33, 0]);
+      const escLineSpacing = Buffer.from([27, 51, 32]);
+      const escCharSet = Buffer.from([27, 82, 0]);
+      const feedLines = Buffer.from([10, 10, 10, 10]);
+      const partialCut = Buffer.from([29, 86, 1]);
+      const fullCut = Buffer.from([29, 86, 0]);
       const fs2 = await import("fs");
       const path2 = await import("path");
       const os = await import("os");
       const tempFile = path2.join(os.tmpdir(), `print-${Date.now()}.txt`);
       const contentBuffer = Buffer.from(content, "ascii");
-      const finalBuffer = Buffer.concat([contentBuffer, cutCommand]);
+      const finalBuffer = Buffer.concat([
+        escInit,
+        // Initialize printer
+        escWakeUp,
+        // Wake up printer
+        escAlign,
+        // Set alignment
+        escFont,
+        // Set font
+        escLineSpacing,
+        // Set line spacing
+        escCharSet,
+        // Set character set
+        contentBuffer,
+        // Receipt content
+        feedLines,
+        // Feed paper
+        partialCut
+        // Cut paper (partial cut is more reliable)
+      ]);
       fs2.writeFileSync(tempFile, finalBuffer);
       if (isWindows) {
-        const escapedPrinter = printerName.replace(/'/g, "''");
-        const escapedFile = tempFile.replace(/\\/g, "\\\\");
+        const escapedPrinter = printerName.replace(/'/g, "''").replace(/"/g, '""');
         try {
-          await execAsync(`print /D:"${printerName}" "${tempFile}"`);
-        } catch (printError) {
-          console.log("Print command failed, trying copy method...");
+          let portName = "UNKNOWN";
           try {
-            const { stdout: portInfo } = await execAsync(`powershell -Command "(Get-Printer -Name '${escapedPrinter}').PortName"`);
-            const portName = portInfo.trim();
-            if (portName && (portName.startsWith("USB") || portName.startsWith("COM"))) {
-              await execAsync(`copy /b "${tempFile}" "${portName}"`);
-            } else {
-              await execAsync(`powershell -Command "Get-Content -Path '${escapedFile}' -Raw | Out-Printer -Name '${escapedPrinter}'"`);
-            }
-          } catch (copyError) {
-            console.log("Copy method failed, trying raw print...");
-            const psScript = `
-              $printerName = '${escapedPrinter}'
-              $content = [System.IO.File]::ReadAllBytes('${escapedFile}')
-              $printer = New-Object System.Drawing.Printing.PrintDocument
-              $printer.PrinterSettings.PrinterName = $printerName
-              
-              # For raw printing, we'll use RawPrinterHelper
-              Add-Type -TypeDefinition @"
-              using System;
-              using System.Runtime.InteropServices;
-              public class RawPrinterHelper {
-                [DllImport("winspool.drv", CharSet = CharSet.Unicode, SetLastError = true)]
-                public static extern bool OpenPrinter(string pPrinterName, out IntPtr phPrinter, IntPtr pDefault);
-                [DllImport("winspool.drv", SetLastError = true)]
-                public static extern bool ClosePrinter(IntPtr hPrinter);
-                [DllImport("winspool.drv", SetLastError = true)]
-                public static extern bool StartDocPrinter(IntPtr hPrinter, int Level, ref DOCINFO pDocInfo);
-                [DllImport("winspool.drv", SetLastError = true)]
-                public static extern bool EndDocPrinter(IntPtr hPrinter);
-                [DllImport("winspool.drv", SetLastError = true)]
-                public static extern bool StartPagePrinter(IntPtr hPrinter);
-                [DllImport("winspool.drv", SetLastError = true)]
-                public static extern bool EndPagePrinter(IntPtr hPrinter);
-                [DllImport("winspool.drv", SetLastError = true)]
-                public static extern bool WritePrinter(IntPtr hPrinter, IntPtr pBytes, int dwCount, out int dwWritten);
-                
-                [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
-                public struct DOCINFO {
-                  public int cbSize;
-                  public string pDocName;
-                  public string pOutputFile;
-                  public string pDatatype;
-                }
-                
-                public static bool SendBytesToPrinter(string printerName, byte[] bytes) {
-                  IntPtr hPrinter;
-                  if (!OpenPrinter(printerName, out hPrinter, IntPtr.Zero)) return false;
-                  
-                  DOCINFO di = new DOCINFO();
-                  di.cbSize = Marshal.SizeOf(di);
-                  di.pDocName = "Raw Document";
-                  di.pDatatype = "RAW";
-                  
-                  if (!StartDocPrinter(hPrinter, 1, ref di)) { ClosePrinter(hPrinter); return false; }
-                  if (!StartPagePrinter(hPrinter)) { EndDocPrinter(hPrinter); ClosePrinter(hPrinter); return false; }
-                  
-                  IntPtr pBytes = Marshal.AllocCoTaskMem(bytes.Length);
-                  Marshal.Copy(bytes, 0, pBytes, bytes.Length);
-                  int written;
-                  bool success = WritePrinter(hPrinter, pBytes, bytes.Length, out written);
-                  Marshal.FreeCoTaskMem(pBytes);
-                  
-                  EndPagePrinter(hPrinter);
-                  EndDocPrinter(hPrinter);
-                  ClosePrinter(hPrinter);
-                  return success;
-                }
-              }
-"@
-              [RawPrinterHelper]::SendBytesToPrinter($printerName, $content)
-            `;
-            await execAsync(`powershell -Command "${psScript.replace(/"/g, '\\"').replace(/\n/g, " ")}"`);
+            const { stdout: portInfo } = await execAsync(`powershell -Command "try { (Get-Printer -Name '${escapedPrinter}').PortName } catch { 'UNKNOWN' }"`);
+            portName = portInfo.trim();
+          } catch (e) {
+            console.log("Could not get port name");
           }
+          console.log(`Windows printer: ${printerName}, Port: ${portName}`);
+          let printSuccess = false;
+          let lastError = "";
+          console.log("Trying Method 1: .NET RawPrinterHelper...");
+          try {
+            const psScript1 = `
+$ErrorActionPreference = 'Stop'
+$printerName = '${escapedPrinter}'
+$filePath = '${tempFile.replace(/\\/g, "\\\\")}'
+
+Add-Type -TypeDefinition @'
+using System;
+using System.IO;
+using System.Runtime.InteropServices;
+
+public class RawPrint {
+    [StructLayout(LayoutKind.Sequential)]
+    public struct DOCINFOA {
+        [MarshalAs(UnmanagedType.LPStr)] public string pDocName;
+        [MarshalAs(UnmanagedType.LPStr)] public string pOutputFile;
+        [MarshalAs(UnmanagedType.LPStr)] public string pDataType;
+    }
+
+    [DllImport("winspool.drv", EntryPoint = "OpenPrinterA", SetLastError = true, CharSet = CharSet.Ansi)]
+    public static extern bool OpenPrinter(string szPrinter, out IntPtr hPrinter, IntPtr pd);
+
+    [DllImport("winspool.drv", SetLastError = true)]
+    public static extern bool ClosePrinter(IntPtr hPrinter);
+
+    [DllImport("winspool.drv", EntryPoint = "StartDocPrinterA", SetLastError = true, CharSet = CharSet.Ansi)]
+    public static extern bool StartDocPrinter(IntPtr hPrinter, int level, ref DOCINFOA di);
+
+    [DllImport("winspool.drv", SetLastError = true)]
+    public static extern bool EndDocPrinter(IntPtr hPrinter);
+
+    [DllImport("winspool.drv", SetLastError = true)]
+    public static extern bool StartPagePrinter(IntPtr hPrinter);
+
+    [DllImport("winspool.drv", SetLastError = true)]
+    public static extern bool EndPagePrinter(IntPtr hPrinter);
+
+    [DllImport("winspool.drv", SetLastError = true)]
+    public static extern bool WritePrinter(IntPtr hPrinter, byte[] pBytes, int dwCount, out int dwWritten);
+
+    public static int Print(string printerName, byte[] data) {
+        IntPtr hPrinter = IntPtr.Zero;
+        DOCINFOA di = new DOCINFOA();
+        di.pDocName = "Receipt";
+        di.pDataType = "RAW";
+
+        if (!OpenPrinter(printerName, out hPrinter, IntPtr.Zero)) {
+            return Marshal.GetLastWin32Error();
+        }
+
+        if (!StartDocPrinter(hPrinter, 1, ref di)) {
+            int err = Marshal.GetLastWin32Error();
+            ClosePrinter(hPrinter);
+            return err;
+        }
+
+        if (!StartPagePrinter(hPrinter)) {
+            int err = Marshal.GetLastWin32Error();
+            EndDocPrinter(hPrinter);
+            ClosePrinter(hPrinter);
+            return err;
+        }
+
+        int written = 0;
+        if (!WritePrinter(hPrinter, data, data.Length, out written)) {
+            int err = Marshal.GetLastWin32Error();
+            EndPagePrinter(hPrinter);
+            EndDocPrinter(hPrinter);
+            ClosePrinter(hPrinter);
+            return err;
+        }
+
+        EndPagePrinter(hPrinter);
+        EndDocPrinter(hPrinter);
+        ClosePrinter(hPrinter);
+        return 0;
+    }
+}
+'@
+
+$bytes = [System.IO.File]::ReadAllBytes($filePath)
+$result = [RawPrint]::Print($printerName, $bytes)
+if ($result -eq 0) {
+    Write-Output "SUCCESS"
+} else {
+    Write-Output "ERROR:$result"
+}
+`;
+            const psFile1 = path2.join(os.tmpdir(), `print1-${Date.now()}.ps1`);
+            fs2.writeFileSync(psFile1, psScript1, "utf8");
+            const { stdout: result1 } = await execAsync(`powershell -ExecutionPolicy Bypass -File "${psFile1}"`, { timeout: 3e4 });
+            setTimeout(() => {
+              try {
+                fs2.unlinkSync(psFile1);
+              } catch (e) {
+              }
+            }, 1e3);
+            if (result1.trim().includes("SUCCESS")) {
+              printSuccess = true;
+              console.log("✓ Method 1 succeeded");
+            } else {
+              lastError = result1.trim();
+              console.log(`Method 1 failed: ${lastError}`);
+            }
+          } catch (e) {
+            lastError = e.message;
+            console.log(`Method 1 exception: ${e.message}`);
+          }
+          if (!printSuccess) {
+            console.log("Trying Method 2: Windows print command...");
+            try {
+              await execAsync(`print /D:"${printerName}" "${tempFile}"`, { timeout: 15e3 });
+              printSuccess = true;
+              console.log("✓ Method 2 succeeded");
+            } catch (e) {
+              lastError = e.message;
+              console.log(`Method 2 failed: ${e.message}`);
+            }
+          }
+          if (!printSuccess) {
+            console.log("Trying Method 3: Out-Printer...");
+            try {
+              const textContent = content.replace(/'/g, "''");
+              await execAsync(`powershell -Command "'${textContent}' | Out-Printer -Name '${escapedPrinter}'"`, { timeout: 15e3 });
+              printSuccess = true;
+              console.log("✓ Method 3 succeeded");
+            } catch (e) {
+              lastError = e.message;
+              console.log(`Method 3 failed: ${e.message}`);
+            }
+          }
+          if (!printSuccess) {
+            console.log("Trying Method 4: Copy to printer...");
+            try {
+              await execAsync(`copy /b "${tempFile}" "\\\\%COMPUTERNAME%\\${printerName}"`, { timeout: 15e3 });
+              printSuccess = true;
+              console.log("✓ Method 4 succeeded");
+            } catch (e) {
+              lastError = e.message;
+              console.log(`Method 4 failed: ${e.message}`);
+            }
+          }
+          if (!printSuccess) {
+            throw new Error(`All print methods failed. Last error: ${lastError}`);
+          }
+          console.log("✓ Successfully printed to Windows printer");
+        } catch (error) {
+          console.error("❌ Windows printing error:", error);
+          throw error;
         }
       } else {
         await execAsync(`lp -d "${printerName}" -o raw "${tempFile}"`);
@@ -2007,6 +2117,173 @@ Payment:                                CASH
     } catch (error) {
       console.error("Print error:", error);
       return { success: false, error: `Print failed: ${error}` };
+    }
+  });
+  ipcMain.handle("printer:debugTest", async (_, printerName) => {
+    try {
+      const isWindows = process.platform === "win32";
+      if (!isWindows) {
+        return { success: false, error: "Debug test is Windows-only" };
+      }
+      const simpleText = `
+SIMPLE PRINTER TEST
+==================
+Time: ${(/* @__PURE__ */ new Date()).toLocaleString()}
+Printer: ${printerName}
+==================
+If you see this, basic printing works!
+
+
+`;
+      const fs2 = await import("fs");
+      const path2 = await import("path");
+      const os = await import("os");
+      const tempFile = path2.join(os.tmpdir(), `debug-${Date.now()}.txt`);
+      fs2.writeFileSync(tempFile, simpleText, "ascii");
+      const escapedPrinter = printerName.replace(/'/g, "''").replace(/"/g, '""');
+      try {
+        console.log(`🔍 DEBUG TEST - Printer: ${printerName}`);
+        let printSuccess = false;
+        let lastError = "";
+        console.log("🔍 Trying Method 1: .NET RawPrint...");
+        try {
+          const psScript = `
+$ErrorActionPreference = 'Stop'
+$printerName = '${escapedPrinter}'
+$filePath = '${tempFile.replace(/\\/g, "\\\\")}'
+
+Add-Type -TypeDefinition @'
+using System;
+using System.IO;
+using System.Runtime.InteropServices;
+
+public class RawPrint {
+    [StructLayout(LayoutKind.Sequential)]
+    public struct DOCINFOA {
+        [MarshalAs(UnmanagedType.LPStr)] public string pDocName;
+        [MarshalAs(UnmanagedType.LPStr)] public string pOutputFile;
+        [MarshalAs(UnmanagedType.LPStr)] public string pDataType;
+    }
+
+    [DllImport("winspool.drv", EntryPoint = "OpenPrinterA", SetLastError = true, CharSet = CharSet.Ansi)]
+    public static extern bool OpenPrinter(string szPrinter, out IntPtr hPrinter, IntPtr pd);
+
+    [DllImport("winspool.drv", SetLastError = true)]
+    public static extern bool ClosePrinter(IntPtr hPrinter);
+
+    [DllImport("winspool.drv", EntryPoint = "StartDocPrinterA", SetLastError = true, CharSet = CharSet.Ansi)]
+    public static extern bool StartDocPrinter(IntPtr hPrinter, int level, ref DOCINFOA di);
+
+    [DllImport("winspool.drv", SetLastError = true)]
+    public static extern bool EndDocPrinter(IntPtr hPrinter);
+
+    [DllImport("winspool.drv", SetLastError = true)]
+    public static extern bool StartPagePrinter(IntPtr hPrinter);
+
+    [DllImport("winspool.drv", SetLastError = true)]
+    public static extern bool EndPagePrinter(IntPtr hPrinter);
+
+    [DllImport("winspool.drv", SetLastError = true)]
+    public static extern bool WritePrinter(IntPtr hPrinter, byte[] pBytes, int dwCount, out int dwWritten);
+
+    public static int Print(string printerName, byte[] data) {
+        IntPtr hPrinter = IntPtr.Zero;
+        DOCINFOA di = new DOCINFOA();
+        di.pDocName = "Debug Test";
+        di.pDataType = "RAW";
+
+        if (!OpenPrinter(printerName, out hPrinter, IntPtr.Zero)) {
+            return Marshal.GetLastWin32Error();
+        }
+
+        if (!StartDocPrinter(hPrinter, 1, ref di)) {
+            int err = Marshal.GetLastWin32Error();
+            ClosePrinter(hPrinter);
+            return err;
+        }
+
+        if (!StartPagePrinter(hPrinter)) {
+            int err = Marshal.GetLastWin32Error();
+            EndDocPrinter(hPrinter);
+            ClosePrinter(hPrinter);
+            return err;
+        }
+
+        int written = 0;
+        if (!WritePrinter(hPrinter, data, data.Length, out written)) {
+            int err = Marshal.GetLastWin32Error();
+            EndPagePrinter(hPrinter);
+            EndDocPrinter(hPrinter);
+            ClosePrinter(hPrinter);
+            return err;
+        }
+
+        EndPagePrinter(hPrinter);
+        EndDocPrinter(hPrinter);
+        ClosePrinter(hPrinter);
+        return 0;
+    }
+}
+'@
+
+$bytes = [System.IO.File]::ReadAllBytes($filePath)
+$result = [RawPrint]::Print($printerName, $bytes)
+if ($result -eq 0) {
+    Write-Output "SUCCESS"
+} else {
+    Write-Output "ERROR:$result"
+}
+`;
+          const psFile = path2.join(os.tmpdir(), `debugprint-${Date.now()}.ps1`);
+          fs2.writeFileSync(psFile, psScript, "utf8");
+          const { stdout: result } = await execAsync(`powershell -ExecutionPolicy Bypass -File "${psFile}"`, { timeout: 3e4 });
+          setTimeout(() => {
+            try {
+              fs2.unlinkSync(psFile);
+            } catch (e) {
+            }
+          }, 1e3);
+          if (result.trim().includes("SUCCESS")) {
+            printSuccess = true;
+            console.log("🔍 Method 1 succeeded");
+          } else {
+            lastError = result.trim();
+            console.log(`🔍 Method 1 failed: ${lastError}`);
+          }
+        } catch (e) {
+          lastError = e.message;
+          console.log(`🔍 Method 1 exception: ${e.message}`);
+        }
+        if (!printSuccess) {
+          console.log("🔍 Trying Method 2: Out-Printer...");
+          try {
+            const textContent = simpleText.replace(/'/g, "''");
+            await execAsync(`powershell -Command "'${textContent}' | Out-Printer -Name '${escapedPrinter}'"`, { timeout: 15e3 });
+            printSuccess = true;
+            console.log("🔍 Method 2 succeeded");
+          } catch (e) {
+            lastError = e.message;
+            console.log(`🔍 Method 2 failed: ${e.message}`);
+          }
+        }
+        setTimeout(() => {
+          try {
+            fs2.unlinkSync(tempFile);
+          } catch (e) {
+          }
+        }, 2e3);
+        if (printSuccess) {
+          return { success: true, message: "Debug test sent successfully" };
+        } else {
+          return { success: false, error: `Debug test failed: ${lastError}` };
+        }
+      } catch (error) {
+        console.error("🔍 DEBUG TEST FAILED:", error);
+        return { success: false, error: `Debug test failed: ${error}` };
+      }
+    } catch (error) {
+      console.error("Debug test error:", error);
+      return { success: false, error: `Debug test error: ${error}` };
     }
   });
   ipcMain.handle("printer:print", async (_, content, printerName, options) => {

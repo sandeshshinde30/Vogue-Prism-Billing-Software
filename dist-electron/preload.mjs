@@ -46,6 +46,7 @@ electron.contextBridge.exposeInMainWorld("electronAPI", {
   getPrinters: () => electron.ipcRenderer.invoke("printer:getList"),
   refreshPrinters: () => electron.ipcRenderer.invoke("printer:refresh"),
   testPrint: (printerName, content) => electron.ipcRenderer.invoke("printer:testPrint", printerName, content),
+  debugTest: (printerName) => electron.ipcRenderer.invoke("printer:debugTest", printerName),
   print: (content, printerName, options) => electron.ipcRenderer.invoke("printer:print", content, printerName, options),
   getPrinterStatus: (printerName) => electron.ipcRenderer.invoke("printer:getStatus", printerName),
   setPrinterSettings: (settings) => electron.ipcRenderer.invoke("printer:setSettings", settings),
