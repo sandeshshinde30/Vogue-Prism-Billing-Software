@@ -1576,105 +1576,174 @@ function setupIpcHandlers() {
   });
   const execAsync = promisify(exec);
   const discoverPrinters = async () => {
+    var _a, _b, _c, _d, _e, _f;
     const printers = [];
-    try {
-      const { stdout: cupsOutput } = await execAsync("lpstat -p -d");
-      const lines = cupsOutput.split("\n").filter((line) => line.trim());
-      let defaultPrinter = "";
-      const printerLines = [];
-      for (const line of lines) {
-        if (line.startsWith("system default destination:")) {
-          defaultPrinter = line.split(":")[1].trim();
-        } else if (line.startsWith("printer ")) {
-          printerLines.push(line);
-        }
-      }
-      for (const line of printerLines) {
-        const match = line.match(/printer (\S+) (.+)/);
-        if (match) {
-          const name = match[1];
-          const description = match[2];
-          try {
-            const { stdout: detailsOutput } = await execAsync(`lpoptions -p ${name} -l`);
-            const { stdout: statusOutput } = await execAsync(`lpstat -p ${name}`);
-            let status = "unknown";
-            if (statusOutput.includes("is idle")) status = "idle";
-            else if (statusOutput.includes("is printing")) status = "printing";
-            else if (statusOutput.includes("disabled")) status = "offline";
-            let deviceUri = "";
-            let makeModel = "";
-            try {
-              const { stdout: uriOutput } = await execAsync(`lpoptions -p ${name} | grep device-uri`);
-              const uriMatch = uriOutput.match(/device-uri=(\S+)/);
-              if (uriMatch) deviceUri = uriMatch[1];
-            } catch (e) {
-            }
-            try {
-              const { stdout: modelOutput } = await execAsync(`lpoptions -p ${name} | grep printer-make-and-model`);
-              const modelMatch = modelOutput.match(/printer-make-and-model=(.+)/);
-              if (modelMatch) makeModel = modelMatch[1];
-            } catch (e) {
-            }
-            printers.push({
-              name,
-              displayName: name,
-              description: description.replace(/is\s+(idle|printing|disabled).*/, "").trim(),
-              location: deviceUri.includes("usb://") ? "USB" : deviceUri.includes("network://") ? "Network" : "Local",
-              status,
-              isDefault: name === defaultPrinter,
-              deviceUri,
-              makeModel,
-              paperSize: name.toLowerCase().includes("80") ? "80mm" : name.toLowerCase().includes("58") ? "58mm" : "Unknown",
-              driverName: makeModel,
-              isNetworkPrinter: deviceUri.includes("ipp://") || deviceUri.includes("http://") || deviceUri.includes("socket://"),
-              capabilities: detailsOutput.split("\n").filter((line2) => line2.includes("/")).map((line2) => line2.split("/")[0])
-            });
-          } catch (detailError) {
-            printers.push({
-              name,
-              displayName: name,
-              description: description.replace(/is\s+(idle|printing|disabled).*/, "").trim(),
-              location: "Unknown",
-              status: "unknown",
-              isDefault: name === defaultPrinter,
-              deviceUri: "",
-              makeModel: "",
-              paperSize: "Unknown",
-              driverName: "",
-              isNetworkPrinter: false,
-              capabilities: []
-            });
-          }
-        }
-      }
-    } catch (cupsError) {
-      console.log("CUPS not available, trying Electron printers...");
-    }
-    if (printers.length === 0) {
+    const isWindows = process.platform === "win32";
+    if (isWindows) {
       try {
-        const { webContents } = await import("electron");
-        const allWebContents = webContents.getAllWebContents();
-        if (allWebContents.length > 0) {
-          const electronPrinters = await allWebContents[0].getPrinters();
-          for (const printer of electronPrinters) {
-            printers.push({
-              name: printer.name,
-              displayName: printer.displayName || printer.name,
-              description: printer.description || "System Printer",
-              location: "System",
-              status: printer.status === 0 ? "idle" : printer.status === 1 ? "printing" : "unknown",
-              isDefault: printer.isDefault || false,
-              deviceUri: "",
-              makeModel: "",
-              paperSize: "Unknown",
-              driverName: "",
-              isNetworkPrinter: false,
-              capabilities: []
-            });
+        const { stdout } = await execAsync('powershell -Command "Get-Printer | Select-Object Name, DriverName, PortName, PrinterStatus, Default | ConvertTo-Json"');
+        const windowsPrinters = JSON.parse(stdout);
+        const printerList = Array.isArray(windowsPrinters) ? windowsPrinters : [windowsPrinters];
+        for (const printer of printerList) {
+          if (!printer || !printer.Name) continue;
+          let status = "unknown";
+          switch (printer.PrinterStatus) {
+            case 0:
+              status = "idle";
+              break;
+            case 1:
+              status = "paused";
+              break;
+            case 2:
+              status = "error";
+              break;
+            case 3:
+              status = "pending_deletion";
+              break;
+            case 4:
+              status = "paper_jam";
+              break;
+            case 5:
+              status = "paper_out";
+              break;
+            case 6:
+              status = "manual_feed";
+              break;
+            case 7:
+              status = "paper_problem";
+              break;
+            case 8:
+              status = "offline";
+              break;
+            default:
+              status = "idle";
+          }
+          const name = printer.Name;
+          const isNetworkPrinter = ((_a = printer.PortName) == null ? void 0 : _a.includes("\\\\")) || ((_b = printer.PortName) == null ? void 0 : _b.includes("IP_"));
+          printers.push({
+            name,
+            displayName: name,
+            description: printer.DriverName || "Windows Printer",
+            location: isNetworkPrinter ? "Network" : "Local",
+            status,
+            isDefault: printer.Default === true,
+            deviceUri: printer.PortName || "",
+            makeModel: printer.DriverName || "",
+            paperSize: name.toLowerCase().includes("80") || name.toLowerCase().includes("pos") ? "80mm" : name.toLowerCase().includes("58") ? "58mm" : "Unknown",
+            driverName: printer.DriverName || "",
+            isNetworkPrinter,
+            capabilities: []
+          });
+        }
+        console.log(`Found ${printers.length} Windows printers`);
+      } catch (winError) {
+        console.error("Error getting Windows printers via PowerShell:", winError);
+        try {
+          const { stdout: wmicOutput } = await execAsync("wmic printer get Name,DriverName,PortName,Default /format:csv");
+          const lines = wmicOutput.split("\n").filter((line) => line.trim() && !line.startsWith("Node"));
+          for (const line of lines) {
+            const parts = line.split(",");
+            if (parts.length >= 4) {
+              const isDefault = ((_c = parts[1]) == null ? void 0 : _c.trim().toLowerCase()) === "true";
+              const driverName = ((_d = parts[2]) == null ? void 0 : _d.trim()) || "";
+              const name = ((_e = parts[3]) == null ? void 0 : _e.trim()) || "";
+              const portName = ((_f = parts[4]) == null ? void 0 : _f.trim()) || "";
+              if (name) {
+                printers.push({
+                  name,
+                  displayName: name,
+                  description: driverName || "Windows Printer",
+                  location: (portName == null ? void 0 : portName.includes("\\\\")) ? "Network" : "Local",
+                  status: "idle",
+                  isDefault,
+                  deviceUri: portName,
+                  makeModel: driverName,
+                  paperSize: name.toLowerCase().includes("80") || name.toLowerCase().includes("pos") ? "80mm" : "Unknown",
+                  driverName,
+                  isNetworkPrinter: (portName == null ? void 0 : portName.includes("\\\\")) || false,
+                  capabilities: []
+                });
+              }
+            }
+          }
+          console.log(`Found ${printers.length} Windows printers via WMIC`);
+        } catch (wmicError) {
+          console.error("Error getting Windows printers via WMIC:", wmicError);
+        }
+      }
+    } else {
+      try {
+        const { stdout: cupsOutput } = await execAsync("lpstat -p -d");
+        const lines = cupsOutput.split("\n").filter((line) => line.trim());
+        let defaultPrinter = "";
+        const printerLines = [];
+        for (const line of lines) {
+          if (line.startsWith("system default destination:")) {
+            defaultPrinter = line.split(":")[1].trim();
+          } else if (line.startsWith("printer ")) {
+            printerLines.push(line);
           }
         }
-      } catch (electronError) {
-        console.error("Error getting Electron printers:", electronError);
+        for (const line of printerLines) {
+          const match = line.match(/printer (\S+) (.+)/);
+          if (match) {
+            const name = match[1];
+            const description = match[2];
+            try {
+              const { stdout: detailsOutput } = await execAsync(`lpoptions -p ${name} -l`);
+              const { stdout: statusOutput } = await execAsync(`lpstat -p ${name}`);
+              let status = "unknown";
+              if (statusOutput.includes("is idle")) status = "idle";
+              else if (statusOutput.includes("is printing")) status = "printing";
+              else if (statusOutput.includes("disabled")) status = "offline";
+              let deviceUri = "";
+              let makeModel = "";
+              try {
+                const { stdout: uriOutput } = await execAsync(`lpoptions -p ${name} | grep device-uri`);
+                const uriMatch = uriOutput.match(/device-uri=(\S+)/);
+                if (uriMatch) deviceUri = uriMatch[1];
+              } catch (e) {
+              }
+              try {
+                const { stdout: modelOutput } = await execAsync(`lpoptions -p ${name} | grep printer-make-and-model`);
+                const modelMatch = modelOutput.match(/printer-make-and-model=(.+)/);
+                if (modelMatch) makeModel = modelMatch[1];
+              } catch (e) {
+              }
+              printers.push({
+                name,
+                displayName: name,
+                description: description.replace(/is\s+(idle|printing|disabled).*/, "").trim(),
+                location: deviceUri.includes("usb://") ? "USB" : deviceUri.includes("network://") ? "Network" : "Local",
+                status,
+                isDefault: name === defaultPrinter,
+                deviceUri,
+                makeModel,
+                paperSize: name.toLowerCase().includes("80") ? "80mm" : name.toLowerCase().includes("58") ? "58mm" : "Unknown",
+                driverName: makeModel,
+                isNetworkPrinter: deviceUri.includes("ipp://") || deviceUri.includes("http://") || deviceUri.includes("socket://"),
+                capabilities: detailsOutput.split("\n").filter((line2) => line2.includes("/")).map((line2) => line2.split("/")[0])
+              });
+            } catch (detailError) {
+              printers.push({
+                name,
+                displayName: name,
+                description: description.replace(/is\s+(idle|printing|disabled).*/, "").trim(),
+                location: "Unknown",
+                status: "unknown",
+                isDefault: name === defaultPrinter,
+                deviceUri: "",
+                makeModel: "",
+                paperSize: "Unknown",
+                driverName: "",
+                isNetworkPrinter: false,
+                capabilities: []
+              });
+            }
+          }
+        }
+      } catch (cupsError) {
+        console.log("CUPS not available");
       }
     }
     if (printers.length === 0) {
@@ -1739,23 +1808,75 @@ function setupIpcHandlers() {
   });
   ipcMain.handle("printer:getStatus", async (_, printerName) => {
     try {
-      const { stdout } = await execAsync(`lpstat -p ${printerName}`);
-      let status = "unknown";
-      let details = stdout.trim();
-      if (stdout.includes("is idle")) {
-        status = "idle";
-      } else if (stdout.includes("is printing")) {
-        status = "printing";
-      } else if (stdout.includes("disabled")) {
-        status = "offline";
+      const isWindows = process.platform === "win32";
+      if (isWindows) {
+        const escapedPrinter = printerName.replace(/'/g, "''");
+        const { stdout } = await execAsync(`powershell -Command "(Get-Printer -Name '${escapedPrinter}').PrinterStatus"`);
+        const statusCode = parseInt(stdout.trim(), 10);
+        let status = "unknown";
+        let details = `Printer: ${printerName}`;
+        switch (statusCode) {
+          case 0:
+            status = "idle";
+            details = "Printer is ready";
+            break;
+          case 1:
+            status = "paused";
+            details = "Printer is paused";
+            break;
+          case 2:
+            status = "error";
+            details = "Printer has an error";
+            break;
+          case 3:
+            status = "pending_deletion";
+            details = "Printer pending deletion";
+            break;
+          case 4:
+            status = "paper_jam";
+            details = "Paper jam";
+            break;
+          case 5:
+            status = "paper_out";
+            details = "Out of paper";
+            break;
+          case 6:
+            status = "manual_feed";
+            details = "Manual feed required";
+            break;
+          case 7:
+            status = "paper_problem";
+            details = "Paper problem";
+            break;
+          case 8:
+            status = "offline";
+            details = "Printer is offline";
+            break;
+          default:
+            status = "idle";
+            details = "Printer is ready";
+        }
+        return { status, details };
+      } else {
+        const { stdout } = await execAsync(`lpstat -p ${printerName}`);
+        let status = "unknown";
+        let details = stdout.trim();
+        if (stdout.includes("is idle")) {
+          status = "idle";
+        } else if (stdout.includes("is printing")) {
+          status = "printing";
+        } else if (stdout.includes("disabled")) {
+          status = "offline";
+        }
+        return { status, details };
       }
-      return { status, details };
     } catch (error) {
       return { status: "error", details: `Error checking printer status: ${error}` };
     }
   });
   ipcMain.handle("printer:testPrint", async (_, printerName, customContent) => {
     try {
+      const isWindows = process.platform === "win32";
       let content = customContent || `================================================
                   VOGUE PRISM
 ================================================
@@ -1788,11 +1909,94 @@ Payment:                                CASH
       const fs2 = await import("fs");
       const path2 = await import("path");
       const os = await import("os");
-      const tempFile = path2.join(os.tmpdir(), `print-${Date.now()}.bin`);
+      const tempFile = path2.join(os.tmpdir(), `print-${Date.now()}.txt`);
       const contentBuffer = Buffer.from(content, "ascii");
       const finalBuffer = Buffer.concat([contentBuffer, cutCommand]);
       fs2.writeFileSync(tempFile, finalBuffer);
-      await execAsync(`lp -d "${printerName}" -o raw "${tempFile}"`);
+      if (isWindows) {
+        const escapedPrinter = printerName.replace(/'/g, "''");
+        const escapedFile = tempFile.replace(/\\/g, "\\\\");
+        try {
+          await execAsync(`print /D:"${printerName}" "${tempFile}"`);
+        } catch (printError) {
+          console.log("Print command failed, trying copy method...");
+          try {
+            const { stdout: portInfo } = await execAsync(`powershell -Command "(Get-Printer -Name '${escapedPrinter}').PortName"`);
+            const portName = portInfo.trim();
+            if (portName && (portName.startsWith("USB") || portName.startsWith("COM"))) {
+              await execAsync(`copy /b "${tempFile}" "${portName}"`);
+            } else {
+              await execAsync(`powershell -Command "Get-Content -Path '${escapedFile}' -Raw | Out-Printer -Name '${escapedPrinter}'"`);
+            }
+          } catch (copyError) {
+            console.log("Copy method failed, trying raw print...");
+            const psScript = `
+              $printerName = '${escapedPrinter}'
+              $content = [System.IO.File]::ReadAllBytes('${escapedFile}')
+              $printer = New-Object System.Drawing.Printing.PrintDocument
+              $printer.PrinterSettings.PrinterName = $printerName
+              
+              # For raw printing, we'll use RawPrinterHelper
+              Add-Type -TypeDefinition @"
+              using System;
+              using System.Runtime.InteropServices;
+              public class RawPrinterHelper {
+                [DllImport("winspool.drv", CharSet = CharSet.Unicode, SetLastError = true)]
+                public static extern bool OpenPrinter(string pPrinterName, out IntPtr phPrinter, IntPtr pDefault);
+                [DllImport("winspool.drv", SetLastError = true)]
+                public static extern bool ClosePrinter(IntPtr hPrinter);
+                [DllImport("winspool.drv", SetLastError = true)]
+                public static extern bool StartDocPrinter(IntPtr hPrinter, int Level, ref DOCINFO pDocInfo);
+                [DllImport("winspool.drv", SetLastError = true)]
+                public static extern bool EndDocPrinter(IntPtr hPrinter);
+                [DllImport("winspool.drv", SetLastError = true)]
+                public static extern bool StartPagePrinter(IntPtr hPrinter);
+                [DllImport("winspool.drv", SetLastError = true)]
+                public static extern bool EndPagePrinter(IntPtr hPrinter);
+                [DllImport("winspool.drv", SetLastError = true)]
+                public static extern bool WritePrinter(IntPtr hPrinter, IntPtr pBytes, int dwCount, out int dwWritten);
+                
+                [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+                public struct DOCINFO {
+                  public int cbSize;
+                  public string pDocName;
+                  public string pOutputFile;
+                  public string pDatatype;
+                }
+                
+                public static bool SendBytesToPrinter(string printerName, byte[] bytes) {
+                  IntPtr hPrinter;
+                  if (!OpenPrinter(printerName, out hPrinter, IntPtr.Zero)) return false;
+                  
+                  DOCINFO di = new DOCINFO();
+                  di.cbSize = Marshal.SizeOf(di);
+                  di.pDocName = "Raw Document";
+                  di.pDatatype = "RAW";
+                  
+                  if (!StartDocPrinter(hPrinter, 1, ref di)) { ClosePrinter(hPrinter); return false; }
+                  if (!StartPagePrinter(hPrinter)) { EndDocPrinter(hPrinter); ClosePrinter(hPrinter); return false; }
+                  
+                  IntPtr pBytes = Marshal.AllocCoTaskMem(bytes.Length);
+                  Marshal.Copy(bytes, 0, pBytes, bytes.Length);
+                  int written;
+                  bool success = WritePrinter(hPrinter, pBytes, bytes.Length, out written);
+                  Marshal.FreeCoTaskMem(pBytes);
+                  
+                  EndPagePrinter(hPrinter);
+                  EndDocPrinter(hPrinter);
+                  ClosePrinter(hPrinter);
+                  return success;
+                }
+              }
+"@
+              [RawPrinterHelper]::SendBytesToPrinter($printerName, $content)
+            `;
+            await execAsync(`powershell -Command "${psScript.replace(/"/g, '\\"').replace(/\n/g, " ")}"`);
+          }
+        }
+      } else {
+        await execAsync(`lp -d "${printerName}" -o raw "${tempFile}"`);
+      }
       setTimeout(() => {
         try {
           fs2.unlinkSync(tempFile);

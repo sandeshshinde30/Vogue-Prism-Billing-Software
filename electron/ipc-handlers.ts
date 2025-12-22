@@ -775,9 +775,12 @@ Payment:                                CASH
       // Replace any remaining ₹ symbols with Rs.
       content = content.replace(/₹/g, 'Rs.');
       
-      // Add ESC/POS paper cut command at the end
-      // GS V m - Cut paper: \x1D\x56\x00 = full cut, \x1D\x56\x01 = partial cut
-      const cutCommand = Buffer.from([0x1D, 0x56, 0x00]);
+      // Add ESC/POS commands for better thermal printer compatibility
+      const escInit = Buffer.from([0x1B, 0x40]); // ESC @ - Initialize printer
+      const escAlign = Buffer.from([0x1B, 0x61, 0x00]); // ESC a 0 - Left align
+      const escFont = Buffer.from([0x1B, 0x21, 0x00]); // ESC ! 0 - Normal font
+      const cutCommand = Buffer.from([0x1D, 0x56, 0x00]); // GS V 0 - Full cut
+      const feedLines = Buffer.from([0x0A, 0x0A, 0x0A]); // Line feeds before cut
       
       // Create temporary file for printing
       const fs = await import('fs');
@@ -786,101 +789,144 @@ Payment:                                CASH
       
       const tempFile = path.join(os.tmpdir(), `print-${Date.now()}.txt`);
       
-      // Write content as ASCII + cut command
+      // Combine all buffers: init + align + font + content + feeds + cut
       const contentBuffer = Buffer.from(content, 'ascii');
-      const finalBuffer = Buffer.concat([contentBuffer, cutCommand]);
+      const finalBuffer = Buffer.concat([escInit, escAlign, escFont, contentBuffer, feedLines, cutCommand]);
       fs.writeFileSync(tempFile, finalBuffer);
       
       if (isWindows) {
-        // Windows: Use PowerShell to print raw content
-        // Escape the printer name and file path for PowerShell
+        // Windows: Use simplified raw printing approach
         const escapedPrinter = printerName.replace(/'/g, "''");
-        const escapedFile = tempFile.replace(/\\/g, '\\\\');
         
-        // Try multiple Windows printing methods
         try {
-          // Method 1: Use print command (simplest)
-          await execAsync(`print /D:"${printerName}" "${tempFile}"`);
-        } catch (printError) {
-          console.log('Print command failed, trying copy method...');
-          try {
-            // Method 2: Copy to printer port (for USB printers)
-            // First get the port name
-            const { stdout: portInfo } = await execAsync(`powershell -Command "(Get-Printer -Name '${escapedPrinter}').PortName"`);
-            const portName = portInfo.trim();
+          // Method 1: Try direct copy to printer port first (most reliable for USB thermal printers)
+          const { stdout: portInfo } = await execAsync(`powershell -Command "try { (Get-Printer -Name '${escapedPrinter}').PortName } catch { 'UNKNOWN' }"`);
+          const portName = portInfo.trim();
+          
+          console.log(`Windows printer: ${printerName}, Port: ${portName}`);
+          
+          if (portName && portName !== 'UNKNOWN' && (portName.startsWith('USB') || portName.startsWith('COM'))) {
+            console.log(`Attempting direct port copy to: ${portName}`);
+            await execAsync(`copy /b "${tempFile}" "${portName}"`);
+            console.log('✓ Successfully printed via direct port copy');
+          } else {
+            // Method 2: Use PowerShell with proper raw printing
+            console.log('Port copy not available, using PowerShell raw print method...');
+            console.log(`Printer port detected as: ${portName || 'UNKNOWN'}`);
             
-            if (portName && (portName.startsWith('USB') || portName.startsWith('COM'))) {
-              await execAsync(`copy /b "${tempFile}" "${portName}"`);
-            } else {
-              // Method 3: Use Out-Printer PowerShell cmdlet
-              await execAsync(`powershell -Command "Get-Content -Path '${escapedFile}' -Raw | Out-Printer -Name '${escapedPrinter}'"`);
-            }
-          } catch (copyError) {
-            console.log('Copy method failed, trying raw print...');
-            // Method 4: Use .NET printing via PowerShell for raw data
+            // Create a PowerShell script that handles raw printing properly
+            const psScriptFile = path.join(os.tmpdir(), `rawprint-${Date.now()}.ps1`);
             const psScript = `
-              $printerName = '${escapedPrinter}'
-              $content = [System.IO.File]::ReadAllBytes('${escapedFile}')
-              $printer = New-Object System.Drawing.Printing.PrintDocument
-              $printer.PrinterSettings.PrinterName = $printerName
-              
-              # For raw printing, we'll use RawPrinterHelper
-              Add-Type -TypeDefinition @"
-              using System;
-              using System.Runtime.InteropServices;
-              public class RawPrinterHelper {
-                [DllImport("winspool.drv", CharSet = CharSet.Unicode, SetLastError = true)]
-                public static extern bool OpenPrinter(string pPrinterName, out IntPtr phPrinter, IntPtr pDefault);
-                [DllImport("winspool.drv", SetLastError = true)]
-                public static extern bool ClosePrinter(IntPtr hPrinter);
-                [DllImport("winspool.drv", SetLastError = true)]
-                public static extern bool StartDocPrinter(IntPtr hPrinter, int Level, ref DOCINFO pDocInfo);
-                [DllImport("winspool.drv", SetLastError = true)]
-                public static extern bool EndDocPrinter(IntPtr hPrinter);
-                [DllImport("winspool.drv", SetLastError = true)]
-                public static extern bool StartPagePrinter(IntPtr hPrinter);
-                [DllImport("winspool.drv", SetLastError = true)]
-                public static extern bool EndPagePrinter(IntPtr hPrinter);
-                [DllImport("winspool.drv", SetLastError = true)]
-                public static extern bool WritePrinter(IntPtr hPrinter, IntPtr pBytes, int dwCount, out int dwWritten);
-                
-                [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
-                public struct DOCINFO {
-                  public int cbSize;
-                  public string pDocName;
-                  public string pOutputFile;
-                  public string pDatatype;
-                }
-                
-                public static bool SendBytesToPrinter(string printerName, byte[] bytes) {
-                  IntPtr hPrinter;
-                  if (!OpenPrinter(printerName, out hPrinter, IntPtr.Zero)) return false;
-                  
-                  DOCINFO di = new DOCINFO();
-                  di.cbSize = Marshal.SizeOf(di);
-                  di.pDocName = "Raw Document";
-                  di.pDatatype = "RAW";
-                  
-                  if (!StartDocPrinter(hPrinter, 1, ref di)) { ClosePrinter(hPrinter); return false; }
-                  if (!StartPagePrinter(hPrinter)) { EndDocPrinter(hPrinter); ClosePrinter(hPrinter); return false; }
-                  
-                  IntPtr pBytes = Marshal.AllocCoTaskMem(bytes.Length);
-                  Marshal.Copy(bytes, 0, pBytes, bytes.Length);
-                  int written;
-                  bool success = WritePrinter(hPrinter, pBytes, bytes.Length, out written);
-                  Marshal.FreeCoTaskMem(pBytes);
-                  
-                  EndPagePrinter(hPrinter);
-                  EndDocPrinter(hPrinter);
-                  ClosePrinter(hPrinter);
-                  return success;
-                }
-              }
+Add-Type -TypeDefinition @"
+using System;
+using System.Runtime.InteropServices;
+using System.Text;
+
+public class RawPrinterHelper {
+    [DllImport("winspool.drv", CharSet = CharSet.Unicode, SetLastError = true)]
+    public static extern bool OpenPrinter(string pPrinterName, out IntPtr phPrinter, IntPtr pDefault);
+    
+    [DllImport("winspool.drv", SetLastError = true)]
+    public static extern bool ClosePrinter(IntPtr hPrinter);
+    
+    [DllImport("winspool.drv", SetLastError = true)]
+    public static extern bool StartDocPrinter(IntPtr hPrinter, int Level, ref DOCINFO pDocInfo);
+    
+    [DllImport("winspool.drv", SetLastError = true)]
+    public static extern bool EndDocPrinter(IntPtr hPrinter);
+    
+    [DllImport("winspool.drv", SetLastError = true)]
+    public static extern bool StartPagePrinter(IntPtr hPrinter);
+    
+    [DllImport("winspool.drv", SetLastError = true)]
+    public static extern bool EndPagePrinter(IntPtr hPrinter);
+    
+    [DllImport("winspool.drv", SetLastError = true)]
+    public static extern bool WritePrinter(IntPtr hPrinter, IntPtr pBytes, int dwCount, out int dwWritten);
+    
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    public struct DOCINFO {
+        public int cbSize;
+        public string pDocName;
+        public string pOutputFile;
+        public string pDatatype;
+    }
+    
+    public static bool SendRawDataToPrinter(string printerName, byte[] bytes) {
+        IntPtr hPrinter = IntPtr.Zero;
+        try {
+            if (!OpenPrinter(printerName, out hPrinter, IntPtr.Zero)) {
+                return false;
+            }
+            
+            DOCINFO di = new DOCINFO();
+            di.cbSize = Marshal.SizeOf(di);
+            di.pDocName = "Thermal Receipt";
+            di.pDatatype = "RAW";
+            
+            if (!StartDocPrinter(hPrinter, 1, ref di)) {
+                return false;
+            }
+            
+            if (!StartPagePrinter(hPrinter)) {
+                EndDocPrinter(hPrinter);
+                return false;
+            }
+            
+            IntPtr pBytes = Marshal.AllocCoTaskMem(bytes.Length);
+            Marshal.Copy(bytes, 0, pBytes, bytes.Length);
+            
+            int written;
+            bool success = WritePrinter(hPrinter, pBytes, bytes.Length, out written);
+            
+            Marshal.FreeCoTaskMem(pBytes);
+            EndPagePrinter(hPrinter);
+            EndDocPrinter(hPrinter);
+            
+            return success && written == bytes.Length;
+        } finally {
+            if (hPrinter != IntPtr.Zero) {
+                ClosePrinter(hPrinter);
+            }
+        }
+    }
+}
 "@
-              [RawPrinterHelper]::SendBytesToPrinter($printerName, $content)
-            `;
-            await execAsync(`powershell -Command "${psScript.replace(/"/g, '\\"').replace(/\n/g, ' ')}"`);
+
+$printerName = "${escapedPrinter}"
+$filePath = "${tempFile.replace(/\\/g, '\\\\')}"
+
+try {
+    $bytes = [System.IO.File]::ReadAllBytes($filePath)
+    $result = [RawPrinterHelper]::SendRawDataToPrinter($printerName, $bytes)
+    if ($result) {
+        Write-Output "SUCCESS"
+    } else {
+        Write-Output "FAILED"
+    }
+} catch {
+    Write-Output "ERROR: $($_.Exception.Message)"
+}
+`;
+            
+            fs.writeFileSync(psScriptFile, psScript, 'utf8');
+            
+            const { stdout: psResult } = await execAsync(`powershell -ExecutionPolicy Bypass -File "${psScriptFile}"`);
+            
+            // Clean up PowerShell script
+            setTimeout(() => {
+              try { fs.unlinkSync(psScriptFile); } catch (e) { /* ignore */ }
+            }, 1000);
+            
+            if (!psResult.includes('SUCCESS')) {
+              throw new Error(`PowerShell raw print failed: ${psResult}`);
+            }
+            
+            console.log('✓ Successfully printed via PowerShell raw print method');
           }
+        } catch (error) {
+          console.error('❌ Windows printing error:', error);
+          throw error;
         }
       } else {
         // Linux/macOS: Use lp command with raw option
