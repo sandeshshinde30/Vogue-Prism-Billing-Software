@@ -1,4 +1,5 @@
 import React from "react";
+import { getLogoPath } from "../utils/assetPath";
 
 const InvoiceTemplate: React.FC = () => {
   return (
@@ -10,7 +11,7 @@ const InvoiceTemplate: React.FC = () => {
         <div className="flex justify-between text-center items-center">
           <div className="flex flex-col justify-center items-center">
             <img
-              src="logo-gold.png"
+              src={getLogoPath()}
               alt="Company Logo"
               className="w-24 mb-2"
               style={{

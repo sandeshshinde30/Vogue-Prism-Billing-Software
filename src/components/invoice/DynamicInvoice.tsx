@@ -1,5 +1,6 @@
 import React from "react";
 import { BillData } from "../../utils/thermalPrinter";
+import { getLogoPath } from "../../utils/assetPath";
 
 interface DynamicInvoiceProps {
   billData: BillData;
@@ -39,7 +40,7 @@ export const DynamicInvoice: React.FC<DynamicInvoiceProps> = ({
         <div className="flex justify-between text-center items-center mb-6">
           <div className="flex flex-col justify-center items-center">
             <img
-              src="/logo-gold.png"
+              src={getLogoPath()}
               alt="Company Logo"
               className="w-24 mb-2"
               style={{ padding: '10px' }}

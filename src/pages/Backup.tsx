@@ -6,8 +6,11 @@ import {
   CheckCircle,
   Database,
   HardDrive,
+  Shield,
+  Clock,
+  FolderOpen,
+  RefreshCw
 } from 'lucide-react';
-import { Card, Button } from '../components/common';
 import toast from 'react-hot-toast';
 
 export function Backup() {
@@ -43,14 +46,9 @@ export function Backup() {
   };
 
   const handleImport = async () => {
-    if (
-      !confirm(
-        'Warning: Importing will REPLACE all current data. Are you sure you want to continue?'
-      )
-    ) {
+    if (!confirm('Warning: Importing will REPLACE all current data. Are you sure you want to continue?')) {
       return;
     }
-
     setImporting(true);
     try {
       const result = await window.electronAPI.importBackup();
@@ -66,181 +64,445 @@ export function Backup() {
   };
 
   return (
-    <div 
-      className="main-content space-y-6"
-      style={{
-        width: '100%',
-        maxWidth: 'none',
-        margin: '0',
-        padding: '0'
-      }}
-    >
-      {/* Header */}
-      <div 
-        className="page-header"
-        style={{
-          marginBottom: '24px'
-        }}
-      >
-        <h1 
-          className="page-title"
-          style={{
-            fontSize: '28px',
-            fontWeight: '700',
-            color: '#111827',
-            marginBottom: '4px'
-          }}
-        >
-          Backup & Restore
-        </h1>
-        <p 
-          className="page-subtitle"
-          style={{
-            fontSize: '14px',
-            color: '#6b7280'
-          }}
-        >
-          Protect your data with regular backups
-        </p>
-      </div>
+    <>
+      <style>{`
+        .backup-container {
+          width: 100%;
+          max-width: 1200px;
+          margin: 0 auto;
+          padding: 32px;
+        }
+        .backup-header {
+          margin-bottom: 32px;
+        }
+        .backup-title {
+          font-size: 28px;
+          font-weight: 700;
+          color: #111827;
+          margin-bottom: 8px;
+          display: flex;
+          align-items: center;
+          gap: 12px;
+        }
+        .backup-title-icon {
+          width: 48px;
+          height: 48px;
+          background: linear-gradient(135deg, #059669 0%, #10b981 100%);
+          border-radius: 12px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          box-shadow: 0 8px 16px rgba(16, 185, 129, 0.25);
+        }
+        .backup-title-icon svg {
+          color: #fff;
+          width: 24px;
+          height: 24px;
+        }
+        .backup-subtitle {
+          font-size: 15px;
+          color: #6b7280;
+          margin-left: 60px;
+        }
+        .backup-grid {
+          display: grid;
+          grid-template-columns: repeat(2, 1fr);
+          gap: 24px;
+          margin-bottom: 24px;
+        }
+        @media (max-width: 900px) {
+          .backup-grid { grid-template-columns: 1fr; }
+        }
+        .backup-card {
+          background: #fff;
+          border-radius: 20px;
+          overflow: hidden;
+          box-shadow: 0 4px 20px rgba(0, 0, 0, 0.06);
+          border: 1px solid #e5e7eb;
+          transition: all 0.3s ease;
+        }
+        .backup-card:hover {
+          box-shadow: 0 8px 30px rgba(0, 0, 0, 0.1);
+          transform: translateY(-2px);
+        }
+        .card-header {
+          padding: 24px 28px;
+          border-bottom: 1px solid #f3f4f6;
+          display: flex;
+          align-items: center;
+          gap: 16px;
+        }
+        .card-icon {
+          width: 56px;
+          height: 56px;
+          border-radius: 14px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+        .card-icon-export {
+          background: linear-gradient(135deg, #059669 0%, #10b981 100%);
+          box-shadow: 0 8px 16px rgba(16, 185, 129, 0.3);
+        }
+        .card-icon-import {
+          background: linear-gradient(135deg, #f59e0b 0%, #fbbf24 100%);
+          box-shadow: 0 8px 16px rgba(245, 158, 11, 0.3);
+        }
+        .card-icon svg {
+          color: #fff;
+          width: 26px;
+          height: 26px;
+        }
+        .card-title {
+          font-size: 20px;
+          font-weight: 600;
+          color: #111827;
+        }
+        .card-desc {
+          font-size: 13px;
+          color: #6b7280;
+          margin-top: 4px;
+        }
+        .card-body {
+          padding: 24px 28px;
+        }
+        .feature-list {
+          display: flex;
+          flex-direction: column;
+          gap: 12px;
+          margin-bottom: 24px;
+        }
+        .feature-item {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          padding: 12px 16px;
+          background: #f0fdf4;
+          border-radius: 10px;
+          border: 1px solid #bbf7d0;
+        }
+        .feature-item svg {
+          color: #059669;
+          width: 18px;
+          height: 18px;
+          flex-shrink: 0;
+        }
+        .feature-item span {
+          font-size: 14px;
+          color: #166534;
+          font-weight: 500;
+        }
+        .warning-box {
+          display: flex;
+          gap: 14px;
+          padding: 16px;
+          background: #fffbeb;
+          border-radius: 12px;
+          border: 1px solid #fde68a;
+          margin-bottom: 24px;
+        }
+        .warning-box svg {
+          color: #d97706;
+          width: 22px;
+          height: 22px;
+          flex-shrink: 0;
+          margin-top: 2px;
+        }
+        .warning-title {
+          font-size: 14px;
+          font-weight: 600;
+          color: #92400e;
+          margin-bottom: 4px;
+        }
+        .warning-text {
+          font-size: 13px;
+          color: #a16207;
+          line-height: 1.5;
+        }
+        .action-btn {
+          width: 100%;
+          padding: 16px 24px;
+          border-radius: 12px;
+          font-size: 15px;
+          font-weight: 600;
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 10px;
+          transition: all 0.2s ease;
+          border: none;
+        }
+        .action-btn:disabled {
+          opacity: 0.6;
+          cursor: not-allowed;
+        }
+        .btn-export {
+          background: linear-gradient(135deg, #059669 0%, #10b981 100%);
+          color: #fff;
+          box-shadow: 0 8px 20px rgba(16, 185, 129, 0.35);
+        }
+        .btn-export:hover:not(:disabled) {
+          transform: translateY(-2px);
+          box-shadow: 0 12px 28px rgba(16, 185, 129, 0.45);
+        }
+        .btn-import {
+          background: #f8fafc;
+          color: #374151;
+          border: 2px solid #e5e7eb;
+        }
+        .btn-import:hover:not(:disabled) {
+          background: #f1f5f9;
+          border-color: #d1d5db;
+        }
+        .tips-card {
+          background: linear-gradient(135deg, #1e3a5f 0%, #1e293b 100%);
+          border-radius: 20px;
+          padding: 32px;
+          color: #fff;
+        }
+        .tips-header {
+          display: flex;
+          align-items: center;
+          gap: 14px;
+          margin-bottom: 24px;
+        }
+        .tips-icon {
+          width: 48px;
+          height: 48px;
+          background: rgba(255, 255, 255, 0.1);
+          border-radius: 12px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+        .tips-icon svg {
+          color: #60a5fa;
+          width: 24px;
+          height: 24px;
+        }
+        .tips-title {
+          font-size: 20px;
+          font-weight: 600;
+        }
+        .tips-subtitle {
+          font-size: 13px;
+          color: #94a3b8;
+          margin-top: 4px;
+        }
+        .tips-grid {
+          display: grid;
+          grid-template-columns: repeat(2, 1fr);
+          gap: 20px;
+        }
+        @media (max-width: 700px) {
+          .tips-grid { grid-template-columns: 1fr; }
+        }
+        .tip-item {
+          display: flex;
+          gap: 14px;
+          padding: 16px;
+          background: rgba(255, 255, 255, 0.05);
+          border-radius: 12px;
+          border: 1px solid rgba(255, 255, 255, 0.08);
+        }
+        .tip-item-icon {
+          width: 40px;
+          height: 40px;
+          background: rgba(96, 165, 250, 0.15);
+          border-radius: 10px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          flex-shrink: 0;
+        }
+        .tip-item-icon svg {
+          color: #60a5fa;
+          width: 20px;
+          height: 20px;
+        }
+        .tip-item-title {
+          font-size: 14px;
+          font-weight: 600;
+          color: #fff;
+          margin-bottom: 4px;
+        }
+        .tip-item-desc {
+          font-size: 12px;
+          color: #94a3b8;
+          line-height: 1.4;
+        }
+        .spinner {
+          width: 20px;
+          height: 20px;
+          border: 2px solid currentColor;
+          border-top-color: transparent;
+          border-radius: 50%;
+          animation: spin 0.8s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+      `}</style>
 
-      {/* Export Section */}
-      <Card style={{ marginBottom: '24px' }}>
-        <div className="flex flex-col lg:flex-row items-start gap-6">
-          <div className="flex-shrink-0">
-            <div className="w-16 h-16 bg-green-100 rounded-xl flex items-center justify-center">
-              <Download className="text-green-600" size={32} />
+      <div className="backup-container">
+        {/* Header */}
+        <div className="backup-header">
+          <div className="backup-title">
+            <div className="backup-title-icon">
+              <Shield />
             </div>
+            Backup & Restore
           </div>
-          <div className="flex-1 min-w-0">
-            <h2 className="text-xl font-semibold text-gray-900 mb-3">
-              Export Backup
-            </h2>
-            <p className="text-gray-600 mb-4">
-              Create a complete backup of your database including all your business data.
-            </p>
-            <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-6">
-              <h3 className="font-medium text-green-900 mb-2">What's included:</h3>
-              <ul className="text-sm text-green-800 space-y-1">
-                <li className="flex items-center gap-2">
-                  <CheckCircle size={16} className="text-green-600 flex-shrink-0" />
-                  All products and stock data
-                </li>
-                <li className="flex items-center gap-2">
-                  <CheckCircle size={16} className="text-green-600 flex-shrink-0" />
-                  All bills and transactions
-                </li>
-                <li className="flex items-center gap-2">
-                  <CheckCircle size={16} className="text-green-600 flex-shrink-0" />
-                  Settings and configurations
-                </li>
-                <li className="flex items-center gap-2">
-                  <CheckCircle size={16} className="text-green-600 flex-shrink-0" />
-                  Complete database structure
-                </li>
-              </ul>
-            </div>
-            <Button onClick={handleExport} disabled={exporting} size="lg">
-              <Download size={20} className="mr-2" />
-              {exporting ? 'Exporting...' : 'Export Database Backup'}
-            </Button>
-          </div>
+          <p className="backup-subtitle">
+            Protect your business data with secure backups and easy restoration
+          </p>
         </div>
-      </Card>
 
-      {/* Import Section */}
-      <Card style={{ marginBottom: '24px' }}>
-        <div className="flex flex-col lg:flex-row items-start gap-6">
-          <div className="flex-shrink-0">
-            <div className="w-16 h-16 bg-yellow-100 rounded-xl flex items-center justify-center">
-              <Upload className="text-yellow-600" size={32} />
+        {/* Export & Import Cards */}
+        <div className="backup-grid">
+          {/* Export Card */}
+          <div className="backup-card">
+            <div className="card-header">
+              <div className="card-icon card-icon-export">
+                <Download />
+              </div>
+              <div>
+                <div className="card-title">Export Backup</div>
+                <div className="card-desc">Create a complete backup of your data</div>
+              </div>
+            </div>
+            <div className="card-body">
+              <div className="feature-list">
+                <div className="feature-item">
+                  <CheckCircle />
+                  <span>All products and inventory data</span>
+                </div>
+                <div className="feature-item">
+                  <CheckCircle />
+                  <span>Complete billing history</span>
+                </div>
+                <div className="feature-item">
+                  <CheckCircle />
+                  <span>Store settings & configurations</span>
+                </div>
+                <div className="feature-item">
+                  <CheckCircle />
+                  <span>Full database structure</span>
+                </div>
+              </div>
+              <button
+                onClick={handleExport}
+                disabled={exporting}
+                className="action-btn btn-export"
+              >
+                {exporting ? (
+                  <>
+                    <div className="spinner" />
+                    <span>Exporting...</span>
+                  </>
+                ) : (
+                  <>
+                    <Download size={20} />
+                    <span>Export Database Backup</span>
+                  </>
+                )}
+              </button>
             </div>
           </div>
-          <div className="flex-1 min-w-0">
-            <h2 className="text-xl font-semibold text-gray-900 mb-3">
-              Import / Restore
-            </h2>
-            <p className="text-gray-600 mb-4">
-              Restore your data from a previously exported backup file.
-            </p>
-            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6">
-              <div className="flex items-start gap-3">
-                <AlertTriangle className="text-yellow-600 flex-shrink-0 mt-0.5" size={20} />
+
+          {/* Import Card */}
+          <div className="backup-card">
+            <div className="card-header">
+              <div className="card-icon card-icon-import">
+                <Upload />
+              </div>
+              <div>
+                <div className="card-title">Import / Restore</div>
+                <div className="card-desc">Restore from a previous backup</div>
+              </div>
+            </div>
+            <div className="card-body">
+              <div className="warning-box">
+                <AlertTriangle />
                 <div>
-                  <h3 className="font-medium text-yellow-900 mb-1">Important Warning</h3>
-                  <p className="text-yellow-800 text-sm">
+                  <div className="warning-title">Important Warning</div>
+                  <div className="warning-text">
                     Importing will completely REPLACE all current data including products, 
-                    bills, and settings. Make sure to export a backup first if you want 
-                    to preserve your current data.
-                  </p>
+                    bills, and settings. Export a backup first to preserve current data.
+                  </div>
                 </div>
               </div>
+              <button
+                onClick={handleImport}
+                disabled={importing}
+                className="action-btn btn-import"
+              >
+                {importing ? (
+                  <>
+                    <div className="spinner" />
+                    <span>Importing...</span>
+                  </>
+                ) : (
+                  <>
+                    <Upload size={20} />
+                    <span>Import Database Backup</span>
+                  </>
+                )}
+              </button>
             </div>
-            <Button
-              variant="secondary"
-              onClick={handleImport}
-              disabled={importing}
-              size="lg"
-            >
-              <Upload size={20} className="mr-2" />
-              {importing ? 'Importing...' : 'Import Database'}
-            </Button>
           </div>
         </div>
-      </Card>
 
-      {/* Info Section */}
-      <Card style={{ marginBottom: '24px' }}>
-        <div className="flex flex-col lg:flex-row items-start gap-6">
-          <div className="flex-shrink-0">
-            <div className="w-16 h-16 bg-blue-100 rounded-xl flex items-center justify-center">
-              <Database className="text-blue-600" size={32} />
+        {/* Best Practices Card */}
+        <div className="tips-card">
+          <div className="tips-header">
+            <div className="tips-icon">
+              <Database />
+            </div>
+            <div>
+              <div className="tips-title">Backup Best Practices</div>
+              <div className="tips-subtitle">Follow these tips to keep your data safe</div>
             </div>
           </div>
-          <div className="flex-1 min-w-0">
-            <h2 className="text-xl font-semibold text-gray-900 mb-3">
-              Backup Best Practices
-            </h2>
-            <p className="text-gray-600 mb-4">
-              Follow these recommendations to keep your data safe and secure.
-            </p>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-3">
-                <div className="flex items-start gap-3">
-                  <HardDrive size={18} className="text-blue-500 mt-0.5 flex-shrink-0" />
-                  <div>
-                    <h4 className="font-medium text-gray-900 text-sm">Regular Backups</h4>
-                    <p className="text-gray-600 text-sm">Export backups weekly to prevent data loss</p>
-                  </div>
-                </div>
-                <div className="flex items-start gap-3">
-                  <HardDrive size={18} className="text-blue-500 mt-0.5 flex-shrink-0" />
-                  <div>
-                    <h4 className="font-medium text-gray-900 text-sm">External Storage</h4>
-                    <p className="text-gray-600 text-sm">Store backups on external drives or cloud storage</p>
-                  </div>
-                </div>
+          <div className="tips-grid">
+            <div className="tip-item">
+              <div className="tip-item-icon">
+                <Clock />
               </div>
-              <div className="space-y-3">
-                <div className="flex items-start gap-3">
-                  <HardDrive size={18} className="text-blue-500 mt-0.5 flex-shrink-0" />
-                  <div>
-                    <h4 className="font-medium text-gray-900 text-sm">Version Control</h4>
-                    <p className="text-gray-600 text-sm">Keep multiple backup versions with dates</p>
-                  </div>
-                </div>
-                <div className="flex items-start gap-3">
-                  <HardDrive size={18} className="text-blue-500 mt-0.5 flex-shrink-0" />
-                  <div>
-                    <h4 className="font-medium text-gray-900 text-sm">After Import</h4>
-                    <p className="text-gray-600 text-sm">Restart the application to load new data</p>
-                  </div>
-                </div>
+              <div>
+                <div className="tip-item-title">Regular Backups</div>
+                <div className="tip-item-desc">Export backups weekly to prevent data loss</div>
+              </div>
+            </div>
+            <div className="tip-item">
+              <div className="tip-item-icon">
+                <FolderOpen />
+              </div>
+              <div>
+                <div className="tip-item-title">External Storage</div>
+                <div className="tip-item-desc">Store backups on external drives or cloud</div>
+              </div>
+            </div>
+            <div className="tip-item">
+              <div className="tip-item-icon">
+                <HardDrive />
+              </div>
+              <div>
+                <div className="tip-item-title">Version Control</div>
+                <div className="tip-item-desc">Keep multiple backup versions with dates</div>
+              </div>
+            </div>
+            <div className="tip-item">
+              <div className="tip-item-icon">
+                <RefreshCw />
+              </div>
+              <div>
+                <div className="tip-item-title">After Import</div>
+                <div className="tip-item-desc">Restart the app to load imported data</div>
               </div>
             </div>
           </div>
         </div>
-      </Card>
-    </div>
+      </div>
+    </>
   );
 }

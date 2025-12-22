@@ -470,50 +470,216 @@ export function PaymentPanel() {
 
       {/* Print Confirmation Popup */}
       {showPrintConfirm && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-2xl shadow-2xl w-[400px] overflow-hidden">
-            {/* Header */}
-            <div className="bg-gray-900 px-6 py-4">
-              <h3 className="text-lg font-semibold text-white">Complete Sale</h3>
-              <p className="text-sm text-gray-400">Bill Total: ₹{total.toLocaleString()}</p>
-            </div>
-            
-            {/* Content */}
-            <div className="p-6">
-              <p className="text-gray-600 mb-6">How would you like to proceed?</p>
+        <>
+          <style>{`
+            .save-dialog-overlay {
+              position: fixed;
+              inset: 0;
+              background: rgba(0, 0, 0, 0.6);
+              backdrop-filter: blur(4px);
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              z-index: 50;
+              animation: fadeIn 0.2s ease;
+            }
+            @keyframes fadeIn {
+              from { opacity: 0; }
+              to { opacity: 1; }
+            }
+            @keyframes slideUp {
+              from { opacity: 0; transform: translateY(20px) scale(0.95); }
+              to { opacity: 1; transform: translateY(0) scale(1); }
+            }
+            .save-dialog-card {
+              width: 420px;
+              background: #fff;
+              border-radius: 24px;
+              overflow: hidden;
+              box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.4);
+              animation: slideUp 0.3s ease;
+            }
+            .save-dialog-header {
+              background: linear-gradient(135deg, #111827 0%, #1f2937 100%);
+              padding: 28px;
+              text-align: center;
+            }
+            .save-dialog-icon {
+              width: 64px;
+              height: 64px;
+              background: linear-gradient(135deg, #059669 0%, #10b981 100%);
+              border-radius: 16px;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              margin: 0 auto 16px;
+              box-shadow: 0 8px 20px rgba(16, 185, 129, 0.4);
+            }
+            .save-dialog-icon svg {
+              color: #fff;
+              width: 28px;
+              height: 28px;
+            }
+            .save-dialog-title {
+              font-size: 20px;
+              font-weight: 600;
+              color: #fff;
+              margin-bottom: 6px;
+            }
+            .save-dialog-total {
+              font-size: 32px;
+              font-weight: 700;
+              color: #10b981;
+              font-family: 'JetBrains Mono', monospace;
+            }
+            .save-dialog-body {
+              padding: 28px;
+            }
+            .save-dialog-label {
+              font-size: 12px;
+              font-weight: 600;
+              text-transform: uppercase;
+              letter-spacing: 0.5px;
+              color: #6b7280;
+              margin-bottom: 16px;
+            }
+            .save-dialog-options {
+              display: flex;
+              flex-direction: column;
+              gap: 12px;
+            }
+            .save-option-btn {
+              width: 100%;
+              padding: 18px 20px;
+              border-radius: 14px;
+              font-size: 15px;
+              font-weight: 600;
+              cursor: pointer;
+              display: flex;
+              align-items: center;
+              gap: 14px;
+              transition: all 0.2s ease;
+              border: 2px solid transparent;
+            }
+            .save-option-primary {
+              background: linear-gradient(135deg, #059669 0%, #10b981 100%);
+              color: #fff;
+              box-shadow: 0 8px 20px rgba(16, 185, 129, 0.35);
+            }
+            .save-option-primary:hover {
+              transform: translateY(-2px);
+              box-shadow: 0 12px 28px rgba(16, 185, 129, 0.45);
+            }
+            .save-option-secondary {
+              background: #f8fafc;
+              color: #374151;
+              border-color: #e5e7eb;
+            }
+            .save-option-secondary:hover {
+              background: #f1f5f9;
+              border-color: #d1d5db;
+            }
+            .save-option-icon {
+              width: 44px;
+              height: 44px;
+              border-radius: 12px;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              flex-shrink: 0;
+            }
+            .save-option-primary .save-option-icon {
+              background: rgba(255, 255, 255, 0.2);
+            }
+            .save-option-secondary .save-option-icon {
+              background: #e5e7eb;
+            }
+            .save-option-text {
+              flex: 1;
+              text-align: left;
+            }
+            .save-option-title {
+              font-size: 15px;
+              font-weight: 600;
+              margin-bottom: 2px;
+            }
+            .save-option-desc {
+              font-size: 12px;
+              opacity: 0.7;
+              font-weight: 400;
+            }
+            .save-dialog-footer {
+              padding: 0 28px 28px;
+            }
+            .save-cancel-btn {
+              width: 100%;
+              padding: 14px;
+              background: transparent;
+              border: none;
+              color: #6b7280;
+              font-size: 14px;
+              font-weight: 500;
+              cursor: pointer;
+              border-radius: 10px;
+              transition: all 0.2s ease;
+            }
+            .save-cancel-btn:hover {
+              background: #f3f4f6;
+              color: #374151;
+            }
+          `}</style>
+          <div className="save-dialog-overlay">
+            <div className="save-dialog-card">
+              <div className="save-dialog-header">
+                <div className="save-dialog-icon">
+                  <CreditCard />
+                </div>
+                <div className="save-dialog-title">Complete Sale</div>
+                <div className="save-dialog-total">₹{total.toLocaleString()}</div>
+              </div>
               
-              <div className="space-y-3">
-                {/* Save & Print */}
+              <div className="save-dialog-body">
+                <div className="save-dialog-label">Choose an option</div>
+                <div className="save-dialog-options">
+                  <button
+                    onClick={() => handleSaveBill(true)}
+                    className="save-option-btn save-option-primary"
+                  >
+                    <div className="save-option-icon">
+                      <Printer size={22} />
+                    </div>
+                    <div className="save-option-text">
+                      <div className="save-option-title">Save & Print Receipt</div>
+                      <div className="save-option-desc">Print thermal receipt after saving</div>
+                    </div>
+                  </button>
+                  
+                  <button
+                    onClick={() => handleSaveBill(false)}
+                    className="save-option-btn save-option-secondary"
+                  >
+                    <div className="save-option-icon">
+                      <Save size={22} />
+                    </div>
+                    <div className="save-option-text">
+                      <div className="save-option-title">Save Only</div>
+                      <div className="save-option-desc">Save bill without printing</div>
+                    </div>
+                  </button>
+                </div>
+              </div>
+              
+              <div className="save-dialog-footer">
                 <button
-                  onClick={() => handleSaveBill(true)}
-                  className="w-full py-4 px-4 bg-green-500 hover:bg-green-600 text-white rounded-xl font-medium flex items-center justify-center gap-3 transition-colors"
+                  onClick={() => setShowPrintConfirm(false)}
+                  className="save-cancel-btn"
                 >
-                  <Printer size={20} />
-                  Save & Print Receipt
-                </button>
-                
-                {/* Save Only */}
-                <button
-                  onClick={() => handleSaveBill(false)}
-                  className="w-full py-4 px-4 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl font-medium flex items-center justify-center gap-3 transition-colors"
-                >
-                  <Save size={20} />
-                  Save Only (No Print)
+                  Cancel
                 </button>
               </div>
             </div>
-            
-            {/* Footer */}
-            <div className="px-6 py-4 bg-gray-50 border-t">
-              <button
-                onClick={() => setShowPrintConfirm(false)}
-                className="w-full py-2 text-gray-500 hover:text-gray-700 text-sm font-medium transition-colors"
-              >
-                Cancel
-              </button>
-            </div>
           </div>
-        </div>
+        </>
       )}
 
       {/* Bill Preview Modal */}

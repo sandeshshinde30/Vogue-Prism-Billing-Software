@@ -1,6 +1,7 @@
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
 import { BillData } from './thermalPrinter';
+import { getLogoPath } from './assetPath';
 
 export interface PDFExportOptions {
   filename?: string;
@@ -33,12 +34,13 @@ export class PDFExporter {
       document.body.appendChild(tempContainer);
 
       // Create invoice HTML with inline styles (no Tailwind)
+      const logoPath = getLogoPath();
       const invoiceHTML = `
         <div style="background: white; padding: 40px; width: 210mm; min-height: 297mm; font-family: Arial, sans-serif;">
           <!-- Header -->
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px;">
             <div style="display: flex; align-items: center;">
-              <img src="/logo-gold.png" alt="Logo" style="width: 80px; height: 80px; margin-right: 20px;" />
+              <img src="${logoPath}" alt="Logo" style="width: 80px; height: 80px; margin-right: 20px;" onerror="this.style.display='none'" />
               <div>
                 <h1 style="font-size: 24px; font-weight: bold; margin: 0; color: #111827;">${storeSettings?.storeName || 'VOGUE PRISM'}</h1>
                 <p style="font-size: 12px; color: #6b7280; margin: 5px 0 0 0;">Professional Invoice</p>

@@ -11,6 +11,7 @@ import {
   FileEdit,
   Printer,
 } from 'lucide-react';
+import { getLogoPath } from '../../utils/assetPath';
 
 const navItems = [
   { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
@@ -38,7 +39,7 @@ export function Sidebar() {
         <div className="flex items-center gap-3">
           <div className="w-9 h-9 rounded-lg flex items-center justify-center overflow-hidden bg-white">
             <img 
-              src="/logo-gold.png" 
+              src={getLogoPath()} 
               alt="Vogue Prism Logo" 
               className="w-full h-full object-contain"
             />
