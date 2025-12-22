@@ -24,212 +24,173 @@ export interface BillData {
 }
 
 export class ThermalPrinterFormatter {
-  private paperWidth: number;
+  private W: number;
 
   constructor(settings: PrinterSettings) {
-    this.paperWidth = settings.paperWidth === '58mm' ? 32 : 48; // Characters per line
+    this.W = settings.paperWidth === '58mm' ? 32 : 48;
   }
 
-  private centerText(text: string): string {
-    const padding = Math.max(0, Math.floor((this.paperWidth - text.length) / 2));
-    return ' '.repeat(padding) + text;
+  private center(text: string): string {
+    const t = text.substring(0, this.W);
+    const pad = Math.floor((this.W - t.length) / 2);
+    return ' '.repeat(pad) + t;
   }
 
-  private leftRightText(left: string, right: string): string {
-    const totalLength = left.length + right.length;
-    if (totalLength >= this.paperWidth) {
-      return left.substring(0, this.paperWidth - right.length - 1) + ' ' + right;
-    }
-    const spaces = this.paperWidth - totalLength;
-    return left + ' '.repeat(spaces) + right;
+  private leftRight(left: string, right: string): string {
+    const maxLeft = this.W - right.length - 1;
+    const l = left.substring(0, maxLeft);
+    const space = this.W - l.length - right.length;
+    return l + ' '.repeat(Math.max(1, space)) + right;
   }
 
-  private line(char: string = '='): string {
-    return char.repeat(this.paperWidth);
+  private line(char: string = '-'): string {
+    return char.repeat(this.W);
   }
 
-  private formatCurrency(amount: number): string {
-    return `₹${amount.toFixed(2)}`;
+  private formatMoney(amount: number): string {
+    return 'Rs.' + amount.toFixed(2);
   }
 
-  public formatBill(billData: BillData): string {
+  public formatBill(data: BillData): string {
     const lines: string[] = [];
+    const W = this.W;
+
+    // NO empty lines at start - start directly with content
+    lines.push(this.line('='));
+    lines.push(this.center(data.storeName.toUpperCase()));
+    lines.push(this.line('='));
+
+    if (data.storeAddress) {
+      lines.push(this.center(data.storeAddress.replace(/\n/g, ', ').substring(0, W)));
+    }
+    if (data.phone) {
+      lines.push(this.center('Ph: ' + data.phone));
+    }
+    if (data.gstNumber) {
+      lines.push(this.center('GST: ' + data.gstNumber));
+    }
+
+    lines.push(this.line('-'));
+
+    // Bill info
+    const billNo = 'Bill: ' + data.billNumber;
+    const dateTime = data.date.substring(0, 17);
+    lines.push(this.leftRight(billNo, dateTime));
+
+    lines.push(this.line('-'));
+
+    // Column widths: Name | Qty(4) | Total(12)
+    const qtyW = 4;
+    const totalW = 12;
+    const nameW = W - qtyW - totalW;
 
     // Header
-    lines.push(this.line('='));
-    lines.push(this.centerText(billData.storeName.toUpperCase()));
-    lines.push(this.line('='));
-    
-    if (billData.storeAddress) {
-      const addressLines = billData.storeAddress.split('\n');
-      addressLines.forEach(line => {
-        if (line.trim()) {
-          lines.push(this.centerText(line.trim()));
-        }
-      });
-    }
-    
-    if (billData.phone) {
-      lines.push(this.centerText(`Ph: ${billData.phone}`));
-    }
-    
-    if (billData.gstNumber) {
-      lines.push(this.centerText(`GST: ${billData.gstNumber}`));
-    }
-    
+    lines.push('Item'.padEnd(nameW) + 'Qty'.padStart(qtyW) + 'Total'.padStart(totalW));
     lines.push(this.line('-'));
-    
-    // Bill details
-    lines.push(this.leftRightText(`Bill: ${billData.billNumber}`, billData.date));
-    lines.push(this.line('-'));
-    
-    // Items header
-    if (this.paperWidth >= 40) {
-      lines.push('Item                 Qty  Rate   Total');
-    } else {
-      lines.push('Item           Qty    Total');
-    }
-    lines.push(this.line('-'));
-    
+
     // Items
-    billData.items.forEach(item => {
-      const itemName = item.name.length > (this.paperWidth - 20) 
-        ? item.name.substring(0, this.paperWidth - 23) + '...'
-        : item.name;
-      
-      if (this.paperWidth >= 40) {
-        const qtyRate = `${item.quantity}  ${this.formatCurrency(item.unitPrice)}`;
-        const total = this.formatCurrency(item.totalPrice);
-        const itemLine = itemName.padEnd(20) + qtyRate.padEnd(12) + total.padStart(8);
-        lines.push(itemLine.substring(0, this.paperWidth));
-      } else {
-        const qty = `${item.quantity}`;
-        const total = this.formatCurrency(item.totalPrice);
-        const itemLine = itemName.padEnd(this.paperWidth - 12) + qty.padEnd(4) + total.padStart(8);
-        lines.push(itemLine.substring(0, this.paperWidth));
-      }
+    data.items.forEach(item => {
+      const name = item.name.length > nameW - 1 
+        ? item.name.substring(0, nameW - 2) + '..' 
+        : item.name.padEnd(nameW);
+      const qty = String(item.quantity).padStart(qtyW);
+      const total = this.formatMoney(item.totalPrice).padStart(totalW);
+      lines.push(name + qty + total);
     });
-    
+
     lines.push(this.line('-'));
-    
+
     // Totals
-    lines.push(this.leftRightText('Subtotal:', this.formatCurrency(billData.subtotal)));
-    
-    if (billData.discountPercent > 0) {
-      lines.push(this.leftRightText(
-        `Discount (${billData.discountPercent}%):`, 
-        `-${this.formatCurrency(billData.discountAmount)}`
-      ));
+    lines.push(this.leftRight('Subtotal:', this.formatMoney(data.subtotal)));
+
+    if (data.discountAmount > 0) {
+      lines.push(this.leftRight('Discount:', '-' + this.formatMoney(data.discountAmount)));
     }
-    
-    lines.push(this.line('-'));
-    lines.push(this.leftRightText('TOTAL:', this.formatCurrency(billData.total)));
-    lines.push(this.line('-'));
-    
-    // Payment details
-    lines.push(this.leftRightText('Payment:', billData.paymentMode.toUpperCase()));
-    
-    if (billData.paymentMode === 'mixed') {
-      if (billData.cashAmount && billData.cashAmount > 0) {
-        lines.push(this.leftRightText('Cash:', this.formatCurrency(billData.cashAmount)));
+
+    lines.push(this.line('='));
+    lines.push(this.leftRight('TOTAL:', this.formatMoney(data.total)));
+    lines.push(this.line('='));
+
+    // Payment
+    lines.push(this.leftRight('Payment:', data.paymentMode.toUpperCase()));
+
+    if (data.paymentMode === 'mixed') {
+      if (data.cashAmount && data.cashAmount > 0) {
+        lines.push(this.leftRight('  Cash:', this.formatMoney(data.cashAmount)));
       }
-      if (billData.upiAmount && billData.upiAmount > 0) {
-        lines.push(this.leftRightText('UPI:', this.formatCurrency(billData.upiAmount)));
+      if (data.upiAmount && data.upiAmount > 0) {
+        lines.push(this.leftRight('  UPI:', this.formatMoney(data.upiAmount)));
       }
-    } else if (billData.paymentMode === 'cash' && billData.changeAmount && billData.changeAmount > 0) {
-      lines.push(this.leftRightText('Paid:', this.formatCurrency(billData.total + billData.changeAmount)));
-      lines.push(this.leftRightText('Change:', this.formatCurrency(billData.changeAmount)));
+    } else if (data.paymentMode === 'cash' && data.changeAmount && data.changeAmount > 0) {
+      lines.push(this.leftRight('  Paid:', this.formatMoney(data.total + data.changeAmount)));
+      lines.push(this.leftRight('  Change:', this.formatMoney(data.changeAmount)));
     }
-    
+
     lines.push(this.line('='));
-    lines.push(this.centerText('Thank you for your business!'));
-    lines.push(this.centerText('Visit again!'));
+    lines.push(this.center('Thank you for your business!'));
+    lines.push(this.center('Visit again!'));
     lines.push(this.line('='));
-    
-    // Add some blank lines for paper cutting
+
+    // MORE space before cut so "Visit again!" is visible
     lines.push('');
     lines.push('');
     lines.push('');
-    
+    lines.push('');
+    lines.push('');
+    lines.push('');
+
     return lines.join('\n');
   }
 
   public formatTestReceipt(): string {
-    const testBill: BillData = {
+    return this.formatBill({
       billNumber: 'TEST-001',
       date: new Date().toLocaleString(),
-      storeName: 'VOGUE PRISM BILLING',
-      storeAddress: 'Test Address Line 1\nTest City, State - 123456',
+      storeName: 'VOGUE PRISM SHIRALA',
+      storeAddress: 'Test Address',
       phone: '+91 9876543210',
       gstNumber: '12ABCDE3456F7GH',
       items: [
-        {
-          name: 'Sample Product 1',
-          quantity: 2,
-          unitPrice: 100.00,
-          totalPrice: 200.00
-        },
-        {
-          name: 'Test Item with Long Name',
-          quantity: 1,
-          unitPrice: 150.50,
-          totalPrice: 150.50
-        }
+        { name: 'Sample Product', quantity: 2, unitPrice: 100, totalPrice: 200 },
+        { name: 'Test Item', quantity: 1, unitPrice: 150, totalPrice: 150 }
       ],
-      subtotal: 350.50,
-      discountPercent: 5,
-      discountAmount: 17.53,
-      total: 332.97,
-      paymentMode: 'cash',
-      changeAmount: 17.03
-    };
-
-    return this.formatBill(testBill);
+      subtotal: 350,
+      discountPercent: 0,
+      discountAmount: 0,
+      total: 350,
+      paymentMode: 'cash'
+    });
   }
 }
 
-// Utility function to print a bill
+// Print a bill
 export async function printBill(billData: BillData, printerName?: string): Promise<{ success: boolean; error?: string }> {
   try {
-    // Get printer settings
-    const printerSettings = await window.electronAPI.getPrinterSettings();
+    const settings = await window.electronAPI.getPrinterSettings();
+    const printer = printerName || settings.selectedPrinter;
     
-    // Check if printer is selected
-    const selectedPrinter = printerName || printerSettings.selectedPrinter;
-    if (!selectedPrinter) {
-      return { success: false, error: 'No printer selected. Please configure a printer in settings.' };
+    if (!printer) {
+      return { success: false, error: 'No printer selected' };
     }
+
+    const formatter = new ThermalPrinterFormatter(settings);
+    const content = formatter.formatBill(billData);
     
-    // Format the bill
-    const formatter = new ThermalPrinterFormatter(printerSettings);
-    const formattedBill = formatter.formatBill(billData);
-    
-    // Use testPrint handler which works for actual printing
-    const result = await window.electronAPI.testPrint(selectedPrinter, formattedBill);
-    
-    return result;
+    return await window.electronAPI.testPrint(printer, content);
   } catch (error) {
-    console.error('Error printing bill:', error);
-    return { success: false, error: `Print failed: ${error instanceof Error ? error.message : 'Unknown error'}` };
+    return { success: false, error: String(error) };
   }
 }
 
-// Utility function to print a test receipt
+// Print test receipt
 export async function printTestReceipt(printerName: string): Promise<{ success: boolean; error?: string }> {
   try {
-    // Get printer settings
-    const printerSettings = await window.electronAPI.getPrinterSettings();
+    const settings = await window.electronAPI.getPrinterSettings();
+    const formatter = new ThermalPrinterFormatter(settings);
+    const content = formatter.formatTestReceipt();
     
-    // Format test receipt
-    const formatter = new ThermalPrinterFormatter(printerSettings);
-    const testReceipt = formatter.formatTestReceipt();
-    
-    // Print
-    const result = await window.electronAPI.testPrint(printerName, testReceipt);
-    
-    return result;
+    return await window.electronAPI.testPrint(printerName, content);
   } catch (error) {
-    console.error('Error printing test receipt:', error);
-    return { success: false, error: `Test print failed: ${error}` };
+    return { success: false, error: String(error) };
   }
 }

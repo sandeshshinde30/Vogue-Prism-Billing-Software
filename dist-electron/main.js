@@ -1756,42 +1756,53 @@ function setupIpcHandlers() {
   });
   ipcMain.handle("printer:testPrint", async (_, printerName, customContent) => {
     try {
-      const testContent = customContent || `
-═══════════════════════════════════
-        VOGUE PRISM BILLING
-═══════════════════════════════════
-Test Print - ${(/* @__PURE__ */ new Date()).toLocaleString()}
+      let content = customContent || `================================================
+                  VOGUE PRISM
+================================================
+                Test Address
+              Ph: +91 9876543210
+             GST: 12ABCDE3456F7GH
+------------------------------------------------
+Bill: TEST-001                  ${(/* @__PURE__ */ new Date()).toLocaleDateString()}
+------------------------------------------------
+Item                             Qty   Total
+------------------------------------------------
+Sample Product                     2  Rs.200.00
+Test Item                          1  Rs.150.00
+------------------------------------------------
+Subtotal:                           Rs.350.00
+================================================
+TOTAL:                              Rs.350.00
+================================================
+Payment:                                CASH
+================================================
+         Thank you for your business!
+               Visit again!
+================================================
 
-Printer: ${printerName}
-Status: Connected ✓
 
-Sample Bill Receipt:
-───────────────────────────────────
-Item 1: Sample Product      ₹100.00
-Item 2: Test Item           ₹50.00
-                           ─────────
-Subtotal:                   ₹150.00
-Tax (18%):                   ₹27.00
-                           ─────────
-Total:                      ₹177.00
 
-Payment: Cash               ₹200.00
-Change:                      ₹23.00
-
-Thank you for your business!
-═══════════════════════════════════
-      `;
+`;
+      content = content.replace(/₹/g, "Rs.");
+      const cutCommand = Buffer.from([29, 86, 0]);
       const fs2 = await import("fs");
       const path2 = await import("path");
       const os = await import("os");
-      const tempFile = path2.join(os.tmpdir(), `test-print-${Date.now()}.txt`);
-      fs2.writeFileSync(tempFile, testContent);
-      await execAsync(`lp -d ${printerName} "${tempFile}"`);
-      fs2.unlinkSync(tempFile);
+      const tempFile = path2.join(os.tmpdir(), `print-${Date.now()}.bin`);
+      const contentBuffer = Buffer.from(content, "ascii");
+      const finalBuffer = Buffer.concat([contentBuffer, cutCommand]);
+      fs2.writeFileSync(tempFile, finalBuffer);
+      await execAsync(`lp -d "${printerName}" -o raw "${tempFile}"`);
+      setTimeout(() => {
+        try {
+          fs2.unlinkSync(tempFile);
+        } catch (e) {
+        }
+      }, 5e3);
       return { success: true };
     } catch (error) {
-      console.error("Test print error:", error);
-      return { success: false, error: `Test print failed: ${error}` };
+      console.error("Print error:", error);
+      return { success: false, error: `Print failed: ${error}` };
     }
   });
   ipcMain.handle("printer:print", async (_, content, printerName, options) => {

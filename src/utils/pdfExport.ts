@@ -98,9 +98,9 @@ export class PDFExporter {
                 <span>Subtotal</span>
                 <span>₹${billData.subtotal.toFixed(2)}</span>
               </div>
-              ${billData.discountPercent > 0 ? `
+              ${billData.discountAmount > 0 ? `
                 <div style="display: flex; justify-content: space-between; padding: 8px 0; color: #dc2626;">
-                  <span>Discount (${billData.discountPercent}%)</span>
+                  <span>Discount</span>
                   <span>-₹${billData.discountAmount.toFixed(2)}</span>
                 </div>
               ` : ''}
