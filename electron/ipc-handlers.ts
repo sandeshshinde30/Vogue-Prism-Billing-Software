@@ -775,12 +775,18 @@ Payment:                                CASH
       // Replace any remaining ₹ symbols with Rs.
       content = content.replace(/₹/g, 'Rs.');
       
-      // Add ESC/POS commands for better thermal printer compatibility
+      // Add comprehensive ESC/POS commands for POS80 thermal printer
       const escInit = Buffer.from([0x1B, 0x40]); // ESC @ - Initialize printer
+      const escWakeUp = Buffer.from([0x1B, 0x3D, 0x01]); // ESC = 1 - Select printer online
       const escAlign = Buffer.from([0x1B, 0x61, 0x00]); // ESC a 0 - Left align
       const escFont = Buffer.from([0x1B, 0x21, 0x00]); // ESC ! 0 - Normal font
-      const cutCommand = Buffer.from([0x1D, 0x56, 0x00]); // GS V 0 - Full cut
-      const feedLines = Buffer.from([0x0A, 0x0A, 0x0A]); // Line feeds before cut
+      const escLineSpacing = Buffer.from([0x1B, 0x33, 0x20]); // ESC 3 n - Set line spacing
+      const escCharSet = Buffer.from([0x1B, 0x52, 0x00]); // ESC R 0 - Select character set
+      
+      // Paper feed and cut commands
+      const feedLines = Buffer.from([0x0A, 0x0A, 0x0A, 0x0A]); // Multiple line feeds
+      const partialCut = Buffer.from([0x1D, 0x56, 0x01]); // GS V 1 - Partial cut (more compatible)
+      const fullCut = Buffer.from([0x1D, 0x56, 0x00]); // GS V 0 - Full cut
       
       // Create temporary file for printing
       const fs = await import('fs');
@@ -789,9 +795,19 @@ Payment:                                CASH
       
       const tempFile = path.join(os.tmpdir(), `print-${Date.now()}.txt`);
       
-      // Combine all buffers: init + align + font + content + feeds + cut
+      // Combine all buffers with proper initialization sequence
       const contentBuffer = Buffer.from(content, 'ascii');
-      const finalBuffer = Buffer.concat([escInit, escAlign, escFont, contentBuffer, feedLines, cutCommand]);
+      const finalBuffer = Buffer.concat([
+        escInit,        // Initialize printer
+        escWakeUp,      // Wake up printer
+        escAlign,       // Set alignment
+        escFont,        // Set font
+        escLineSpacing, // Set line spacing
+        escCharSet,     // Set character set
+        contentBuffer,  // Receipt content
+        feedLines,      // Feed paper
+        partialCut      // Cut paper (partial cut is more reliable)
+      ]);
       fs.writeFileSync(tempFile, finalBuffer);
       
       if (isWindows) {
@@ -807,8 +823,30 @@ Payment:                                CASH
           
           if (portName && portName !== 'UNKNOWN' && (portName.startsWith('USB') || portName.startsWith('COM'))) {
             console.log(`Attempting direct port copy to: ${portName}`);
-            await execAsync(`copy /b "${tempFile}" "${portName}"`);
-            console.log('✓ Successfully printed via direct port copy');
+            try {
+              await execAsync(`copy /b "${tempFile}" "${portName}"`);
+              console.log('✓ Successfully printed via direct port copy');
+              
+              // Wait a moment and check if we need to send additional wake-up commands
+              setTimeout(async () => {
+                try {
+                  // Send a simple wake-up command to ensure printer responds
+                  const wakeUpFile = path.join(os.tmpdir(), `wakeup-${Date.now()}.txt`);
+                  const wakeUpBuffer = Buffer.from([0x1B, 0x40, 0x0A]); // ESC @ + LF
+                  fs.writeFileSync(wakeUpFile, wakeUpBuffer);
+                  await execAsync(`copy /b "${wakeUpFile}" "${portName}"`);
+                  setTimeout(() => {
+                    try { fs.unlinkSync(wakeUpFile); } catch (e) { /* ignore */ }
+                  }, 1000);
+                } catch (e) {
+                  console.log('Wake-up command failed (this is normal)');
+                }
+              }, 500);
+              
+            } catch (portError) {
+              console.log('Direct port copy failed, trying PowerShell method...');
+              throw portError;
+            }
           } else {
             // Method 2: Use PowerShell with proper raw printing
             console.log('Port copy not available, using PowerShell raw print method...');
@@ -942,6 +980,73 @@ try {
     } catch (error) {
       console.error('Print error:', error);
       return { success: false, error: `Print failed: ${error}` };
+    }
+  });
+
+  // Simple debug test - sends just plain text without ESC/POS commands
+  ipcMain.handle('printer:debugTest', async (_, printerName: string) => {
+    try {
+      const isWindows = process.platform === 'win32';
+      
+      if (!isWindows) {
+        return { success: false, error: 'Debug test is Windows-only' };
+      }
+
+      // Create simple text content
+      const simpleText = `
+SIMPLE PRINTER TEST
+==================
+Time: ${new Date().toLocaleString()}
+Printer: ${printerName}
+==================
+If you see this, basic printing works!
+
+
+`;
+
+      // Create temporary file for printing
+      const fs = await import('fs');
+      const path = await import('path');
+      const os = await import('os');
+      
+      const tempFile = path.join(os.tmpdir(), `debug-${Date.now()}.txt`);
+      
+      // Write just plain text (no ESC/POS commands)
+      fs.writeFileSync(tempFile, simpleText, 'ascii');
+      
+      const escapedPrinter = printerName.replace(/'/g, "''");
+      
+      try {
+        // Get printer port
+        const { stdout: portInfo } = await execAsync(`powershell -Command "try { (Get-Printer -Name '${escapedPrinter}').PortName } catch { 'UNKNOWN' }"`);
+        const portName = portInfo.trim();
+        
+        console.log(`🔍 DEBUG TEST - Printer: ${printerName}, Port: ${portName}`);
+        
+        if (portName && portName !== 'UNKNOWN' && (portName.startsWith('USB') || portName.startsWith('COM'))) {
+          console.log(`🔍 Sending plain text to: ${portName}`);
+          await execAsync(`copy /b "${tempFile}" "${portName}"`);
+          console.log('🔍 Plain text sent successfully');
+        } else {
+          // Try Windows print command as fallback
+          console.log('🔍 Trying Windows print command...');
+          await execAsync(`print /D:"${printerName}" "${tempFile}"`);
+          console.log('🔍 Windows print command executed');
+        }
+        
+        // Clean up
+        setTimeout(() => {
+          try { fs.unlinkSync(tempFile); } catch (e) { /* ignore */ }
+        }, 2000);
+        
+        return { success: true, message: 'Debug test sent - check if printer outputs plain text' };
+      } catch (error) {
+        console.error('🔍 DEBUG TEST FAILED:', error);
+        return { success: false, error: `Debug test failed: ${error}` };
+      }
+    } catch (error) {
+      console.error('Debug test error:', error);
+      return { success: false, error: `Debug test error: ${error}` };
     }
   });
 

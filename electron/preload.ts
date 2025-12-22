@@ -121,6 +121,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getPrinters: () => ipcRenderer.invoke('printer:getList'),
   refreshPrinters: () => ipcRenderer.invoke('printer:refresh'),
   testPrint: (printerName: string, content?: string) => ipcRenderer.invoke('printer:testPrint', printerName, content),
+  debugTest: (printerName: string) => ipcRenderer.invoke('printer:debugTest', printerName),
   print: (content: string, printerName?: string, options?: any) => ipcRenderer.invoke('printer:print', content, printerName, options),
   getPrinterStatus: (printerName: string) => ipcRenderer.invoke('printer:getStatus', printerName),
   setPrinterSettings: (settings: any) => ipcRenderer.invoke('printer:setSettings', settings),

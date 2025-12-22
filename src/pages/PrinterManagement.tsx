@@ -87,6 +87,22 @@ export function PrinterManagement() {
     setTestingPrinter(null);
   };
 
+  const debugTest = async (printerName: string) => {
+    setTestingPrinter(printerName);
+    try {
+      const result = await window.electronAPI.debugTest(printerName);
+      
+      if (result.success) {
+        toast.success(`Debug test sent to ${printerName} - Check if plain text prints`);
+      } else {
+        toast.error(result.error || 'Debug test failed');
+      }
+    } catch (error) {
+      toast.error('Error sending debug test');
+    }
+    setTestingPrinter(null);
+  };
+
   const savePrinterSettings = async () => {
     try {
       const result = await window.electronAPI.setPrinterSettings(printerSettings);
@@ -276,6 +292,17 @@ export function PrinterManagement() {
                       >
                         <TestTube className="w-4 h-4" />
                         {testingPrinter === printer.name ? 'Testing...' : 'Test Print'}
+                      </Button>
+                      
+                      <Button
+                        onClick={() => debugTest(printer.name)}
+                        disabled={testingPrinter === printer.name}
+                        variant="secondary"
+                        size="sm"
+                        className="flex items-center gap-2"
+                      >
+                        <TestTube className="w-4 h-4" />
+                        {testingPrinter === printer.name ? 'Testing...' : 'Debug Test'}
                       </Button>
                       
                       <Button
