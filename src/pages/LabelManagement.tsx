@@ -1,12 +1,11 @@
 import { useEffect, useState, useRef } from "react";
-import { Printer, Search, RefreshCw, Download, Upload, Settings as SettingsIcon, Plus, Minus, Tag, X } from "lucide-react";
+import { Printer, Search, RefreshCw, Download, Upload, Settings as SettingsIcon, Plus, Minus, Tag, X, Package } from "lucide-react";
 import { Card, Button, Input, Select } from "../components/common";
 import { Product, PrinterInfo } from "../types";
 import { LabelData, LabelSettings, DEFAULT_LABEL_TEMPLATE } from "../types/label";
 import { exportTemplate, importTemplate } from "../utils/labelPrinter";
 import toast from "react-hot-toast";
 
-// Extended label data with quantity for copies
 interface LabelDataWithQty extends LabelData {
   quantity: number;
 }
@@ -24,7 +23,7 @@ export function openLabelPreviewForProduct(product: Product, printerName: string
 
 function openLabelPreviewWindow(labels: LabelDataWithQty[], printerName: string) {
   const width = 550;
-  const height = 620;
+  const height = 580;
   const left = (window.screen.width - width) / 2;
   const top = (window.screen.height - height) / 2;
   const previewWindow = window.open("", "LabelPreview", 
@@ -41,228 +40,137 @@ function generateLabelPreviewHTML(labels: LabelDataWithQty[], printerName: strin
   const totalLabels = labels.reduce((sum, l) => sum + l.quantity, 0);
   
   const labelsListHtml = labels.map((l) => `
-    <div class="label-item">
-      <span class="label-name">${l.name}</span>
-      <span class="label-qty">×${l.quantity}</span>
-      <span class="label-price">₹${l.price}</span>
+    <div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid #f1f5f9;font-size:12px">
+      <span style="flex:1;color:#475569;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${l.name}</span>
+      <span style="color:#059669;font-weight:600;font-size:11px;background:#ecfdf5;padding:2px 6px;border-radius:4px">×${l.quantity}</span>
+      <span style="color:#1e293b;font-weight:500">₹${l.price}</span>
     </div>
   `).join('');
 
-  return `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <title>Print Labels</title>
-  <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"><\/script>
-  <style>
-    *{margin:0;padding:0;box-sizing:border-box}
-    body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#f8fafc;min-height:100vh;padding:24px}
-    .container{max-width:500px;margin:0 auto}
-    .header{text-align:center;margin-bottom:20px}
-    .header h1{font-size:18px;font-weight:600;color:#1e293b;margin-bottom:8px}
-    .header-info{display:flex;justify-content:center;align-items:center;gap:12px;font-size:13px;color:#64748b}
-    .total-badge{background:linear-gradient(135deg,#059669 0%,#10b981 100%);color:#fff;padding:4px 12px;border-radius:20px;font-weight:600}
-    .preview-card{background:#fff;border-radius:12px;box-shadow:0 2px 12px rgba(0,0,0,0.08);overflow:hidden;margin-bottom:16px}
-    .preview-header{background:#f1f5f9;padding:10px 16px;border-bottom:1px solid #e2e8f0;display:flex;justify-content:space-between;align-items:center}
-    .preview-label{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:#64748b}
-    .preview-size{font-size:10px;color:#94a3b8}
-    .preview-body{padding:20px;display:flex;justify-content:center}
-    .label-preview{background:#fff;border:2px solid #e2e8f0;border-radius:6px;padding:10px 14px;width:240px;display:flex;gap:12px;align-items:center}
-    .label-logo{width:55px;flex-shrink:0}
-    .label-logo img{width:100%;height:auto}
-    .label-logo-placeholder{width:55px;height:40px;background:#f1f5f9;border-radius:4px;display:flex;align-items:center;justify-content:center;color:#94a3b8;font-size:8px}
-    .label-content{flex:1;text-align:center}
-    .barcode-container svg{max-width:100%}
-    .barcode-text{font-size:8px;color:#64748b;font-family:monospace;margin-top:2px}
-    .label-price{font-size:18px;font-weight:700;color:#0f172a;margin-top:4px}
-    .info-cards{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px}
-    .info-card{background:#fff;border-radius:10px;box-shadow:0 1px 4px rgba(0,0,0,0.06);padding:12px}
-    .info-card-label{font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:#94a3b8;margin-bottom:4px}
-    .info-card-value{font-size:12px;color:#1e293b;font-weight:500}
-    .products-card{background:#fff;border-radius:10px;box-shadow:0 1px 4px rgba(0,0,0,0.06);padding:14px;margin-bottom:16px}
-    .products-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
-    .products-title{font-size:11px;font-weight:600;color:#1e293b}
-    .products-count{font-size:10px;color:#64748b}
-    .labels-list{max-height:90px;overflow-y:auto}
-    .label-item{display:flex;align-items:center;gap:6px;padding:5px 0;border-bottom:1px solid #f1f5f9;font-size:11px}
-    .label-item:last-child{border-bottom:none}
-    .label-name{flex:1;color:#475569;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-    .label-qty{color:#059669;font-weight:600;font-size:10px;background:#ecfdf5;padding:2px 5px;border-radius:4px}
-    .label-price{color:#1e293b;font-weight:500}
-    .actions{display:flex;gap:10px}
-    .btn{flex:1;padding:12px 16px;border-radius:10px;font-size:13px;font-weight:600;cursor:pointer;border:none;display:flex;align-items:center;justify-content:center;gap:6px;transition:all 0.2s}
-    .btn-primary{background:linear-gradient(135deg,#059669 0%,#10b981 100%);color:#fff;box-shadow:0 4px 12px rgba(16,185,129,0.3)}
-    .btn-primary:hover{transform:translateY(-1px);box-shadow:0 6px 16px rgba(16,185,129,0.4)}
-    .btn-primary:disabled{opacity:0.6;cursor:not-allowed;transform:none}
-    .btn-secondary{background:#f1f5f9;color:#475569}
-    .btn-secondary:hover{background:#e2e8f0}
-    .status-toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);padding:12px 20px;border-radius:10px;font-size:13px;font-weight:500;display:none;align-items:center;gap:8px;z-index:1000}
-    .status-toast.success{background:#059669;color:#fff;display:flex}
-    .status-toast.error{background:#dc2626;color:#fff;display:flex}
-  </style>
-</head>
-<body>
-  <div class="container">
-    <div class="header">
-      <h1>Print Labels</h1>
-      <div class="header-info">
-        <span>${labels.length} product(s)</span>
-        <span class="total-badge">${totalLabels} labels</span>
-      </div>
-    </div>
-    
-    <div class="preview-card">
-      <div class="preview-header">
-        <span class="preview-label">Label Preview</span>
-        <span class="preview-size">50mm × 25mm</span>
-      </div>
-      <div class="preview-body">
-        <div class="label-preview">
-          <div class="label-logo">
-            <img src="label-logo-up.png" alt="Logo" onerror="this.outerHTML='<div class=\\'label-logo-placeholder\\'>LOGO</div>'"/>
-          </div>
-          <div class="label-content">
-            <div class="barcode-container"><svg id="barcode"></svg></div>
-            <div class="barcode-text">${barcodeText}</div>
-            <div class="label-price">₹${label.price}</div>
-          </div>
-        </div>
-      </div>
-    </div>
-    
-    <div class="info-cards">
-      <div class="info-card">
-        <div class="info-card-label">Printer</div>
-        <div class="info-card-value">${printerName || 'Default'}</div>
-      </div>
-      <div class="info-card">
-        <div class="info-card-label">Label Size</div>
-        <div class="info-card-value">50mm × 25mm</div>
-      </div>
-    </div>
-    
-    <div class="products-card">
-      <div class="products-header">
-        <span class="products-title">Products</span>
-        <span class="products-count">${labels.length} items</span>
-      </div>
-      <div class="labels-list">${labelsListHtml}</div>
-    </div>
-    
-    <div class="actions">
-      <button class="btn btn-secondary" onclick="window.close()">Cancel</button>
-      <button id="print-btn" class="btn btn-primary" onclick="handlePrint()">
-        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect width="12" height="8" x="6" y="14" rx="1"/></svg>
-        <span id="print-btn-text">Print ${totalLabels} Labels</span>
-      </button>
-    </div>
-  </div>
-  
-  <div id="status-toast" class="status-toast"></div>
-  
-  <script>
-    const labels = ${JSON.stringify(labels)};
-    const printerName = '${printerName}';
-    
-    JsBarcode("#barcode", "${barcodeText}", {format:"CODE128", width:1.5, height:30, displayValue:false, margin:0});
-    
-    function showToast(msg, type) {
-      const t = document.getElementById('status-toast');
-      t.textContent = msg;
-      t.className = 'status-toast ' + type;
-      setTimeout(() => { t.className = 'status-toast'; }, 3000);
-    }
-    
-    async function handlePrint() {
-      const btn = document.getElementById('print-btn');
-      const txt = document.getElementById('print-btn-text');
-      btn.disabled = true;
-      txt.textContent = 'Printing...';
-      
-      try {
-        if (window.opener && window.opener.handleLabelPrint) {
-          const result = await window.opener.handleLabelPrint(labels, printerName);
-          if (result.success) {
-            showToast('Labels sent to printer!', 'success');
-            setTimeout(() => window.close(), 1500);
-          } else {
-            showToast(result.error || 'Print failed', 'error');
-          }
-        } else {
-          showToast('Print handler not available', 'error');
-        }
-      } catch (e) {
-        showToast('Error: ' + e.message, 'error');
-      }
-      
-      btn.disabled = false;
-      txt.textContent = 'Print ${totalLabels} Labels';
-    }
-  <\/script>
-</body>
-</html>`;
+  return generatePreviewHTMLContent(label, barcodeText, totalLabels, labelsListHtml, labels, printerName);
 }
 
-// Generate ZPL commands for Honeywell IH-210 label printer (50mm x 25mm)
+function generatePreviewHTMLContent(label: LabelDataWithQty, barcodeText: string, totalLabels: number, labelsListHtml: string, labels: LabelDataWithQty[], printerName: string): string {
+  return `<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><title>Print Labels</title>
+<script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"><\/script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#f8fafc;min-height:100vh;padding:20px}
+.container{max-width:510px;margin:0 auto}
+.header{text-align:center;margin-bottom:16px}
+.header h1{font-size:16px;font-weight:600;color:#1e293b;margin-bottom:6px}
+.header-info{display:flex;justify-content:center;align-items:center;gap:10px;font-size:12px;color:#64748b}
+.total-badge{background:linear-gradient(135deg,#059669,#10b981);color:#fff;padding:3px 10px;border-radius:16px;font-weight:600;font-size:11px}
+.preview-card{background:#fff;border-radius:10px;box-shadow:0 2px 8px rgba(0,0,0,0.06);overflow:hidden;margin-bottom:12px}
+.preview-header{background:#f1f5f9;padding:8px 14px;border-bottom:1px solid #e2e8f0;display:flex;justify-content:space-between;align-items:center}
+.preview-label{font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:#64748b}
+.preview-body{padding:16px;display:flex;justify-content:center}
+.label-preview{background:#fff;border:1.5px solid #e2e8f0;border-radius:4px;padding:8px 10px;width:200px;height:100px;display:flex;gap:8px;align-items:center}
+.label-logo{width:45px;flex-shrink:0;display:flex;flex-direction:column;gap:4px}
+.label-logo img{width:100%;height:auto}
+.label-content{flex:1;text-align:center}
+.barcode-container svg{max-width:100%;height:28px!important}
+.barcode-text{font-size:7px;color:#64748b;font-family:monospace;margin-top:1px}
+.label-price{font-size:14px;font-weight:700;color:#0f172a;margin-top:2px}
+.info-row{display:flex;gap:8px;margin-bottom:12px}
+.info-card{flex:1;background:#fff;border-radius:8px;box-shadow:0 1px 3px rgba(0,0,0,0.05);padding:10px}
+.info-card-label{font-size:8px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:#94a3b8;margin-bottom:3px}
+.info-card-value{font-size:11px;color:#1e293b;font-weight:500}
+.products-card{background:#fff;border-radius:8px;box-shadow:0 1px 3px rgba(0,0,0,0.05);padding:12px;margin-bottom:12px;max-height:150px;overflow-y:auto}
+.products-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
+.products-title{font-size:10px;font-weight:600;color:#1e293b}
+.products-count{font-size:9px;color:#64748b}
+.actions{display:flex;gap:8px}
+.btn{flex:1;padding:10px 14px;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;border:none;display:flex;align-items:center;justify-content:center;gap:6px;transition:all 0.2s}
+.btn-primary{background:linear-gradient(135deg,#059669,#10b981);color:#fff;box-shadow:0 3px 10px rgba(16,185,129,0.25)}
+.btn-primary:hover{transform:translateY(-1px);box-shadow:0 5px 14px rgba(16,185,129,0.35)}
+.btn-primary:disabled{opacity:0.6;cursor:not-allowed;transform:none}
+.btn-secondary{background:#f1f5f9;color:#475569}
+.btn-secondary:hover{background:#e2e8f0}
+.status-toast{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);padding:10px 18px;border-radius:8px;font-size:12px;font-weight:500;display:none;z-index:1000}
+.status-toast.success{background:#059669;color:#fff;display:flex}
+.status-toast.error{background:#dc2626;color:#fff;display:flex}
+</style></head>
+<body>
+<div class="container">
+<div class="header"><h1>Print Labels</h1><div class="header-info"><span>${labels.length} product(s)</span><span class="total-badge">${totalLabels} labels</span></div></div>
+<div class="preview-card">
+<div class="preview-header"><span class="preview-label">Label Preview</span><span class="preview-label">50×25mm</span></div>
+<div class="preview-body">
+<div class="label-preview">
+<div class="label-logo">
+<img src="label-logo-up.png" alt="" onerror="this.style.display='none'"/>
+<img src="label-logo-down.png" alt="" onerror="this.style.display='none'"/>
+</div>
+<div class="label-content">
+<div class="barcode-container"><svg id="barcode"></svg></div>
+<div class="barcode-text">${barcodeText}</div>
+<div class="label-price">₹${label.price}</div>
+</div></div></div></div>
+<div class="info-row">
+<div class="info-card"><div class="info-card-label">Printer</div><div class="info-card-value">${printerName || 'Default'}</div></div>
+<div class="info-card"><div class="info-card-label">Size</div><div class="info-card-value">50mm × 25mm</div></div>
+</div>
+<div class="products-card"><div class="products-header"><span class="products-title">Products</span><span class="products-count">${labels.length} items</span></div>${labelsListHtml}</div>
+<div class="actions">
+<button class="btn btn-secondary" onclick="window.close()">Cancel</button>
+<button id="print-btn" class="btn btn-primary" onclick="handlePrint()">
+<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect width="12" height="8" x="6" y="14" rx="1"/></svg>
+<span id="print-btn-text">Print ${totalLabels} Labels</span>
+</button></div></div>
+<div id="status-toast" class="status-toast"></div>
+<script>
+const labels=${JSON.stringify(labels)};const printerName='${printerName}';
+JsBarcode("#barcode","${barcodeText}",{format:"CODE128",width:1,height:28,displayValue:false,margin:0});
+function showToast(m,t){const e=document.getElementById('status-toast');e.textContent=m;e.className='status-toast '+t;setTimeout(()=>e.className='status-toast',3000)}
+async function handlePrint(){const b=document.getElementById('print-btn'),t=document.getElementById('print-btn-text');b.disabled=true;t.textContent='Printing...';
+try{if(window.opener&&window.opener.handleLabelPrint){const r=await window.opener.handleLabelPrint(labels,printerName);if(r.success){showToast('Labels sent!','success');setTimeout(()=>window.close(),1500)}else showToast(r.error||'Failed','error')}else showToast('Handler not available','error')}catch(e){showToast('Error: '+e.message,'error')}
+b.disabled=false;t.textContent='Print ${totalLabels} Labels'}
+<\/script></body></html>`;
+}
+
+// Generate TSPL commands for label printer (Honeywell IH-210 compatible)
+function generateTSPLContent(label: LabelData): string {
+  const barcodeText = label.barcode || label.name.toLowerCase().replace(/\s+/g, "") + (label.size || "");
+  const price = `Rs.${label.price}`;
+  
+  let tspl = 'SIZE 50 mm, 25 mm\n';
+  tspl += 'GAP 2 mm, 0 mm\n';
+  tspl += 'DIRECTION 1\n';
+  tspl += 'CLS\n';
+  tspl += `BARCODE 130,15,"128",45,0,0,2,3,"${barcodeText}"\n`;
+  tspl += `TEXT 130,65,"1",0,1,1,"${barcodeText}"\n`;
+  tspl += `TEXT 130,82,"3",0,1,1,"${price}"\n`;
+  tspl += 'PRINT 1,1\n';
+  return tspl;
+}
+
+// Generate ESC/POS for thermal printers
+function generateESCPOSWithGraphics(label: LabelData): string {
+  const barcodeText = label.barcode || label.name.toLowerCase().replace(/\s+/g, "") + (label.size || "");
+  const price = `Rs.${label.price}`;
+  
+  let cmd = '\x1B\x40\x1B\x61\x01';
+  cmd += '\x1D\x68\x28\x1D\x77\x01\x1D\x48\x00';
+  cmd += '\x1D\x6B\x49' + String.fromCharCode(barcodeText.length + 2) + '\x7B\x42' + barcodeText;
+  cmd += '\x0A\x1B\x21\x00' + barcodeText + '\x0A';
+  cmd += '\x1B\x21\x30' + price + '\x0A\x1B\x21\x00';
+  cmd += '\x0A\x0A\x1D\x56\x01';
+  return cmd;
+}
+
+// Generate ZPL for 50x25mm label
 function generateZPLContent(label: LabelData): string {
   const barcodeText = label.barcode || label.name.toLowerCase().replace(/\s+/g, "") + (label.size || "");
   const price = `Rs.${label.price}`;
   
-  // ZPL commands for 50mm x 25mm label (at 203 DPI: 406 x 203 dots)
-  let zpl = '^XA\n';
-  zpl += '^PW406\n';  // Print width 50mm
-  zpl += '^LL203\n';  // Label length 25mm
-  zpl += '^MD15\n';   // Print darkness
-  
-  // Download and print logo (if available) - positioned at left
-  // Note: Logo needs to be pre-loaded to printer memory for ZPL
-  // ^XGE:LOGO.GRF,1,1^FS would print stored graphic
-  
-  // Barcode - positioned at x=140, y=15
-  zpl += '^FO140,15\n';
-  zpl += '^BY2\n';  // Barcode module width
-  zpl += '^BCN,50,N,N,N\n';  // Code 128, 50 dots height
-  zpl += `^FD${barcodeText}^FS\n`;
-  
-  // Barcode text below barcode
-  zpl += '^FO140,70\n';
-  zpl += '^A0N,18,18\n';
-  zpl += `^FD${barcodeText}^FS\n`;
-  
-  // Price - larger font
-  zpl += '^FO140,95\n';
-  zpl += '^A0N,50,50\n';
-  zpl += `^FD${price}^FS\n`;
-  
+  let zpl = '^XA^PW406^LL203^MD10\n';
+  zpl += '^FO130,10^BY1^BCN,40,N,N,N^FD' + barcodeText + '^FS\n';
+  zpl += '^FO130,55^A0N,16,16^FD' + barcodeText + '^FS\n';
+  zpl += '^FO130,75^A0N,45,45^FD' + price + '^FS\n';
   zpl += '^XZ\n';
   return zpl;
-}
-
-// Generate ESC/POS content for thermal label printer
-function generateLabelContent(label: LabelData): string {
-  const barcodeText = label.barcode || label.name.toLowerCase().replace(/\s+/g, "") + (label.size || "");
-  const price = `Rs.${label.price}`;
-  
-  let content = '\x1B\x40';  // Initialize
-  content += '\x1D\x7C\x08'; // Print density
-  content += '\x1B\x61\x01'; // Center
-  
-  // Barcode
-  content += '\x1D\x68\x40'; // Height 64 dots
-  content += '\x1D\x77\x02'; // Width 2
-  content += '\x1D\x6B\x49'; // CODE128
-  content += String.fromCharCode(barcodeText.length + 2);
-  content += '\x7B\x42' + barcodeText;
-  
-  content += '\x0A';
-  content += '\x1B\x21\x00' + barcodeText + '\x0A';
-  
-  // Price
-  content += '\x1B\x21\x30\x1B\x45\x01' + price + '\x0A';
-  content += '\x1B\x45\x00\x1B\x21\x00';
-  
-  content += '\x0A\x0A\x1D\x56\x01';  // Feed and cut
-  return content;
 }
 
 export function LabelManagement() {
@@ -295,13 +203,30 @@ export function LabelManagement() {
     try {
       for (const label of labels) {
         for (let i = 0; i < label.quantity; i++) {
-          const zplContent = generateZPLContent(label);
-          const result = await window.electronAPI.printLabel(zplContent, printerName);
+          // Use HTML-based printing with logos via printLabelWithImage
+          const result = await window.electronAPI.printLabelWithImage(
+            label.barcode || label.name.toLowerCase().replace(/\s+/g, "") + (label.size || ""),
+            label.price,
+            printerName
+          );
+          
           if (!result.success) {
-            const escContent = generateLabelContent(label);
-            const escResult = await window.electronAPI.printLabel(escContent, printerName);
-            if (!escResult.success) {
-              return { success: false, error: escResult.error || "Print failed" };
+            // Fallback to raw printing without logos
+            const tsplContent = generateTSPLContent(label);
+            let rawResult = await window.electronAPI.printLabel(tsplContent, printerName);
+            
+            if (!rawResult.success) {
+              const zplContent = generateZPLContent(label);
+              rawResult = await window.electronAPI.printLabel(zplContent, printerName);
+            }
+            
+            if (!rawResult.success) {
+              const escContent = generateESCPOSWithGraphics(label);
+              rawResult = await window.electronAPI.printLabel(escContent, printerName);
+            }
+            
+            if (!rawResult.success) {
+              return { success: false, error: rawResult.error || "Print failed" };
             }
           }
         }
@@ -343,9 +268,9 @@ export function LabelManagement() {
   const addToSelection = (product: Product) => {
     const existing = selectedProducts.find(p => p.product.id === product.id);
     if (!existing) {
-      // Use stock quantity as default copies
       const qty = product.stock && product.stock > 0 ? product.stock : 1;
       setSelectedProducts([...selectedProducts, { product, quantity: qty }]);
+      toast.success(`Added ${product.name} (${qty} labels)`);
     }
   };
 
@@ -362,12 +287,11 @@ export function LabelManagement() {
   };
 
   const clearSelection = () => setSelectedProducts([]);
-
   const totalLabels = selectedProducts.reduce((sum, p) => sum + p.quantity, 0);
 
   const previewLabels = () => {
     if (selectedProducts.length === 0) {
-      toast.error("Please select products to preview");
+      toast.error("Please select products");
       return;
     }
     const labels: LabelDataWithQty[] = selectedProducts.map(p => ({
@@ -408,95 +332,220 @@ export function LabelManagement() {
   };
 
   return (
-    <div className="main-content space-y-6">
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900">Label Management</h1>
-          <p className="text-gray-600 mt-1">Print barcode labels for your products</p>
-        </div>
-        <div className="flex items-center gap-3">
-          <Button onClick={handleExportTemplate} variant="secondary" className="flex items-center gap-2">
-            <Download className="w-4 h-4" />Export Template
-          </Button>
-          <input type="file" ref={fileInputRef} onChange={handleImportTemplate} accept=".json" className="hidden" />
-          <Button onClick={() => fileInputRef.current?.click()} variant="secondary" className="flex items-center gap-2">
-            <Upload className="w-4 h-4" />Import Template
-          </Button>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 space-y-4">
-          <Card className="p-4">
-            <div className="flex items-center gap-4 mb-4">
-              <div className="relative flex-1">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
-                <Input placeholder="Search products..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="pl-10" />
+    <div className="h-full flex gap-6" style={{ height: 'calc(100vh - 120px)', display: 'flex', gap: '24px' }}>
+      {/* Left Panel - Products */}
+      <div className="flex-1 flex flex-col min-w-0" style={{ flex: '1', display: 'flex', flexDirection: 'column', minWidth: '0' }}>
+        <Card padding="none">
+          <div className="h-14 px-6 flex items-center justify-between border-b border-gray-100" style={{ height: '56px', padding: '0 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #f3f4f6' }}>
+            <div className="flex items-center gap-3" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <div className="w-8 h-8 bg-blue-500 rounded-lg flex items-center justify-center" style={{ width: '32px', height: '32px', backgroundColor: '#3b82f6', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Tag size={16} className="text-white" />
               </div>
-              <Button onClick={loadProducts} variant="secondary" className="flex items-center gap-2">
-                <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />Refresh
+              <div>
+                <h2 className="text-sm font-semibold text-gray-800" style={{ fontSize: '14px', fontWeight: '600', color: '#1f2937' }}>Label Printing</h2>
+                <p className="text-xs text-gray-500" style={{ fontSize: '12px', color: '#6b7280' }}>Select products to print labels</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button onClick={handleExportTemplate} variant="secondary" size="sm" className="flex items-center gap-1" style={{ fontSize: '11px', padding: '6px 10px' }}>
+                <Download className="w-3 h-3" />Export
+              </Button>
+              <input type="file" ref={fileInputRef} onChange={handleImportTemplate} accept=".json" className="hidden" />
+              <Button onClick={() => fileInputRef.current?.click()} variant="secondary" size="sm" className="flex items-center gap-1" style={{ fontSize: '11px', padding: '6px 10px' }}>
+                <Upload className="w-3 h-3" />Import
               </Button>
             </div>
-            <div className="max-h-96 overflow-y-auto">
+          </div>
+          
+          <div className="p-4" style={{ padding: '16px' }}>
+            <div className="flex items-center gap-3 mb-4" style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
+              <div className="relative flex-1" style={{ position: 'relative', flex: '1' }}>
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#9ca3af' }} />
+                <Input placeholder="Search products..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="pl-9" style={{ paddingLeft: '36px' }} />
+              </div>
+              <Button onClick={loadProducts} variant="secondary" size="sm" className="flex items-center gap-1">
+                <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
+              </Button>
+            </div>
+            
+            <div className="overflow-y-auto" style={{ height: 'calc(100vh - 280px)', overflowY: 'auto' }}>
               {loading ? (
-                <div className="text-center py-8"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div></div>
+                <div className="h-full flex items-center justify-center text-gray-400" style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <div style={{ textAlign: 'center' }}>
+                    <div style={{ width: '32px', height: '32px', border: '3px solid #f1f5f9', borderTop: '3px solid #3b82f6', borderRadius: '50%', animation: 'spin 1s linear infinite', margin: '0 auto 8px' }} />
+                    <span style={{ fontSize: '14px' }}>Loading...</span>
+                  </div>
+                </div>
               ) : filteredProducts.length === 0 ? (
-                <div className="text-center py-8 text-gray-500">No products found</div>
+                <div className="h-full flex flex-col items-center justify-center text-gray-400" style={{ height: '200px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+                  <Package size={40} style={{ marginBottom: '8px', opacity: '0.5' }} />
+                  <p style={{ fontSize: '14px' }}>No products found</p>
+                </div>
               ) : (
-                <div className="space-y-2">
-                  {filteredProducts.map(product => (
-                    <div key={product.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 cursor-pointer" onClick={() => addToSelection(product)}>
-                      <div>
-                        <div className="font-medium text-gray-900">{product.name}</div>
-                        <div className="text-sm text-gray-500">{product.barcode || "No barcode"} • ₹{product.price}{product.size && ` • ${product.size}`} • Stock: {product.stock || 0}</div>
-                      </div>
-                      <Button size="sm" variant="secondary" className="flex items-center gap-1"><Plus className="w-4 h-4" />Add</Button>
-                    </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  {filteredProducts.map((product) => (
+                    <ProductCard key={product.id} product={product} onAdd={addToSelection} isSelected={selectedProducts.some(p => p.product.id === product.id)} />
                   ))}
                 </div>
               )}
             </div>
-          </Card>
-        </div>
+          </div>
+        </Card>
+      </div>
 
-        <div className="space-y-4">
-          <Card className="p-4">
-            <h3 className="font-semibold text-gray-900 mb-4 flex items-center gap-2"><Tag className="w-5 h-5" />Selected Labels ({totalLabels})</h3>
+      {/* Right Panel - Selected & Settings */}
+      <div className="w-[340px] flex flex-col gap-4" style={{ width: '340px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+        <Card padding="none" className="flex-1" style={{ flex: '1', display: 'flex', flexDirection: 'column' }}>
+          <div className="h-14 px-4 flex items-center border-b border-gray-100" style={{ height: '56px', padding: '0 16px', display: 'flex', alignItems: 'center', borderBottom: '1px solid #f3f4f6' }}>
+            <div className="flex items-center gap-3" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <div className="w-8 h-8 bg-green-500 rounded-lg flex items-center justify-center" style={{ width: '32px', height: '32px', backgroundColor: '#22c55e', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Printer size={16} className="text-white" />
+              </div>
+              <div>
+                <h2 className="text-sm font-semibold text-gray-800" style={{ fontSize: '14px', fontWeight: '600', color: '#1f2937' }}>Selected Labels</h2>
+                <p className="text-xs text-gray-500" style={{ fontSize: '12px', color: '#6b7280' }}>{totalLabels} label{totalLabels !== 1 ? 's' : ''} to print</p>
+              </div>
+            </div>
+          </div>
+          
+          <div className="flex-1 overflow-y-auto p-3" style={{ flex: '1', overflowY: 'auto', padding: '12px' }}>
             {selectedProducts.length === 0 ? (
-              <div className="text-center py-6 text-gray-500">Click products to add them</div>
+              <div className="h-full flex flex-col items-center justify-center text-gray-400" style={{ height: '150px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+                <Tag size={32} style={{ marginBottom: '8px', opacity: '0.3' }} />
+                <p style={{ fontSize: '13px' }}>Click products to add</p>
+              </div>
             ) : (
-              <div className="space-y-2 max-h-48 overflow-y-auto mb-4">
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                 {selectedProducts.map(({product, quantity}) => (
-                  <div key={product.id} className="flex items-center justify-between p-2 bg-gray-50 rounded">
-                    <span className="text-sm truncate flex-1">{product.name}</span>
-                    <div className="flex items-center gap-1">
-                      <button onClick={(e) => { e.stopPropagation(); updateQuantity(product.id, -1); }} className="w-6 h-6 flex items-center justify-center text-gray-500 hover:bg-gray-200 rounded"><Minus className="w-3 h-3" /></button>
-                      <span className="w-8 text-center text-sm font-medium">{quantity}</span>
-                      <button onClick={(e) => { e.stopPropagation(); updateQuantity(product.id, 1); }} className="w-6 h-6 flex items-center justify-center text-gray-500 hover:bg-gray-200 rounded"><Plus className="w-3 h-3" /></button>
-                      <button onClick={() => removeFromSelection(product.id)} className="ml-2 text-red-500 hover:text-red-700"><X className="w-4 h-4" /></button>
-                    </div>
-                  </div>
+                  <SelectedProductCard key={product.id} product={product} quantity={quantity} onUpdateQty={(d) => updateQuantity(product.id, d)} onRemove={() => removeFromSelection(product.id)} />
                 ))}
               </div>
             )}
-            {selectedProducts.length > 0 && <Button onClick={clearSelection} variant="secondary" size="sm" className="w-full mb-4">Clear All</Button>}
-          </Card>
-
-          <Card className="p-4">
-            <h3 className="font-semibold text-gray-900 mb-4 flex items-center gap-2"><SettingsIcon className="w-5 h-5" />Print Settings</h3>
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Printer</label>
-                <Select value={settings.selectedPrinter} onChange={(e) => setSettings(prev => ({ ...prev, selectedPrinter: e.target.value }))}
-                  options={[{ value: "", label: "Select printer..." }, ...printers.map(p => ({ value: p.name, label: p.displayName }))]} />
-              </div>
+          </div>
+          
+          {selectedProducts.length > 0 && (
+            <div className="px-3 pb-3" style={{ padding: '0 12px 12px' }}>
+              <button onClick={clearSelection} className="w-full text-xs text-gray-500 hover:text-red-500 py-2" style={{ width: '100%', fontSize: '12px', color: '#6b7280', padding: '8px', background: 'none', border: 'none', cursor: 'pointer' }}>Clear All</button>
             </div>
-          </Card>
+          )}
+        </Card>
+        
+        <Card padding="none">
+          <div className="p-4" style={{ padding: '16px' }}>
+            <div className="flex items-center gap-2 mb-3" style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
+              <SettingsIcon size={16} className="text-gray-400" />
+              <span className="text-sm font-medium text-gray-700" style={{ fontSize: '13px', fontWeight: '500', color: '#374151' }}>Print Settings</span>
+            </div>
+            <div className="mb-3" style={{ marginBottom: '12px' }}>
+              <label className="block text-xs font-medium text-gray-500 mb-1" style={{ display: 'block', fontSize: '11px', fontWeight: '500', color: '#6b7280', marginBottom: '4px' }}>Printer</label>
+              <Select value={settings.selectedPrinter} onChange={(e) => setSettings(prev => ({ ...prev, selectedPrinter: e.target.value }))}
+                options={[{ value: "", label: "Select printer..." }, ...printers.map(p => ({ value: p.name, label: p.displayName }))]} />
+            </div>
+          </div>
+        </Card>
+        
+        <Button onClick={previewLabels} disabled={selectedProducts.length === 0} className="w-full flex items-center justify-center gap-2" style={{ width: '100%', padding: '14px', fontSize: '14px' }}>
+          <Printer className="w-5 h-5" />
+          Print {totalLabels} Label{totalLabels !== 1 ? 's' : ''}
+        </Button>
+      </div>
+    </div>
+  );
+}
 
-          <Button onClick={previewLabels} disabled={selectedProducts.length === 0} className="w-full flex items-center justify-center gap-2">
-            <Printer className="w-5 h-5" />Print {totalLabels} Label{totalLabels !== 1 ? "s" : ""}
-          </Button>
+// Product Card Component - matches billing tab style
+function ProductCard({ product, onAdd, isSelected }: { product: Product; onAdd: (p: Product) => void; isSelected: boolean }) {
+  const isOutOfStock = product.stock <= 0;
+  
+  return (
+    <div
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        padding: '12px',
+        backgroundColor: isSelected ? '#f0fdf4' : '#f8fafc',
+        borderRadius: '8px',
+        border: `1px solid ${isSelected ? '#86efac' : '#f1f5f9'}`,
+        cursor: 'pointer',
+        transition: 'all 0.2s ease',
+        opacity: isOutOfStock ? '0.5' : '1'
+      }}
+      onMouseEnter={(e) => {
+        if (!isOutOfStock && !isSelected) {
+          e.currentTarget.style.backgroundColor = '#f1f5f9';
+          e.currentTarget.style.borderColor = '#e2e8f0';
+        }
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.backgroundColor = isSelected ? '#f0fdf4' : '#f8fafc';
+        e.currentTarget.style.borderColor = isSelected ? '#86efac' : '#f1f5f9';
+      }}
+    >
+      <div style={{ minWidth: '0', flex: '1' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <span style={{ fontSize: '14px', fontWeight: '500', color: '#1e293b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {product.name}
+          </span>
+          {product.size && (
+            <span style={{ flexShrink: '0', padding: '2px 6px', fontSize: '10px', fontWeight: '500', backgroundColor: '#e2e8f0', color: '#475569', borderRadius: '4px' }}>
+              {product.size}
+            </span>
+          )}
         </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginTop: '4px' }}>
+          <span style={{ fontSize: '14px', fontWeight: '600', color: '#16a34a', fontFamily: 'JetBrains Mono, monospace' }}>
+            ₹{product.price.toLocaleString()}
+          </span>
+          <span style={{ fontSize: '12px', color: product.stock <= (product.lowStockThreshold || 5) ? (product.stock <= 0 ? '#dc2626' : '#d97706') : '#94a3b8' }}>
+            Stock: {product.stock}
+          </span>
+        </div>
+      </div>
+      <button
+        onClick={(e) => { e.stopPropagation(); onAdd(product); }}
+        disabled={isSelected}
+        style={{
+          width: '32px',
+          height: '32px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          backgroundColor: isSelected ? '#86efac' : '#22c55e',
+          color: 'white',
+          borderRadius: '8px',
+          border: 'none',
+          cursor: isSelected ? 'default' : 'pointer',
+          transition: 'all 0.2s ease'
+        }}
+        onMouseEnter={(e) => { if (!isSelected) e.currentTarget.style.backgroundColor = '#16a34a'; }}
+        onMouseLeave={(e) => { if (!isSelected) e.currentTarget.style.backgroundColor = '#22c55e'; }}
+      >
+        <Plus size={18} />
+      </button>
+    </div>
+  );
+}
+
+// Selected Product Card Component
+function SelectedProductCard({ product, quantity, onUpdateQty, onRemove }: { product: Product; quantity: number; onUpdateQty: (delta: number) => void; onRemove: () => void }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 10px', backgroundColor: '#f8fafc', borderRadius: '6px', border: '1px solid #f1f5f9' }}>
+      <div style={{ flex: '1', minWidth: '0' }}>
+        <div style={{ fontSize: '12px', fontWeight: '500', color: '#1e293b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{product.name}</div>
+        <div style={{ fontSize: '11px', color: '#16a34a', fontWeight: '600' }}>₹{product.price}</div>
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+        <button onClick={() => onUpdateQty(-1)} style={{ width: '22px', height: '22px', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#f1f5f9', border: 'none', borderRadius: '4px', cursor: 'pointer', color: '#64748b' }}>
+          <Minus size={12} />
+        </button>
+        <span style={{ width: '28px', textAlign: 'center', fontSize: '12px', fontWeight: '600', color: '#1e293b' }}>{quantity}</span>
+        <button onClick={() => onUpdateQty(1)} style={{ width: '22px', height: '22px', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#f1f5f9', border: 'none', borderRadius: '4px', cursor: 'pointer', color: '#64748b' }}>
+          <Plus size={12} />
+        </button>
+        <button onClick={onRemove} style={{ width: '22px', height: '22px', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: 'transparent', border: 'none', borderRadius: '4px', cursor: 'pointer', color: '#ef4444', marginLeft: '4px' }}>
+          <X size={14} />
+        </button>
       </div>
     </div>
   );

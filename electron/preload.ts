@@ -54,6 +54,7 @@ export interface ElectronAPI {
   debugTest: (printerName: string) => Promise<{ success: boolean; message?: string; error?: string }>;
   print: (content: string, printerName?: string, options?: any) => Promise<{ success: boolean; error?: string }>;
   printLabel: (content: string, printerName: string) => Promise<{ success: boolean; error?: string }>;
+  printLabelWithImage: (barcode: string, price: number, printerName: string) => Promise<{ success: boolean; error?: string }>;
   getPrinterStatus: (printerName: string) => Promise<{ status: string; details?: any }>;
   setPrinterSettings: (settings: any) => Promise<{ success: boolean }>;
   getPrinterSettings: () => Promise<any>;
@@ -126,6 +127,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   debugTest: (printerName: string) => ipcRenderer.invoke('printer:debugTest', printerName),
   print: (content: string, printerName?: string, options?: any) => ipcRenderer.invoke('printer:print', content, printerName, options),
   printLabel: (content: string, printerName: string) => ipcRenderer.invoke('printer:printLabel', content, printerName),
+  printLabelWithImage: (barcode: string, price: number, printerName: string) => ipcRenderer.invoke('printer:printLabelWithImage', barcode, price, printerName),
   getPrinterStatus: (printerName: string) => ipcRenderer.invoke('printer:getStatus', printerName),
   setPrinterSettings: (settings: any) => ipcRenderer.invoke('printer:setSettings', settings),
   getPrinterSettings: () => ipcRenderer.invoke('printer:getSettings'),

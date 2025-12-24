@@ -1254,6 +1254,7 @@ function setupIpcHandlers() {
     "printer:testPrint",
     "printer:print",
     "printer:printLabel",
+    "printer:printLabelWithImage",
     "printer:getSettings",
     "printer:setSettings"
   ];
@@ -2461,6 +2462,105 @@ if ($result -eq 0) { Write-Output "SUCCESS" } else { Write-Output "ERROR:$result
       return { success: true };
     } catch (error) {
       console.error("Label print error:", error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Label print failed"
+      };
+    }
+  });
+  ipcMain.handle("printer:printLabelWithImage", async (_, barcode, price, printerName) => {
+    try {
+      const { BrowserWindow: BrowserWindow2, app: app2 } = await import("electron");
+      const path2 = await import("path");
+      const fs2 = await import("fs");
+      const appPath = app2.isPackaged ? path2.join(process.resourcesPath, "app.asar.unpacked", "public") : path2.join(app2.getAppPath(), "public");
+      let logoUpBase64 = "";
+      let logoDownBase64 = "";
+      try {
+        const logoUpPath = path2.join(appPath, "label-logo-up.png");
+        if (fs2.existsSync(logoUpPath)) {
+          const logoUpBuffer = fs2.readFileSync(logoUpPath);
+          logoUpBase64 = `data:image/png;base64,${logoUpBuffer.toString("base64")}`;
+        }
+      } catch (e) {
+        console.log("Could not load logo-up:", e);
+      }
+      try {
+        const logoDownPath = path2.join(appPath, "label-logo-down.png");
+        if (fs2.existsSync(logoDownPath)) {
+          const logoDownBuffer = fs2.readFileSync(logoDownPath);
+          logoDownBase64 = `data:image/png;base64,${logoDownBuffer.toString("base64")}`;
+        }
+      } catch (e) {
+        console.log("Could not load logo-down:", e);
+      }
+      const barcodeWidth = 1;
+      const barcodeHeight = 35;
+      const htmlContent = `<!DOCTYPE html>
+<html><head><meta charset="UTF-8">
+<script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"><\/script>
+<style>
+@page{size:50mm 25mm;margin:0}
+@media print{@page{size:50mm 25mm;margin:0}body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:50mm;height:25mm;overflow:hidden}
+body{font-family:Arial,sans-serif;display:flex;padding:1.5mm;background:#fff}
+.logo-section{width:13mm;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:0.5mm}
+.logo-section img{width:12mm;height:auto;max-height:9mm;object-fit:contain}
+.content-section{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding-left:1mm}
+.barcode-container{width:100%;text-align:center}
+.barcode-container svg{width:100%;max-width:32mm;height:${barcodeHeight}px}
+.barcode-text{font-size:5pt;color:#333;font-family:'Courier New',monospace;margin-top:0.3mm}
+.price{font-size:12pt;font-weight:bold;margin-top:0.5mm;color:#000}
+</style></head>
+<body>
+<div class="logo-section">
+${logoUpBase64 ? `<img src="${logoUpBase64}" alt=""/>` : ""}
+${logoDownBase64 ? `<img src="${logoDownBase64}" alt=""/>` : ""}
+</div>
+<div class="content-section">
+<div class="barcode-container"><svg id="barcode"></svg></div>
+<div class="barcode-text">${barcode}</div>
+<div class="price">Rs.${price}</div>
+</div>
+<script>
+try{JsBarcode("#barcode","${barcode}",{format:"CODE128",width:${barcodeWidth},height:${barcodeHeight},displayValue:false,margin:0})}catch(e){console.error(e)}
+setTimeout(function(){window.print()},500);
+<\/script>
+</body></html>`;
+      const printWindow = new BrowserWindow2({
+        show: false,
+        width: 189,
+        // 50mm at 96 DPI
+        height: 94,
+        // 25mm at 96 DPI
+        webPreferences: {
+          nodeIntegration: false,
+          contextIsolation: true
+        }
+      });
+      await printWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(htmlContent)}`);
+      await new Promise((resolve) => setTimeout(resolve, 1e3));
+      const printResult = await new Promise((resolve) => {
+        printWindow.webContents.print({
+          silent: true,
+          printBackground: true,
+          deviceName: printerName,
+          pageSize: { width: 5e4, height: 25e3 },
+          // in microns (50mm x 25mm)
+          margins: { marginType: "none" },
+          scaleFactor: 100
+        }, (success, failureReason) => {
+          if (!success) {
+            console.error("Print failed:", failureReason);
+          }
+          resolve(success);
+        });
+      });
+      printWindow.close();
+      return { success: printResult };
+    } catch (error) {
+      console.error("Label with image print error:", error);
       return {
         success: false,
         error: error instanceof Error ? error.message : "Label print failed"
