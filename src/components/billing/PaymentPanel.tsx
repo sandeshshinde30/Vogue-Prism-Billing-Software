@@ -115,6 +115,9 @@ export function PaymentPanel() {
       }
     }
 
+    // Close the print confirm dialog immediately
+    setShowPrintConfirm(false);
+
     try {
       const billData = createBillData();
       const bill = await window.electronAPI.createBill(billData);
@@ -147,7 +150,6 @@ export function PaymentPanel() {
         // Show print preview
         setSavedBillData(thermalBillData);
         setShowBillPreview(true);
-        setShowPrintConfirm(false);
       } else {
         toast.success(`Bill ${(bill as { billNumber: string }).billNumber} saved!`);
         clearCart();

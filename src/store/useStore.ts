@@ -11,10 +11,12 @@ interface AppState {
 
   // Cart
   cart: CartItem[];
-  addToCart: (product: Product) => void;
+  addToCart: (product: Product) => boolean; // Returns true if added successfully
   removeFromCart: (productId: number) => void;
   updateCartQuantity: (productId: number, quantity: number) => void;
   clearCart: () => void;
+  getCartQuantity: (productId: number) => number; // Helper to get current cart quantity
+  canAddToCart: (product: Product) => boolean; // Check if product can be added
 
   // Discount
   discountPercent: number;
@@ -73,36 +75,56 @@ export const useStore = create<AppState>((set, get) => ({
 
   // Cart
   cart: [],
-  addToCart: (product) =>
-    set((state) => {
-      const existing = state.cart.find((item) => item.product.id === product.id);
-      if (existing) {
-        const newQuantity = existing.quantity + 1;
-        const totalPrice = newQuantity * product.price;
-        return {
-          cart: state.cart.map((item) =>
-            item.product.id === product.id
-              ? { 
-                  ...item, 
-                  quantity: newQuantity,
-                  unitPrice: product.price,
-                  totalPrice: totalPrice,
-                  productName: product.name
-                }
-              : item
-          ),
-        };
-      }
-      return { 
+  getCartQuantity: (productId) => {
+    const { cart } = get();
+    const item = cart.find((item) => item.product.id === productId);
+    return item ? item.quantity : 0;
+  },
+  canAddToCart: (product) => {
+    const { cart } = get();
+    const existing = cart.find((item) => item.product.id === product.id);
+    const currentQty = existing ? existing.quantity : 0;
+    return currentQty < product.stock;
+  },
+  addToCart: (product) => {
+    const state = get();
+    const existing = state.cart.find((item) => item.product.id === product.id);
+    const currentQty = existing ? existing.quantity : 0;
+    
+    // Check if adding one more would exceed available stock
+    if (currentQty >= product.stock) {
+      return false; // Cannot add - stock exceeded
+    }
+    
+    if (existing) {
+      const newQuantity = existing.quantity + 1;
+      const totalPrice = newQuantity * product.price;
+      set({
+        cart: state.cart.map((item) =>
+          item.product.id === product.id
+            ? { 
+                ...item, 
+                quantity: newQuantity,
+                unitPrice: product.price,
+                totalPrice: totalPrice,
+                productName: product.name
+              }
+            : item
+        ),
+      });
+    } else {
+      set({ 
         cart: [...state.cart, { 
           product, 
           quantity: 1,
           productName: product.name,
           unitPrice: product.price,
           totalPrice: product.price
-        }] 
-      };
-    }),
+        }]
+      });
+    }
+    return true; // Successfully added
+  },
   removeFromCart: (productId) =>
     set((state) => ({
       cart: state.cart.filter((item) => item.product.id !== productId),

@@ -62,7 +62,8 @@ export function setupIpcHandlers() {
   // Clear any existing printer handlers to prevent duplicates
   const printerHandlers = [
     'printer:getList', 'printer:refresh', 'printer:getStatus', 
-    'printer:testPrint', 'printer:print', 'printer:getSettings', 'printer:setSettings'
+    'printer:testPrint', 'printer:print', 'printer:printLabel',
+    'printer:getSettings', 'printer:setSettings'
   ];
   
   printerHandlers.forEach(handler => {
@@ -1225,6 +1226,176 @@ if ($result -eq 0) {
       return { 
         success: false, 
         error: error instanceof Error ? error.message : 'Print failed' 
+      };
+    }
+  });
+
+  // Print label - dedicated handler for label printers (Honeywell IH-210, etc.)
+  ipcMain.handle('printer:printLabel', async (_, content: string, printerName: string) => {
+    try {
+      const isWindows = process.platform === 'win32';
+      const fs = await import('fs');
+      const path = await import('path');
+      const os = await import('os');
+      
+      // Create temporary file for printing
+      const tempFile = path.join(os.tmpdir(), `label-${Date.now()}.prn`);
+      
+      // Write content to temp file (ZPL or ESC/POS commands)
+      fs.writeFileSync(tempFile, content, 'binary');
+      
+      console.log(`Printing label to: ${printerName}`);
+      console.log(`Content length: ${content.length} bytes`);
+      
+      if (isWindows) {
+        // Windows: Use raw printing
+        const escapedPrinter = printerName.replace(/'/g, "''").replace(/"/g, '""');
+        
+        try {
+          // Try .NET RawPrinterHelper
+          const psScript = `
+$ErrorActionPreference = 'Stop'
+$printerName = '${escapedPrinter}'
+$filePath = '${tempFile.replace(/\\/g, '\\\\')}'
+
+Add-Type -TypeDefinition @'
+using System;
+using System.IO;
+using System.Runtime.InteropServices;
+
+public class RawPrint {
+    [StructLayout(LayoutKind.Sequential)]
+    public struct DOCINFOA {
+        [MarshalAs(UnmanagedType.LPStr)] public string pDocName;
+        [MarshalAs(UnmanagedType.LPStr)] public string pOutputFile;
+        [MarshalAs(UnmanagedType.LPStr)] public string pDataType;
+    }
+
+    [DllImport("winspool.drv", EntryPoint = "OpenPrinterA", SetLastError = true, CharSet = CharSet.Ansi)]
+    public static extern bool OpenPrinter(string szPrinter, out IntPtr hPrinter, IntPtr pd);
+
+    [DllImport("winspool.drv", SetLastError = true)]
+    public static extern bool ClosePrinter(IntPtr hPrinter);
+
+    [DllImport("winspool.drv", EntryPoint = "StartDocPrinterA", SetLastError = true, CharSet = CharSet.Ansi)]
+    public static extern bool StartDocPrinter(IntPtr hPrinter, int level, ref DOCINFOA di);
+
+    [DllImport("winspool.drv", SetLastError = true)]
+    public static extern bool EndDocPrinter(IntPtr hPrinter);
+
+    [DllImport("winspool.drv", SetLastError = true)]
+    public static extern bool StartPagePrinter(IntPtr hPrinter);
+
+    [DllImport("winspool.drv", SetLastError = true)]
+    public static extern bool EndPagePrinter(IntPtr hPrinter);
+
+    [DllImport("winspool.drv", SetLastError = true)]
+    public static extern bool WritePrinter(IntPtr hPrinter, byte[] pBytes, int dwCount, out int dwWritten);
+
+    public static int Print(string printerName, byte[] data) {
+        IntPtr hPrinter = IntPtr.Zero;
+        DOCINFOA di = new DOCINFOA();
+        di.pDocName = "Label";
+        di.pDataType = "RAW";
+
+        if (!OpenPrinter(printerName, out hPrinter, IntPtr.Zero)) return Marshal.GetLastWin32Error();
+        if (!StartDocPrinter(hPrinter, 1, ref di)) { ClosePrinter(hPrinter); return Marshal.GetLastWin32Error(); }
+        if (!StartPagePrinter(hPrinter)) { EndDocPrinter(hPrinter); ClosePrinter(hPrinter); return Marshal.GetLastWin32Error(); }
+        
+        int written = 0;
+        if (!WritePrinter(hPrinter, data, data.Length, out written)) {
+            EndPagePrinter(hPrinter); EndDocPrinter(hPrinter); ClosePrinter(hPrinter);
+            return Marshal.GetLastWin32Error();
+        }
+        
+        EndPagePrinter(hPrinter); EndDocPrinter(hPrinter); ClosePrinter(hPrinter);
+        return 0;
+    }
+}
+'@
+
+$bytes = [System.IO.File]::ReadAllBytes($filePath)
+$result = [RawPrint]::Print($printerName, $bytes)
+if ($result -eq 0) { Write-Output "SUCCESS" } else { Write-Output "ERROR:$result" }
+`;
+          const psFile = path.join(os.tmpdir(), `labelprint-${Date.now()}.ps1`);
+          fs.writeFileSync(psFile, psScript, 'utf8');
+          
+          const { stdout } = await execAsync(`powershell -ExecutionPolicy Bypass -File "${psFile}"`, { timeout: 30000 });
+          setTimeout(() => { try { fs.unlinkSync(psFile); } catch (e) {} }, 1000);
+          
+          if (!stdout.trim().includes('SUCCESS')) {
+            throw new Error(`Print failed: ${stdout.trim()}`);
+          }
+        } catch (winError) {
+          console.error('Windows label print error:', winError);
+          throw winError;
+        }
+      } else {
+        // Linux: Use lp command with raw option for label printers
+        // The -o raw option sends data directly to the printer without processing
+        try {
+          // First try with raw option (best for ZPL/ESC-POS)
+          await execAsync(`lp -d "${printerName}" -o raw "${tempFile}"`);
+          console.log('Label printed successfully using lp -o raw');
+        } catch (lpError) {
+          console.log('lp -o raw failed, trying alternative methods...');
+          
+          try {
+            // Try without raw option
+            await execAsync(`lp -d "${printerName}" "${tempFile}"`);
+            console.log('Label printed successfully using lp');
+          } catch (lpError2) {
+            // Try using lpr as fallback
+            try {
+              await execAsync(`lpr -P "${printerName}" -o raw "${tempFile}"`);
+              console.log('Label printed successfully using lpr');
+            } catch (lprError) {
+              // Final fallback: try direct device write if we can find the device
+              try {
+                // Get printer device URI
+                const { stdout: printerInfo } = await execAsync(`lpstat -v "${printerName}"`);
+                const deviceMatch = printerInfo.match(/device for [^:]+:\s*(.+)/);
+                
+                if (deviceMatch && deviceMatch[1]) {
+                  const deviceUri = deviceMatch[1].trim();
+                  
+                  // If it's a USB device, try direct write
+                  if (deviceUri.startsWith('usb://') || deviceUri.includes('/dev/usb')) {
+                    // Extract device path or use common USB printer paths
+                    const usbDevices = ['/dev/usb/lp0', '/dev/usb/lp1', '/dev/lp0'];
+                    
+                    for (const device of usbDevices) {
+                      try {
+                        await execAsync(`cat "${tempFile}" > ${device}`);
+                        console.log(`Label printed via direct device: ${device}`);
+                        break;
+                      } catch (devError) {
+                        continue;
+                      }
+                    }
+                  }
+                }
+              } catch (deviceError) {
+                console.error('All print methods failed');
+                throw new Error('Failed to print label. Please check printer connection and permissions.');
+              }
+            }
+          }
+        }
+      }
+      
+      // Clean up temp file after a delay
+      setTimeout(() => {
+        try { fs.unlinkSync(tempFile); } catch (e) { /* ignore */ }
+      }, 5000);
+      
+      return { success: true };
+    } catch (error) {
+      console.error('Label print error:', error);
+      return { 
+        success: false, 
+        error: error instanceof Error ? error.message : 'Label print failed' 
       };
     }
   });

@@ -5,7 +5,7 @@ import toast from 'react-hot-toast';
 
 export function BarcodeInput() {
   const inputRef = useRef<HTMLInputElement>(null);
-  const { addToCart, setSearchQuery } = useStore();
+  const { addToCart, setSearchQuery, getCartQuantity } = useStore();
 
   useEffect(() => {
     inputRef.current?.focus();
@@ -36,8 +36,18 @@ export function BarcodeInput() {
         if (product.stock <= 0) {
           toast.error(`${product.name} is out of stock!`);
         } else {
-          addToCart(product);
-          toast.success(`Added ${product.name}`);
+          // Check if adding would exceed available stock
+          const currentCartQty = getCartQuantity(product.id);
+          if (currentCartQty >= product.stock) {
+            toast.error(`Cannot add more ${product.name}. Only ${product.stock} in stock, ${currentCartQty} already in cart.`);
+          } else {
+            const added = addToCart(product);
+            if (added) {
+              toast.success(`Added ${product.name}`);
+            } else {
+              toast.error(`Cannot add more ${product.name}. Stock limit reached.`);
+            }
+          }
         }
       } else {
         setSearchQuery(barcode.trim());

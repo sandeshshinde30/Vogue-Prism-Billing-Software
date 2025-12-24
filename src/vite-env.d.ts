@@ -67,6 +67,7 @@ interface ElectronAPI {
   // Printer
   getPrinters: () => Promise<{ name: string; isDefault: boolean }[]>;
   print: (content: string, printerName?: string) => Promise<{ success: boolean; error?: string }>;
+  printLabel: (content: string, printerName: string) => Promise<{ success: boolean; error?: string }>;
   testPrint: (printerName?: string) => Promise<{ success: boolean; error?: string }>;
 
   // Logs

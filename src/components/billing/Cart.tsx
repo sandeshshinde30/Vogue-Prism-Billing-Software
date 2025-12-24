@@ -11,7 +11,7 @@ export function Cart() {
       return;
     }
     if (newQuantity > maxStock) {
-      toast.error('Not enough stock available');
+      toast.error(`Cannot add more. Only ${maxStock} available in stock.`);
       return;
     }
     updateCartQuantity(productId, newQuantity);

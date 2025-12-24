@@ -8,3 +8,4 @@ export { Settings } from './Settings';
 export { Logs } from './Logs';
 export { BillManagement } from './BillManagement';
 export { PrinterManagement } from './PrinterManagement';
+export { LabelManagement } from './LabelManagement';

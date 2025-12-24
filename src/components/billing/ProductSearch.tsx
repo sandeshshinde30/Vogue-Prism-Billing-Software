@@ -5,7 +5,7 @@ import { Product } from '../../types';
 import toast from 'react-hot-toast';
 
 export function ProductSearch() {
-  const { selectedCategory, searchQuery, addToCart } = useStore();
+  const { selectedCategory, searchQuery, addToCart, getCartQuantity } = useStore();
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(false);
 
@@ -36,8 +36,20 @@ export function ProductSearch() {
       toast.error(`${product.name} is out of stock!`);
       return;
     }
-    addToCart(product);
-    toast.success(`Added ${product.name}`);
+    
+    // Check if adding would exceed available stock
+    const currentCartQty = getCartQuantity(product.id);
+    if (currentCartQty >= product.stock) {
+      toast.error(`Cannot add more ${product.name}. Only ${product.stock} in stock, ${currentCartQty} already in cart.`);
+      return;
+    }
+    
+    const added = addToCart(product);
+    if (added) {
+      toast.success(`Added ${product.name}`);
+    } else {
+      toast.error(`Cannot add more ${product.name}. Stock limit reached.`);
+    }
   };
 
   if (loading) {
