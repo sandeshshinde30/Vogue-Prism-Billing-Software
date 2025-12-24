@@ -2468,7 +2468,7 @@ if ($result -eq 0) { Write-Output "SUCCESS" } else { Write-Output "ERROR:$result
       };
     }
   });
-  ipcMain.handle("printer:printLabelWithImage", async (_, barcode, price, printerName) => {
+  ipcMain.handle("printer:printLabelWithImage", async (_, barcode, price, printerName, design) => {
     try {
       const { BrowserWindow: BrowserWindow2, app: app2 } = await import("electron");
       const path2 = await import("path");
@@ -2494,8 +2494,14 @@ if ($result -eq 0) { Write-Output "SUCCESS" } else { Write-Output "ERROR:$result
       } catch (e) {
         console.log("Could not load logo-down:", e);
       }
-      const barcodeWidth = 0.8;
-      const barcodeHeight = 25;
+      const logoWidth = (design == null ? void 0 : design.logoWidth) || 18;
+      const barcodeWidth = (design == null ? void 0 : design.barcodeWidth) || 1.5;
+      const barcodeHeight = (design == null ? void 0 : design.barcodeHeight) || 35;
+      const textSize = (design == null ? void 0 : design.textSize) || 7;
+      const priceSize = (design == null ? void 0 : design.priceSize) || 14;
+      const textSizeMm = Math.max(1.5, textSize / 4.5);
+      const priceSizeMm = Math.max(2.5, priceSize / 4);
+      console.log("Label design settings:", { logoWidth, barcodeWidth, barcodeHeight, textSize, priceSize, textSizeMm, priceSizeMm });
       const htmlContent = `<!DOCTYPE html>
 <html><head><meta charset="UTF-8">
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"><\/script>
@@ -2504,14 +2510,14 @@ if ($result -eq 0) { Write-Output "SUCCESS" } else { Write-Output "ERROR:$result
 @media print{@page{size:50mm 25mm;margin:0}body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
 *{margin:0;padding:0;box-sizing:border-box}
 html,body{width:50mm;height:25mm;overflow:hidden}
-body{font-family:Arial,sans-serif;display:flex;padding:1.5mm;background:#fff}
-.logo-section{width:16mm;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:1mm}
-.logo-section img{width:15mm;height:auto;max-height:11mm;object-fit:contain}
-.content-section{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding-left:1mm}
+body{font-family:Arial,sans-serif;display:flex;padding:1mm;background:#fff}
+.logo-section{width:${logoWidth}mm;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:0.5mm}
+.logo-section img{width:${logoWidth - 1}mm;height:auto;max-height:11mm;object-fit:contain}
+.content-section{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding-left:0.5mm}
 .barcode-container{width:100%;text-align:center}
-.barcode-container svg{width:100%;max-width:28mm;height:${barcodeHeight}px}
-.barcode-text{font-size:8pt;color:#000;font-family:'Courier New',monospace;margin-top:1mm;font-weight:500;letter-spacing:0.5px}
-.price{font-size:14pt;font-weight:bold;margin-top:1mm;color:#000}
+.barcode-container svg{max-width:28mm;height:auto}
+.barcode-text{font-size:${textSizeMm}mm;color:#000;font-family:'Courier New',monospace;margin-top:0.3mm;letter-spacing:0.2mm}
+.price{font-size:${priceSizeMm}mm;font-weight:bold;margin-top:0.3mm;color:#000}
 </style></head>
 <body>
 <div class="logo-section">
@@ -2524,7 +2530,7 @@ ${logoDownBase64 ? `<img src="${logoDownBase64}" alt=""/>` : ""}
 <div class="price">Rs.${price}</div>
 </div>
 <script>
-try{JsBarcode("#barcode","${barcode}",{format:"CODE128",width:${barcodeWidth},height:${barcodeHeight},displayValue:false,margin:0})}catch(e){console.error(e)}
+try{JsBarcode("#barcode","${barcode}",{format:"CODE128",width:${barcodeWidth},height:${barcodeHeight},displayValue:false,margin:0,background:"#ffffff",lineColor:"#000000"})}catch(e){console.error(e)}
 setTimeout(function(){window.print()},500);
 <\/script>
 </body></html>`;

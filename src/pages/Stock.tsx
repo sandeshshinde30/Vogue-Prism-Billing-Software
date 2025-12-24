@@ -10,8 +10,12 @@ export function Stock() {
   const [filteredProducts, setFilteredProducts] = useState<Product[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [filter, setFilter] = useState('all');
+  const [categoryFilter, setCategoryFilter] = useState('all');
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
+
+  // Get unique categories from products
+  const categories = [...new Set(products.map(p => p.category).filter(Boolean))].sort();
 
   const loadProducts = async () => {
     setLoading(true);
@@ -106,12 +110,18 @@ export function Stock() {
   useEffect(() => {
     let filtered = products;
 
+    // Category filter
+    if (categoryFilter !== 'all') {
+      filtered = filtered.filter(p => p.category === categoryFilter);
+    }
+
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
       filtered = filtered.filter(
         (p) =>
           p.name.toLowerCase().includes(q) ||
-          p.barcode?.toLowerCase().includes(q)
+          p.barcode?.toLowerCase().includes(q) ||
+          p.category?.toLowerCase().includes(q)
       );
     }
 
@@ -126,7 +136,7 @@ export function Stock() {
     }
 
     setFilteredProducts(filtered);
-  }, [products, searchQuery, filter]);
+  }, [products, searchQuery, filter, categoryFilter]);
 
   const totalItems = products.length;
   const inStock = products.filter((p) => p.stock > p.lowStockThreshold).length;
@@ -222,6 +232,16 @@ export function Stock() {
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             icon={<Search size={18} />}
+          />
+
+          <Select
+            value={categoryFilter}
+            onChange={(e) => setCategoryFilter(e.target.value)}
+            options={[
+              { value: 'all', label: 'All Categories' },
+              ...categories.map(cat => ({ value: cat, label: cat }))
+            ]}
+            className="w-48"
           />
 
           <Select
