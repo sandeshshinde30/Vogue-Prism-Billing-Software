@@ -67,7 +67,7 @@ export function generateLabelHTML(
   logoBottomSrc: string
 ): string {
   const barcodeText = labelData.barcode || labelData.name.toLowerCase().replace(/\s+/g, '') + (labelData.size || '');
-  const barcodeSVG = generateBarcodeSVG(barcodeText, { width: 1.5, height: 35 });
+  const barcodeSVG = generateBarcodeSVG(barcodeText, { width: 1.2, height: 25 });  // Smaller barcode
   
   // Scale factor: convert mm to pixels (assuming 96 DPI for screen)
   const scale = 3.78; // 1mm = 3.78px at 96 DPI
@@ -89,9 +89,9 @@ export function generateLabelHTML(
       <!-- Top Logo (Bird) -->
       <div style="
         position: absolute;
-        left: ${5 * scale}px;
+        left: ${4 * scale}px;
         top: ${2 * scale}px;
-        width: ${20 * scale}px;
+        width: ${18 * scale}px;
         height: ${10 * scale}px;
         display: flex;
         align-items: center;
@@ -103,10 +103,10 @@ export function generateLabelHTML(
       <!-- Bottom Logo (VOGUE PRISM) -->
       <div style="
         position: absolute;
-        left: ${5 * scale}px;
-        top: ${13 * scale}px;
-        width: ${20 * scale}px;
-        height: ${15 * scale}px;
+        left: ${4 * scale}px;
+        top: ${12 * scale}px;
+        width: ${18 * scale}px;
+        height: ${12 * scale}px;
         display: flex;
         align-items: center;
         justify-content: center;
@@ -119,8 +119,8 @@ export function generateLabelHTML(
         position: absolute;
         right: ${3 * scale}px;
         top: ${2 * scale}px;
-        width: ${22 * scale}px;
-        height: ${12 * scale}px;
+        width: ${24 * scale}px;
+        height: ${9 * scale}px;
         display: flex;
         align-items: center;
         justify-content: center;
@@ -128,18 +128,21 @@ export function generateLabelHTML(
         ${barcodeSVG}
       </div>
       
-      <!-- Product Name/Size -->
+      <!-- Product Name/Size (Barcode Text) -->
       <div style="
         position: absolute;
         right: ${3 * scale}px;
-        top: ${14 * scale}px;
-        width: ${22 * scale}px;
-        font-size: ${8}px;
-        color: #333;
+        top: ${11 * scale}px;
+        width: ${24 * scale}px;
+        font-size: ${10}px;
+        font-weight: 600;
+        color: #1e293b;
         text-align: center;
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
+        font-family: 'Courier New', monospace;
+        letter-spacing: 0.5px;
       ">
         ${barcodeText}
       </div>
@@ -148,11 +151,11 @@ export function generateLabelHTML(
       <div style="
         position: absolute;
         right: ${3 * scale}px;
-        top: ${19 * scale}px;
-        width: ${22 * scale}px;
-        font-size: ${16}px;
+        top: ${17 * scale}px;
+        width: ${24 * scale}px;
+        font-size: ${18}px;
         font-weight: bold;
-        color: #000;
+        color: #059669;
         text-align: center;
       ">
         ${formatPrice(labelData.price)}
@@ -170,7 +173,7 @@ export async function generatePrintableLabel(
   copies: number = 1
 ): Promise<string> {
   const barcodeText = labelData.barcode || labelData.name.toLowerCase().replace(/\s+/g, '') + (labelData.size || '');
-  const barcodeBase64 = await generateBarcodeBase64(barcodeText, { width: 2, height: 50 });
+  const barcodeBase64 = await generateBarcodeBase64(barcodeText, { width: 1.5, height: 35 });  // Smaller barcode
   
   const labelHTML = `
     <div class="label" style="
@@ -182,19 +185,19 @@ export async function generatePrintableLabel(
       page-break-after: always;
       box-sizing: border-box;
     ">
-      <div style="position: absolute; left: 2mm; top: 1mm; width: 18mm; height: 10mm;">
+      <div style="position: absolute; left: 2mm; top: 1mm; width: 16mm; height: 10mm;">
         <img src="${logoTopSrc}" style="max-width: 100%; max-height: 100%; object-fit: contain;" />
       </div>
-      <div style="position: absolute; left: 2mm; top: 12mm; width: 18mm; height: 15mm;">
+      <div style="position: absolute; left: 2mm; top: 11mm; width: 16mm; height: 12mm;">
         <img src="${logoBottomSrc}" style="max-width: 100%; max-height: 100%; object-fit: contain;" />
       </div>
-      <div style="position: absolute; right: 2mm; top: 1mm; width: 25mm; height: 12mm; text-align: center;">
+      <div style="position: absolute; right: 2mm; top: 1mm; width: 28mm; height: 9mm; text-align: center;">
         <img src="${barcodeBase64}" style="max-width: 100%; max-height: 100%;" />
       </div>
-      <div style="position: absolute; right: 2mm; top: 14mm; width: 25mm; font-size: 7pt; text-align: center; color: #333;">
+      <div style="position: absolute; right: 2mm; top: 11mm; width: 28mm; font-size: 9pt; font-weight: 600; text-align: center; color: #1e293b; font-family: 'Courier New', monospace; letter-spacing: 0.5px;">
         ${barcodeText}
       </div>
-      <div style="position: absolute; right: 2mm; top: 19mm; width: 25mm; font-size: 14pt; font-weight: bold; text-align: center;">
+      <div style="position: absolute; right: 2mm; top: 17mm; width: 28mm; font-size: 16pt; font-weight: bold; text-align: center; color: #059669;">
         ${formatPrice(labelData.price)}
       </div>
     </div>

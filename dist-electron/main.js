@@ -2494,8 +2494,8 @@ if ($result -eq 0) { Write-Output "SUCCESS" } else { Write-Output "ERROR:$result
       } catch (e) {
         console.log("Could not load logo-down:", e);
       }
-      const barcodeWidth = 1;
-      const barcodeHeight = 35;
+      const barcodeWidth = 0.8;
+      const barcodeHeight = 25;
       const htmlContent = `<!DOCTYPE html>
 <html><head><meta charset="UTF-8">
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"><\/script>
@@ -2505,13 +2505,13 @@ if ($result -eq 0) { Write-Output "SUCCESS" } else { Write-Output "ERROR:$result
 *{margin:0;padding:0;box-sizing:border-box}
 html,body{width:50mm;height:25mm;overflow:hidden}
 body{font-family:Arial,sans-serif;display:flex;padding:1.5mm;background:#fff}
-.logo-section{width:13mm;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:0.5mm}
-.logo-section img{width:12mm;height:auto;max-height:9mm;object-fit:contain}
+.logo-section{width:16mm;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:1mm}
+.logo-section img{width:15mm;height:auto;max-height:11mm;object-fit:contain}
 .content-section{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding-left:1mm}
 .barcode-container{width:100%;text-align:center}
-.barcode-container svg{width:100%;max-width:32mm;height:${barcodeHeight}px}
-.barcode-text{font-size:5pt;color:#333;font-family:'Courier New',monospace;margin-top:0.3mm}
-.price{font-size:12pt;font-weight:bold;margin-top:0.5mm;color:#000}
+.barcode-container svg{width:100%;max-width:28mm;height:${barcodeHeight}px}
+.barcode-text{font-size:8pt;color:#000;font-family:'Courier New',monospace;margin-top:1mm;font-weight:500;letter-spacing:0.5px}
+.price{font-size:14pt;font-weight:bold;margin-top:1mm;color:#000}
 </style></head>
 <body>
 <div class="logo-section">
