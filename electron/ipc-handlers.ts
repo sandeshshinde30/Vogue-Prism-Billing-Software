@@ -1436,100 +1436,88 @@ if ($result -eq 0) { Write-Output "SUCCESS" } else { Write-Output "ERROR:$result
         console.log('Could not load logo-down:', e);
       }
       
-      // Use design settings or defaults - optimized for scanning
-      // These values match the preview exactly (preview uses px, we use mm-based sizing)
-      const logoWidth = design?.logoWidth || 18;
-      const barcodeWidth = design?.barcodeWidth || 1.5;
-      const barcodeHeight = design?.barcodeHeight || 35;
-      const textSize = design?.textSize || 7;
-      const priceSize = design?.priceSize || 14;
+      console.log('Printing label:', barcode, price, printerName);
       
-      // Convert px to mm for print (1mm ≈ 3.78px at 96dpi, but for label printers we use direct mm)
-      // The preview is scaled 1.8x, so we need to divide by 1.8 to get actual print size
-      // For text: preview px / 1.8 ≈ print mm * 0.35 (rough conversion for readability)
-      const textSizeMm = Math.max(1.5, textSize / 4.5); // Convert px to mm for print
-      const priceSizeMm = Math.max(2.5, priceSize / 4); // Slightly larger for price
-      
-      console.log('Label design settings:', { logoWidth, barcodeWidth, barcodeHeight, textSize, priceSize, textSizeMm, priceSizeMm });
-      
-      // Create HTML content for the label - using mm units for consistent sizing
+      // Canvas approach - this was scanning before
       const htmlContent = `<!DOCTYPE html>
-<html><head><meta charset="UTF-8">
+<html>
+<head>
+<meta charset="UTF-8">
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
 <style>
-@page{size:50mm 25mm;margin:0}
-@media print{@page{size:50mm 25mm;margin:0}body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
-*{margin:0;padding:0;box-sizing:border-box}
-html,body{width:50mm;height:25mm;overflow:hidden}
-body{font-family:Arial,sans-serif;display:flex;padding:1mm;background:#fff}
-.logo-section{width:${logoWidth}mm;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:0.5mm}
-.logo-section img{width:${logoWidth - 1}mm;height:auto;max-height:11mm;object-fit:contain}
-.content-section{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding-left:0.5mm}
-.barcode-container{width:100%;text-align:center}
-.barcode-container svg{max-width:28mm;height:auto}
-.barcode-text{font-size:${textSizeMm}mm;color:#000;font-family:'Courier New',monospace;margin-top:0.3mm;letter-spacing:0.2mm}
-.price{font-size:${priceSizeMm}mm;font-weight:bold;margin-top:0.3mm;color:#000}
-</style></head>
+@page { size: 50mm 25mm; margin: 0; }
+@media print { @page { size: 50mm 25mm; margin: 0; } body { -webkit-print-color-adjust: exact; } }
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { width: 50mm; height: 25mm; overflow: hidden; background: #fff; font-family: Arial, sans-serif; }
+body { display: flex; align-items: center; padding: 1mm; }
+.logos { width: 13mm; text-align: center; flex-shrink: 0; }
+.logos img { width: 11mm; max-height: 8mm; display: block; margin: 0.3mm auto; }
+.content { flex: 1; text-align: center; overflow: hidden; }
+.barcode-img { display: block; margin: 0 auto; image-rendering: pixelated; }
+.txt { font-size: 7pt; font-weight: bold; margin-top: 0.3mm; line-height: 1; }
+.prc { font-size: 11pt; font-weight: bold; margin-top: 0.3mm; line-height: 1; }
+canvas { display: none; }
+</style>
+</head>
 <body>
-<div class="logo-section">
-${logoUpBase64 ? `<img src="${logoUpBase64}" alt=""/>` : ''}
-${logoDownBase64 ? `<img src="${logoDownBase64}" alt=""/>` : ''}
+<div class="logos">
+${logoUpBase64 ? `<img src="${logoUpBase64}">` : ''}
+${logoDownBase64 ? `<img src="${logoDownBase64}">` : ''}
 </div>
-<div class="content-section">
-<div class="barcode-container"><svg id="barcode"></svg></div>
-<div class="barcode-text">${barcode}</div>
-<div class="price">Rs.${price}</div>
+<div class="content">
+<canvas id="bc"></canvas>
+<img id="bcImg" class="barcode-img">
+<div class="txt">${barcode}</div>
+<div class="prc">Rs.${price}</div>
 </div>
 <script>
-try{JsBarcode("#barcode","${barcode}",{format:"CODE128",width:${barcodeWidth},height:${barcodeHeight},displayValue:false,margin:0,background:"#ffffff",lineColor:"#000000"})}catch(e){console.error(e)}
-setTimeout(function(){window.print()},500);
+window.onload = function() {
+  JsBarcode("#bc", "${barcode}", {
+    format: "CODE128",
+    width: 1.5,
+    height: 40,
+    displayValue: false,
+    margin: 5,
+    background: "#fff",
+    lineColor: "#000"
+  });
+  var c = document.getElementById('bc');
+  var img = document.getElementById('bcImg');
+  img.src = c.toDataURL('image/png', 1.0);
+  // Keep exact pixel size - no scaling
+  img.style.width = c.width + 'px';
+  img.style.height = c.height + 'px';
+};
 </script>
-</body></html>`;
+</body>
+</html>`;
 
-      // Create a hidden window for printing
       const printWindow = new BrowserWindow({
         show: false,
-        width: 189, // 50mm at 96 DPI
-        height: 94, // 25mm at 96 DPI
-        webPreferences: {
-          nodeIntegration: false,
-          contextIsolation: true
-        }
+        width: 400,
+        height: 200,
+        webPreferences: { nodeIntegration: false, contextIsolation: true, javascript: true }
       });
       
-      // Load the HTML content
       await printWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(htmlContent)}`);
+      await new Promise(r => setTimeout(r, 2000));
       
-      // Wait for content to render
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      // Print with specific settings for label
       const printResult = await new Promise<boolean>((resolve) => {
         printWindow.webContents.print({
           silent: true,
           printBackground: true,
           deviceName: printerName,
-          pageSize: { width: 50000, height: 25000 }, // in microns (50mm x 25mm)
+          pageSize: { width: 50000, height: 25000 },
           margins: { marginType: 'none' },
           scaleFactor: 100
-        }, (success, failureReason) => {
-          if (!success) {
-            console.error('Print failed:', failureReason);
-          }
-          resolve(success);
-        });
+        }, (success) => resolve(success));
       });
       
-      // Clean up
       printWindow.close();
-      
       return { success: printResult };
     } catch (error) {
-      console.error('Label with image print error:', error);
-      return { 
-        success: false, 
-        error: error instanceof Error ? error.message : 'Label print failed' 
-      };
+      console.error('Label print error:', error);
+      return { success: false, error: error instanceof Error ? error.message : 'Print failed' };
     }
   });
 

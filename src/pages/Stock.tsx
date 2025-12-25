@@ -11,11 +11,13 @@ export function Stock() {
   const [searchQuery, setSearchQuery] = useState('');
   const [filter, setFilter] = useState('all');
   const [categoryFilter, setCategoryFilter] = useState('all');
+  const [sizeFilter, setSizeFilter] = useState('all');
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
 
-  // Get unique categories from products
+  // Get unique categories and sizes from products
   const categories = [...new Set(products.map(p => p.category).filter(Boolean))].sort();
+  const sizes = [...new Set(products.map(p => p.size).filter(Boolean))].sort();
 
   const loadProducts = async () => {
     setLoading(true);
@@ -43,22 +45,22 @@ export function Stock() {
   const handleExportFiltered = async () => {
     setExporting(true);
     try {
-      let filename = '';
-      let productsToExport = filteredProducts;
+      // Build filename based on active filters
+      const filterParts: string[] = [];
+      if (categoryFilter !== 'all') filterParts.push(categoryFilter);
+      if (sizeFilter !== 'all') filterParts.push(`size-${sizeFilter}`);
+      if (filter === 'low') filterParts.push('low-stock');
+      if (filter === 'out') filterParts.push('out-of-stock');
+      if (searchQuery) filterParts.push('search');
       
-      switch (filter) {
-        case 'low':
-          filename = `low-stock-report-${new Date().toISOString().split('T')[0]}.xlsx`;
-          break;
-        case 'out':
-          filename = `out-of-stock-report-${new Date().toISOString().split('T')[0]}.xlsx`;
-          break;
-        default:
-          filename = `filtered-stock-report-${new Date().toISOString().split('T')[0]}.xlsx`;
-      }
+      const filterSuffix = filterParts.length > 0 ? filterParts.join('-') : 'filtered';
+      const filename = `stock-${filterSuffix}-${new Date().toISOString().split('T')[0]}.xlsx`;
+      
+      let productsToExport = filteredProducts;
       
       if (productsToExport.length === 0) {
         toast.error('No products to export');
+        setExporting(false);
         return;
       }
       
@@ -115,6 +117,12 @@ export function Stock() {
       filtered = filtered.filter(p => p.category === categoryFilter);
     }
 
+    // Size filter
+    if (sizeFilter !== 'all') {
+      filtered = filtered.filter(p => p.size === sizeFilter);
+    }
+
+    // Search filter (name, barcode, category)
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
       filtered = filtered.filter(
@@ -125,6 +133,7 @@ export function Stock() {
       );
     }
 
+    // Stock status filter
     if (filter === 'low') {
       filtered = filtered.filter(
         (p) => p.stock <= p.lowStockThreshold && p.stock > 0
@@ -136,7 +145,7 @@ export function Stock() {
     }
 
     setFilteredProducts(filtered);
-  }, [products, searchQuery, filter, categoryFilter]);
+  }, [products, searchQuery, filter, categoryFilter, sizeFilter]);
 
   const totalItems = products.length;
   const inStock = products.filter((p) => p.stock > p.lowStockThreshold).length;
@@ -226,12 +235,13 @@ export function Stock() {
 
       {/* Filters */}
       <Card>
-        <div className="flex gap-4">
+        <div className="flex flex-wrap gap-4">
           <Input
-            placeholder="Scan barcode or search..."
+            placeholder="Search by name or barcode..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             icon={<Search size={18} />}
+            className="flex-1 min-w-[200px]"
           />
 
           <Select
@@ -241,18 +251,28 @@ export function Stock() {
               { value: 'all', label: 'All Categories' },
               ...categories.map(cat => ({ value: cat, label: cat }))
             ]}
-            className="w-48"
+            className="w-40"
+          />
+
+          <Select
+            value={sizeFilter}
+            onChange={(e) => setSizeFilter(e.target.value)}
+            options={[
+              { value: 'all', label: 'All Sizes' },
+              ...sizes.map(size => ({ value: size, label: size }))
+            ]}
+            className="w-32"
           />
 
           <Select
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
             options={[
-              { value: 'all', label: 'All Products' },
+              { value: 'all', label: 'All Stock' },
               { value: 'low', label: 'Low Stock' },
               { value: 'out', label: 'Out of Stock' },
             ]}
-            className="w-48"
+            className="w-36"
           />
         </div>
       </Card>
