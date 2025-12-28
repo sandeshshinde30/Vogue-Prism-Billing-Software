@@ -2124,31 +2124,26 @@ if ($result -eq 0) {
   ipcMain.handle("printer:debugTest", async (_, printerName) => {
     try {
       const isWindows = process.platform === "win32";
-      if (!isWindows) {
-        return { success: false, error: "Debug test is Windows-only" };
-      }
-      const simpleText = `
-SIMPLE PRINTER TEST
-==================
-Time: ${(/* @__PURE__ */ new Date()).toLocaleString()}
-Printer: ${printerName}
-==================
-If you see this, basic printing works!
-
-
-`;
       const fs2 = await import("fs");
       const path2 = await import("path");
       const os = await import("os");
+      const simpleText = `
+PRINTER TEST
+============
+Time: ${(/* @__PURE__ */ new Date()).toLocaleString()}
+Printer: ${printerName}
+============
+If you see this, printing works!
+
+
+`;
       const tempFile = path2.join(os.tmpdir(), `debug-${Date.now()}.txt`);
       fs2.writeFileSync(tempFile, simpleText, "ascii");
-      const escapedPrinter = printerName.replace(/'/g, "''").replace(/"/g, '""');
-      try {
-        console.log(`🔍 DEBUG TEST - Printer: ${printerName}`);
-        let printSuccess = false;
-        let lastError = "";
-        console.log("🔍 Trying Method 1: .NET RawPrint...");
+      console.log(`Debug test - Printer: ${printerName}, Platform: ${process.platform}`);
+      if (isWindows) {
+        const escapedPrinter = printerName.replace(/'/g, "''").replace(/"/g, '""');
         try {
+          console.log("Trying Windows raw print...");
           const psScript = `
 $ErrorActionPreference = 'Stop'
 $printerName = '${escapedPrinter}'
@@ -2246,27 +2241,34 @@ if ($result -eq 0) {
             }
           }, 1e3);
           if (result.trim().includes("SUCCESS")) {
-            printSuccess = true;
-            console.log("🔍 Method 1 succeeded");
+            console.log("Windows raw print succeeded");
+            setTimeout(() => {
+              try {
+                fs2.unlinkSync(tempFile);
+              } catch (e) {
+              }
+            }, 2e3);
+            return { success: true, message: "Debug test sent successfully" };
           } else {
-            lastError = result.trim();
-            console.log(`🔍 Method 1 failed: ${lastError}`);
+            console.log(`Windows raw print failed: ${result.trim()}`);
           }
         } catch (e) {
-          lastError = e.message;
-          console.log(`🔍 Method 1 exception: ${e.message}`);
+          console.log(`Windows print exception: ${e.message}`);
         }
-        if (!printSuccess) {
-          console.log("🔍 Trying Method 2: Out-Printer...");
-          try {
-            const textContent = simpleText.replace(/'/g, "''");
-            await execAsync(`powershell -Command "'${textContent}' | Out-Printer -Name '${escapedPrinter}'"`, { timeout: 15e3 });
-            printSuccess = true;
-            console.log("🔍 Method 2 succeeded");
-          } catch (e) {
-            lastError = e.message;
-            console.log(`🔍 Method 2 failed: ${e.message}`);
-          }
+        console.log("Trying Out-Printer...");
+        try {
+          const textContent = simpleText.replace(/'/g, "''");
+          await execAsync(`powershell -Command "'${textContent}' | Out-Printer -Name '${escapedPrinter}'"`, { timeout: 15e3 });
+          console.log("Out-Printer succeeded");
+          setTimeout(() => {
+            try {
+              fs2.unlinkSync(tempFile);
+            } catch (e) {
+            }
+          }, 2e3);
+          return { success: true, message: "Debug test sent successfully" };
+        } catch (e) {
+          console.log(`Out-Printer failed: ${e.message}`);
         }
         setTimeout(() => {
           try {
@@ -2274,14 +2276,74 @@ if ($result -eq 0) {
           } catch (e) {
           }
         }, 2e3);
-        if (printSuccess) {
-          return { success: true, message: "Debug test sent successfully" };
-        } else {
-          return { success: false, error: `Debug test failed: ${lastError}` };
+        return { success: false, error: "All Windows print methods failed" };
+      } else {
+        console.log("Trying Linux print methods...");
+        try {
+          const { stdout: printerInfo } = await execAsync(`lpstat -p "${printerName}" 2>&1`);
+          console.log("Printer status:", printerInfo.trim());
+        } catch (e) {
+          console.log("Could not get printer status");
         }
-      } catch (error) {
-        console.error("🔍 DEBUG TEST FAILED:", error);
-        return { success: false, error: `Debug test failed: ${error}` };
+        try {
+          await execAsync(`lp -d "${printerName}" -o raw "${tempFile}"`);
+          console.log("lp -o raw succeeded");
+          setTimeout(() => {
+            try {
+              fs2.unlinkSync(tempFile);
+            } catch (e) {
+            }
+          }, 2e3);
+          return { success: true, message: "Debug test sent via lp -o raw" };
+        } catch (e) {
+          console.log("lp -o raw failed:", e.message);
+        }
+        try {
+          await execAsync(`lp -d "${printerName}" "${tempFile}"`);
+          console.log("lp succeeded");
+          setTimeout(() => {
+            try {
+              fs2.unlinkSync(tempFile);
+            } catch (e) {
+            }
+          }, 2e3);
+          return { success: true, message: "Debug test sent via lp" };
+        } catch (e) {
+          console.log("lp failed:", e.message);
+        }
+        try {
+          await execAsync(`lpr -P "${printerName}" "${tempFile}"`);
+          console.log("lpr succeeded");
+          setTimeout(() => {
+            try {
+              fs2.unlinkSync(tempFile);
+            } catch (e) {
+            }
+          }, 2e3);
+          return { success: true, message: "Debug test sent via lpr" };
+        } catch (e) {
+          console.log("lpr failed:", e.message);
+        }
+        try {
+          await execAsync(`echo "${simpleText}" | lp -d "${printerName}"`);
+          console.log("echo | lp succeeded");
+          setTimeout(() => {
+            try {
+              fs2.unlinkSync(tempFile);
+            } catch (e) {
+            }
+          }, 2e3);
+          return { success: true, message: "Debug test sent via echo | lp" };
+        } catch (e) {
+          console.log("echo | lp failed:", e.message);
+        }
+        setTimeout(() => {
+          try {
+            fs2.unlinkSync(tempFile);
+          } catch (e) {
+          }
+        }, 2e3);
+        return { success: false, error: "All Linux print methods failed. Check CUPS configuration and printer permissions." };
       }
     } catch (error) {
       console.error("Debug test error:", error);
@@ -2470,103 +2532,258 @@ if ($result -eq 0) { Write-Output "SUCCESS" } else { Write-Output "ERROR:$result
   });
   ipcMain.handle("printer:printLabelWithImage", async (_, barcode, price, printerName, design) => {
     try {
-      const { BrowserWindow: BrowserWindow2, app: app2 } = await import("electron");
-      const path2 = await import("path");
       const fs2 = await import("fs");
+      const path2 = await import("path");
+      const os = await import("os");
+      const { app: app2 } = await import("electron");
+      const { PNG } = await import("./png-Dm-iI_bl.js").then((n) => n.p);
+      if (!printerName || printerName.trim() === "") {
+        return { success: false, error: "No printer selected. Please select a label printer." };
+      }
+      console.log("Printing label:", barcode, "Price:", price, "to printer:", printerName);
+      const isWindows = process.platform === "win32";
+      const barcodeHeight = (design == null ? void 0 : design.barcodeHeight) || 50;
       const appPath = app2.isPackaged ? path2.join(process.resourcesPath, "app.asar.unpacked", "public") : path2.join(app2.getAppPath(), "public");
-      let logoUpBase64 = "";
-      let logoDownBase64 = "";
-      try {
-        const logoUpPath = path2.join(appPath, "label-logo-up.png");
-        if (fs2.existsSync(logoUpPath)) {
-          const logoUpBuffer = fs2.readFileSync(logoUpPath);
-          logoUpBase64 = `data:image/png;base64,${logoUpBuffer.toString("base64")}`;
+      const pngToTsplBitmap = (pngPath, targetWidth, targetHeight, x, y) => {
+        try {
+          if (!fs2.existsSync(pngPath)) {
+            console.log("Logo file not found:", pngPath);
+            return "";
+          }
+          const pngBuffer = fs2.readFileSync(pngPath);
+          const png = PNG.sync.read(pngBuffer);
+          const scaleX = targetWidth / png.width;
+          const scaleY = targetHeight / png.height;
+          const scale = Math.min(scaleX, scaleY);
+          const scaledWidth = Math.floor(png.width * scale);
+          const scaledHeight = Math.floor(png.height * scale);
+          const widthBytes = Math.ceil(scaledWidth / 8);
+          const bitmapData = [];
+          for (let row = 0; row < scaledHeight; row++) {
+            for (let byteCol = 0; byteCol < widthBytes; byteCol++) {
+              let byte = 0;
+              for (let bit = 0; bit < 8; bit++) {
+                const pixelX = byteCol * 8 + bit;
+                if (pixelX < scaledWidth) {
+                  const srcX = Math.floor(pixelX / scale);
+                  const srcY = Math.floor(row / scale);
+                  if (srcX < png.width && srcY < png.height) {
+                    const idx = (srcY * png.width + srcX) * 4;
+                    const r = png.data[idx];
+                    const g = png.data[idx + 1];
+                    const b = png.data[idx + 2];
+                    const a = png.data[idx + 3];
+                    if (a > 128) {
+                      const gray = r * 0.299 + g * 0.587 + b * 0.114;
+                      if (gray < 128) {
+                        byte |= 1 << 7 - bit;
+                      }
+                    }
+                  }
+                }
+              }
+              bitmapData.push(byte);
+            }
+          }
+          let cmd = `BITMAP ${x},${y},${widthBytes},${scaledHeight},0,`;
+          const hexData = bitmapData.map((b) => b.toString(16).padStart(2, "0").toUpperCase()).join("");
+          cmd += hexData + "\r\n";
+          console.log(`Logo bitmap: ${scaledWidth}x${scaledHeight} pixels, ${widthBytes}x${scaledHeight} bytes`);
+          return cmd;
+        } catch (e) {
+          console.log("Error processing logo:", e);
+          return "";
         }
-      } catch (e) {
-        console.log("Could not load logo-up:", e);
+      };
+      let tspl = "";
+      tspl += "SIZE 50 mm, 25 mm\r\n";
+      tspl += "GAP 2 mm, 0 mm\r\n";
+      tspl += "DIRECTION 0\r\n";
+      tspl += "REFERENCE 0,0\r\n";
+      tspl += "CLS\r\n";
+      const logoUpPath = path2.join(appPath, "label-logo-up.png");
+      const logoDownPath = path2.join(appPath, "label-logo-down.png");
+      const logoUpCmd = pngToTsplBitmap(logoUpPath, 80, 45, 5, 5);
+      if (logoUpCmd) {
+        tspl += logoUpCmd;
       }
-      try {
-        const logoDownPath = path2.join(appPath, "label-logo-down.png");
-        if (fs2.existsSync(logoDownPath)) {
-          const logoDownBuffer = fs2.readFileSync(logoDownPath);
-          logoDownBase64 = `data:image/png;base64,${logoDownBuffer.toString("base64")}`;
+      const logoDownCmd = pngToTsplBitmap(logoDownPath, 80, 45, 5, 55);
+      if (logoDownCmd) {
+        tspl += logoDownCmd;
+      }
+      tspl += `BARCODE 100,8,"128",${barcodeHeight},0,0,2,4,"${barcode}"\r
+`;
+      tspl += `TEXT 100,${8 + barcodeHeight + 3},"2",0,1,1,"${barcode}"\r
+`;
+      tspl += `TEXT 100,${8 + barcodeHeight + 22},"4",0,1,1,"Rs.${price}"\r
+`;
+      tspl += "PRINT 1,1\r\n";
+      const tempFile = path2.join(os.tmpdir(), `label-${Date.now()}.prn`);
+      fs2.writeFileSync(tempFile, tspl, "binary");
+      console.log("TSPL commands generated, length:", tspl.length);
+      console.log("Temp file:", tempFile);
+      let printed = false;
+      let lastError = "";
+      if (isWindows) {
+        const escapedPrinter = printerName.replace(/'/g, "''").replace(/"/g, '""');
+        const psScript = `
+$ErrorActionPreference = 'Stop'
+$printerName = '${escapedPrinter}'
+$filePath = '${tempFile.replace(/\\/g, "\\\\")}'
+
+Add-Type -TypeDefinition @'
+using System;
+using System.IO;
+using System.Runtime.InteropServices;
+
+public class RawPrint {
+    [StructLayout(LayoutKind.Sequential)]
+    public struct DOCINFOA {
+        [MarshalAs(UnmanagedType.LPStr)] public string pDocName;
+        [MarshalAs(UnmanagedType.LPStr)] public string pOutputFile;
+        [MarshalAs(UnmanagedType.LPStr)] public string pDataType;
+    }
+
+    [DllImport("winspool.drv", EntryPoint = "OpenPrinterA", SetLastError = true, CharSet = CharSet.Ansi)]
+    public static extern bool OpenPrinter(string szPrinter, out IntPtr hPrinter, IntPtr pd);
+
+    [DllImport("winspool.drv", SetLastError = true)]
+    public static extern bool ClosePrinter(IntPtr hPrinter);
+
+    [DllImport("winspool.drv", EntryPoint = "StartDocPrinterA", SetLastError = true, CharSet = CharSet.Ansi)]
+    public static extern bool StartDocPrinter(IntPtr hPrinter, int level, ref DOCINFOA di);
+
+    [DllImport("winspool.drv", SetLastError = true)]
+    public static extern bool EndDocPrinter(IntPtr hPrinter);
+
+    [DllImport("winspool.drv", SetLastError = true)]
+    public static extern bool StartPagePrinter(IntPtr hPrinter);
+
+    [DllImport("winspool.drv", SetLastError = true)]
+    public static extern bool EndPagePrinter(IntPtr hPrinter);
+
+    [DllImport("winspool.drv", SetLastError = true)]
+    public static extern bool WritePrinter(IntPtr hPrinter, byte[] pBytes, int dwCount, out int dwWritten);
+
+    public static int Print(string printerName, byte[] data) {
+        IntPtr hPrinter = IntPtr.Zero;
+        DOCINFOA di = new DOCINFOA();
+        di.pDocName = "Label";
+        di.pDataType = "RAW";
+
+        if (!OpenPrinter(printerName, out hPrinter, IntPtr.Zero)) return Marshal.GetLastWin32Error();
+        if (!StartDocPrinter(hPrinter, 1, ref di)) { ClosePrinter(hPrinter); return Marshal.GetLastWin32Error(); }
+        if (!StartPagePrinter(hPrinter)) { EndDocPrinter(hPrinter); ClosePrinter(hPrinter); return Marshal.GetLastWin32Error(); }
+        
+        int written = 0;
+        if (!WritePrinter(hPrinter, data, data.Length, out written)) {
+            EndPagePrinter(hPrinter); EndDocPrinter(hPrinter); ClosePrinter(hPrinter);
+            return Marshal.GetLastWin32Error();
         }
-      } catch (e) {
-        console.log("Could not load logo-down:", e);
+        
+        EndPagePrinter(hPrinter); EndDocPrinter(hPrinter); ClosePrinter(hPrinter);
+        return 0;
+    }
+}
+'@
+
+$bytes = [System.IO.File]::ReadAllBytes($filePath)
+$result = [RawPrint]::Print($printerName, $bytes)
+if ($result -eq 0) { Write-Output "SUCCESS" } else { Write-Output "ERROR:$result" }
+`;
+        const psFile = path2.join(os.tmpdir(), `labelprint-${Date.now()}.ps1`);
+        fs2.writeFileSync(psFile, psScript, "utf8");
+        try {
+          const { stdout } = await execAsync(`powershell -ExecutionPolicy Bypass -File "${psFile}"`, { timeout: 3e4 });
+          setTimeout(() => {
+            try {
+              fs2.unlinkSync(psFile);
+            } catch (e) {
+            }
+          }, 1e3);
+          if (stdout.trim().includes("SUCCESS")) {
+            printed = true;
+            console.log("Windows raw print successful");
+          } else {
+            lastError = stdout.trim();
+          }
+        } catch (winError) {
+          lastError = winError.message;
+          console.error("Windows print error:", winError);
+        }
+      } else {
+        try {
+          const { stdout: printerInfo } = await execAsync(`lpstat -v "${printerName}" 2>&1`);
+          console.log("Printer info:", printerInfo);
+        } catch (e) {
+          console.log("Could not get printer info");
+        }
+        if (!printed) {
+          try {
+            console.log('Trying: lp -d "' + printerName + '" -o raw "' + tempFile + '"');
+            await execAsync(`lp -d "${printerName}" -o raw "${tempFile}"`);
+            console.log("lp -o raw succeeded");
+            printed = true;
+          } catch (e) {
+            lastError = e.message;
+            console.log("lp -o raw failed:", e.message);
+          }
+        }
+        if (!printed) {
+          try {
+            const { stdout: deviceInfo } = await execAsync(`lpstat -v "${printerName}" 2>&1`);
+            console.log("Device info:", deviceInfo);
+            const usbDevices = ["/dev/usb/lp0", "/dev/usb/lp1", "/dev/usb/lp2", "/dev/lp0", "/dev/lp1"];
+            for (const device of usbDevices) {
+              try {
+                await execAsync(`test -e ${device}`);
+                console.log(`Trying direct write to ${device}`);
+                await execAsync(`cat "${tempFile}" > ${device}`);
+                console.log(`Direct write to ${device} succeeded`);
+                printed = true;
+                break;
+              } catch (devErr) {
+                continue;
+              }
+            }
+          } catch (e) {
+            console.log("Direct device write failed:", e.message);
+          }
+        }
+        if (!printed) {
+          try {
+            console.log('Trying: lp -d "' + printerName + '" "' + tempFile + '"');
+            await execAsync(`lp -d "${printerName}" "${tempFile}"`);
+            console.log("lp succeeded");
+            printed = true;
+          } catch (e) {
+            lastError = e.message;
+            console.log("lp failed:", e.message);
+          }
+        }
+        if (!printed) {
+          try {
+            console.log('Trying: lpr -P "' + printerName + '" -o raw "' + tempFile + '"');
+            await execAsync(`lpr -P "${printerName}" -o raw "${tempFile}"`);
+            console.log("lpr -o raw succeeded");
+            printed = true;
+          } catch (e) {
+            lastError = e.message;
+            console.log("lpr failed:", e.message);
+          }
+        }
       }
-      console.log("Printing label:", barcode, price, printerName);
-      const htmlContent = `<!DOCTYPE html>
-<html>
-<head>
-<meta charset="UTF-8">
-<script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"><\/script>
-<style>
-@page { size: 50mm 25mm; margin: 0; }
-@media print { @page { size: 50mm 25mm; margin: 0; } body { -webkit-print-color-adjust: exact; } }
-* { margin: 0; padding: 0; box-sizing: border-box; }
-html, body { width: 50mm; height: 25mm; overflow: hidden; background: #fff; font-family: Arial, sans-serif; }
-body { display: flex; align-items: center; padding: 1mm; }
-.logos { width: 13mm; text-align: center; flex-shrink: 0; }
-.logos img { width: 11mm; max-height: 8mm; display: block; margin: 0.3mm auto; }
-.content { flex: 1; text-align: center; overflow: hidden; }
-.barcode-img { display: block; margin: 0 auto; image-rendering: pixelated; }
-.txt { font-size: 7pt; font-weight: bold; margin-top: 0.3mm; line-height: 1; }
-.prc { font-size: 11pt; font-weight: bold; margin-top: 0.3mm; line-height: 1; }
-canvas { display: none; }
-</style>
-</head>
-<body>
-<div class="logos">
-${logoUpBase64 ? `<img src="${logoUpBase64}">` : ""}
-${logoDownBase64 ? `<img src="${logoDownBase64}">` : ""}
-</div>
-<div class="content">
-<canvas id="bc"></canvas>
-<img id="bcImg" class="barcode-img">
-<div class="txt">${barcode}</div>
-<div class="prc">Rs.${price}</div>
-</div>
-<script>
-window.onload = function() {
-  JsBarcode("#bc", "${barcode}", {
-    format: "CODE128",
-    width: 1.5,
-    height: 40,
-    displayValue: false,
-    margin: 5,
-    background: "#fff",
-    lineColor: "#000"
-  });
-  var c = document.getElementById('bc');
-  var img = document.getElementById('bcImg');
-  img.src = c.toDataURL('image/png', 1.0);
-  // Keep exact pixel size - no scaling
-  img.style.width = c.width + 'px';
-  img.style.height = c.height + 'px';
-};
-<\/script>
-</body>
-</html>`;
-      const printWindow = new BrowserWindow2({
-        show: false,
-        width: 400,
-        height: 200,
-        webPreferences: { nodeIntegration: false, contextIsolation: true, javascript: true }
-      });
-      await printWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(htmlContent)}`);
-      await new Promise((r) => setTimeout(r, 2e3));
-      const printResult = await new Promise((resolve) => {
-        printWindow.webContents.print({
-          silent: true,
-          printBackground: true,
-          deviceName: printerName,
-          pageSize: { width: 5e4, height: 25e3 },
-          margins: { marginType: "none" },
-          scaleFactor: 100
-        }, (success) => resolve(success));
-      });
-      printWindow.close();
-      return { success: printResult };
+      setTimeout(() => {
+        try {
+          fs2.unlinkSync(tempFile);
+        } catch (e) {
+        }
+      }, 5e3);
+      if (printed) {
+        return { success: true };
+      } else {
+        return { success: false, error: `Print failed: ${lastError}. Make sure the printer is connected and CUPS is configured correctly.` };
+      }
     } catch (error) {
       console.error("Label print error:", error);
       return { success: false, error: error instanceof Error ? error.message : "Print failed" };

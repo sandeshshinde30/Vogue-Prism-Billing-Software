@@ -329,8 +329,16 @@ export function LabelManagement() {
   
   const printLabelsDirectly = async (labels: LabelDataWithQty[], printerName: string, design?: any) => {
     try {
+      if (!printerName) {
+        return { success: false, error: "No printer selected" };
+      }
+      
+      console.log(`Printing ${labels.length} labels to ${printerName}`);
+      
       for (const label of labels) {
         for (let i = 0; i < label.quantity; i++) {
+          console.log(`Printing label ${i + 1}/${label.quantity} for ${label.name}`);
+          
           // Use HTML-based printing with logos (produces scannable barcodes with logo)
           const result = await window.electronAPI.printLabelWithImage(
             label.barcode || label.name.toLowerCase().replace(/\s+/g, "") + (label.size || ""),
@@ -340,12 +348,14 @@ export function LabelManagement() {
           );
           
           if (!result.success) {
+            console.error('Print failed:', result.error);
             return { success: false, error: result.error || "Print failed" };
           }
         }
       }
       return { success: true };
     } catch (error: any) {
+      console.error('Print error:', error);
       return { success: false, error: error.message || "Print failed" };
     }
   };
@@ -405,6 +415,10 @@ export function LabelManagement() {
   const previewLabels = () => {
     if (selectedProducts.length === 0) {
       toast.error("Please select products");
+      return;
+    }
+    if (!settings.selectedPrinter) {
+      toast.error("Please select a label printer first");
       return;
     }
     const labels: LabelDataWithQty[] = selectedProducts.map(p => ({
@@ -557,9 +571,9 @@ export function LabelManagement() {
           </div>
         </Card>
         
-        <Button onClick={previewLabels} disabled={selectedProducts.length === 0} className="w-full flex items-center justify-center gap-2" style={{ width: '100%', padding: '14px', fontSize: '14px' }}>
+        <Button onClick={previewLabels} disabled={selectedProducts.length === 0 || !settings.selectedPrinter} className="w-full flex items-center justify-center gap-2" style={{ width: '100%', padding: '14px', fontSize: '14px' }}>
           <Printer className="w-5 h-5" />
-          Print {totalLabels} Label{totalLabels !== 1 ? 's' : ''}
+          {!settings.selectedPrinter ? 'Select a Printer' : `Print ${totalLabels} Label${totalLabels !== 1 ? 's' : ''}`}
         </Button>
       </div>
     </div>
