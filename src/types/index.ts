@@ -4,6 +4,7 @@ export interface Product {
   category: Category | string;
   size: Size | string;
   barcode: string;
+  costPrice: number;
   price: number;
   stock: number;
   lowStockThreshold: number;
@@ -115,9 +116,9 @@ export const CATEGORIES = [
 ] as const;
 
 // Category-specific sizes
-export const CLOTHING_SIZES = ['XS', 'S', 'M', 'L', 'XL', 'XXL', 'XXXL'] as const;
-export const PANTS_SIZES = ['28', '30', '32', '34', '36', '38', '40', '42', '44'] as const;
-export const UNDERWEAR_SIZES = ['S', 'M', 'L', 'XL', 'XXL'] as const;
+export const CLOTHING_SIZES = ['XS', 'S', 'M', 'L', 'XL', 'XXL', 'XXXL', '4XL'] as const;
+export const PANTS_SIZES = ['28', '30', '32', '34', '36', '38', '40', '42', '44', '46', '48'] as const;
+export const UNDERWEAR_SIZES = ['S', 'M', 'L', 'XL', 'XXL', 'XXXL', '4XL'] as const;
 
 // Size mapping for categories
 export const CATEGORY_SIZES = {

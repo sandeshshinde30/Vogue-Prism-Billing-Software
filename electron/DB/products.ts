@@ -6,6 +6,7 @@ export interface ProductData {
   category: string;
   size?: string;
   barcode?: string;
+  costPrice?: number;
   price: number;
   stock: number;
   lowStockThreshold: number;
@@ -16,8 +17,8 @@ export interface ProductData {
 export function addProduct(data: ProductData) {
   const db = getDatabase();
   const stmt = db.prepare(`
-    INSERT INTO products (name, category, size, barcode, price, stock, lowStockThreshold, isActive, createdAt, updatedAt)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+    INSERT INTO products (name, category, size, barcode, costPrice, price, stock, lowStockThreshold, isActive, createdAt, updatedAt)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
   `);
   
   const result = stmt.run(
@@ -25,6 +26,7 @@ export function addProduct(data: ProductData) {
     data.category,
     data.size || null,
     data.barcode || null,
+    data.costPrice || 0,
     data.price,
     data.stock,
     data.lowStockThreshold,
@@ -164,6 +166,10 @@ export function updateProduct(id: number, data: Partial<ProductData>) {
   if (data.barcode !== undefined) {
     fields.push('barcode = ?');
     values.push(data.barcode || null);
+  }
+  if (data.costPrice !== undefined) {
+    fields.push('costPrice = ?');
+    values.push(data.costPrice);
   }
   if (data.price !== undefined) {
     fields.push('price = ?');

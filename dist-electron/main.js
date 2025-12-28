@@ -16,6 +16,7 @@ async function initDatabase() {
       category TEXT NOT NULL,
       size TEXT,
       barcode TEXT UNIQUE,
+      costPrice REAL DEFAULT 0,
       price REAL NOT NULL,
       stock INTEGER NOT NULL DEFAULT 0,
       lowStockThreshold INTEGER NOT NULL DEFAULT 5,
@@ -31,6 +32,12 @@ async function initDatabase() {
       console.log("Adding isActive column to products table...");
       db.exec("ALTER TABLE products ADD COLUMN isActive INTEGER NOT NULL DEFAULT 1");
       console.log("Migration completed: isActive column added");
+    }
+    const hasCostPrice = tableInfo.some((column) => column.name === "costPrice");
+    if (!hasCostPrice) {
+      console.log("Adding costPrice column to products table...");
+      db.exec("ALTER TABLE products ADD COLUMN costPrice REAL DEFAULT 0");
+      console.log("Migration completed: costPrice column added");
     }
   } catch (error) {
     console.error("Migration error:", error);
@@ -273,14 +280,15 @@ function cleanupOldLogs() {
 function addProduct(data) {
   const db2 = getDatabase();
   const stmt = db2.prepare(`
-    INSERT INTO products (name, category, size, barcode, price, stock, lowStockThreshold, isActive, createdAt, updatedAt)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+    INSERT INTO products (name, category, size, barcode, costPrice, price, stock, lowStockThreshold, isActive, createdAt, updatedAt)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
   `);
   const result = stmt.run(
     data.name,
     data.category,
     data.size || null,
     data.barcode || null,
+    data.costPrice || 0,
     data.price,
     data.stock,
     data.lowStockThreshold,
@@ -387,6 +395,10 @@ function updateProduct(id, data) {
   if (data.barcode !== void 0) {
     fields.push("barcode = ?");
     values.push(data.barcode || null);
+  }
+  if (data.costPrice !== void 0) {
+    fields.push("costPrice = ?");
+    values.push(data.costPrice);
   }
   if (data.price !== void 0) {
     fields.push("price = ?");

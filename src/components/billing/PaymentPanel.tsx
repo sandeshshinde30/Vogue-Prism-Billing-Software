@@ -30,6 +30,12 @@ export function PaymentPanel() {
   const total = getTotal();
   const maxDiscount = settings?.maxDiscountPercent || 30;
   
+  // Calculate total cost price
+  const totalCostPrice = cart.reduce((sum, item) => {
+    return sum + ((item.product.costPrice || 0) * item.quantity);
+  }, 0);
+  const profit = subtotal - totalCostPrice;
+  
   const [isEditingTotal, setIsEditingTotal] = React.useState(false);
   const [editedTotal, setEditedTotal] = React.useState('');
   const [mixedPaymentError, setMixedPaymentError] = React.useState('');
@@ -218,6 +224,24 @@ export function PaymentPanel() {
             ₹{subtotal.toLocaleString()}
           </span>
         </div>
+
+        {/* Cost Price & Profit */}
+        {totalCostPrice > 0 && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '12px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <span style={{ color: '#94a3b8' }}>Total Cost</span>
+              <span style={{ fontFamily: 'JetBrains Mono, monospace', color: '#94a3b8' }}>
+                ₹{totalCostPrice.toLocaleString()}
+              </span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <span style={{ color: '#10b981', fontWeight: '500' }}>Profit</span>
+              <span style={{ fontFamily: 'JetBrains Mono, monospace', color: '#10b981', fontWeight: '600' }}>
+                ₹{profit.toLocaleString()}
+              </span>
+            </div>
+          </div>
+        )}
 
         {/* Discount */}
         <DiscountInput />

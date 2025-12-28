@@ -143,6 +143,7 @@ export function Products() {
         if (productData.category !== undefined) updateData.category = productData.category;
         if (productData.size !== undefined) updateData.size = productData.size;
         if (productData.barcode !== undefined) updateData.barcode = productData.barcode;
+        if (productData.costPrice !== undefined) updateData.costPrice = productData.costPrice;
         if (productData.price !== undefined) updateData.price = productData.price;
         if (productData.stock !== undefined) updateData.stock = productData.stock;
         if (productData.lowStockThreshold !== undefined) updateData.lowStockThreshold = productData.lowStockThreshold;
@@ -159,6 +160,7 @@ export function Products() {
           category: productData.category!,
           size: productData.size,
           barcode: productData.barcode,
+          costPrice: productData.costPrice,
           price: productData.price!,
           stock: productData.stock!,
           lowStockThreshold: productData.lowStockThreshold!,
@@ -817,6 +819,7 @@ function ProductModal({ isOpen, onClose, product, onSave }: ProductModalProps) {
     category: CATEGORIES[0] as string,
     size: '',
     barcode: '',
+    costPrice: '',
     price: '',
     stock: '',
     lowStockThreshold: '5',
@@ -829,6 +832,7 @@ function ProductModal({ isOpen, onClose, product, onSave }: ProductModalProps) {
         category: product.category,
         size: product.size || '',
         barcode: product.barcode || '',
+        costPrice: String(product.costPrice || ''),
         price: String(product.price),
         stock: String(product.stock),
         lowStockThreshold: String(product.lowStockThreshold),
@@ -839,6 +843,7 @@ function ProductModal({ isOpen, onClose, product, onSave }: ProductModalProps) {
         category: CATEGORIES[0] as string,
         size: '',
         barcode: '',
+        costPrice: '',
         price: '',
         stock: '0',
         lowStockThreshold: '5',
@@ -853,6 +858,7 @@ function ProductModal({ isOpen, onClose, product, onSave }: ProductModalProps) {
       category: formData.category,
       size: formData.size,
       barcode: formData.barcode,
+      costPrice: formData.costPrice ? parseFloat(formData.costPrice) : 0,
       price: parseFloat(formData.price),
       stock: parseInt(formData.stock),
       lowStockThreshold: parseInt(formData.lowStockThreshold),
@@ -869,17 +875,17 @@ function ProductModal({ isOpen, onClose, product, onSave }: ProductModalProps) {
       isOpen={isOpen}
       onClose={onClose}
       title={product ? 'Edit Product' : 'Add New Product'}
-      size="md"
+      size="xl"
     >
       <form onSubmit={handleSubmit} className="space-y-4">
-        <Input
-          label="Product Name *"
-          value={formData.name}
-          onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-          required
-        />
-
-        <div className="grid grid-cols-2 gap-4">
+        {/* Row 1: Name, Category, Size, Barcode + Generate */}
+        <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1.5fr auto', gap: '12px', alignItems: 'end' }}>
+          <Input
+            label="Product Name *"
+            value={formData.name}
+            onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+            required
+          />
           <Select
             label="Category *"
             value={formData.category}
@@ -893,27 +899,30 @@ function ProductModal({ isOpen, onClose, product, onSave }: ProductModalProps) {
             value={formData.size}
             onChange={(e) => setFormData({ ...formData, size: e.target.value as any })}
           />
+          <Input
+            label="Barcode"
+            value={formData.barcode}
+            onChange={(e) =>
+              setFormData({ ...formData, barcode: e.target.value })
+            }
+            className="font-mono"
+          />
+          <Button type="button" variant="secondary" onClick={generateBarcode}>
+            Generate
+          </Button>
         </div>
 
-        <div className="flex gap-2">
-          <div className="flex-1">
-            <Input
-              label="Barcode"
-              value={formData.barcode}
-              onChange={(e) =>
-                setFormData({ ...formData, barcode: e.target.value })
-              }
-              className="font-mono"
-            />
-          </div>
-          <div className="flex items-end">
-            <Button type="button" variant="secondary" onClick={generateBarcode}>
-              Generate
-            </Button>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-2 gap-4">
+        {/* Row 2: Cost Price, Selling Price, Stock, Low Stock Alert */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '12px' }}>
+          <Input
+            label="Cost Price"
+            type="number"
+            value={formData.costPrice}
+            onChange={(e) => setFormData({ ...formData, costPrice: e.target.value })}
+            min="0"
+            step="0.01"
+            placeholder="0"
+          />
           <Input
             label="Selling Price *"
             type="number"
@@ -931,17 +940,16 @@ function ProductModal({ isOpen, onClose, product, onSave }: ProductModalProps) {
             required
             min="0"
           />
+          <Input
+            label="Low Stock Alert"
+            type="number"
+            value={formData.lowStockThreshold}
+            onChange={(e) =>
+              setFormData({ ...formData, lowStockThreshold: e.target.value })
+            }
+            min="0"
+          />
         </div>
-
-        <Input
-          label="Low Stock Alert Threshold"
-          type="number"
-          value={formData.lowStockThreshold}
-          onChange={(e) =>
-            setFormData({ ...formData, lowStockThreshold: e.target.value })
-          }
-          min="0"
-        />
 
         <div className="flex justify-end gap-3 pt-4">
           <Button type="button" variant="secondary" onClick={onClose}>

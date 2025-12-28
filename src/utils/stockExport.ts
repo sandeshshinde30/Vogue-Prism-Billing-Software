@@ -6,7 +6,9 @@ export interface StockExportData {
   'Category': string;
   'Size': string;
   'Barcode': string;
-  'Price (₹)': number;
+  'Cost Price (₹)': number;
+  'Selling Price (₹)': number;
+  'Profit (₹)': number;
   'Current Stock': number;
   'Low Stock Threshold': number;
   'Stock Status': string;
@@ -23,7 +25,9 @@ export class StockExporter {
       'Category': typeof product.category === 'string' ? product.category : product.category,
       'Size': typeof product.size === 'string' ? product.size : product.size,
       'Barcode': product.barcode || 'N/A',
-      'Price (₹)': product.price,
+      'Cost Price (₹)': product.costPrice || 0,
+      'Selling Price (₹)': product.price,
+      'Profit (₹)': product.price - (product.costPrice || 0),
       'Current Stock': product.stock,
       'Low Stock Threshold': product.lowStockThreshold,
       'Stock Status': this.getStockStatus(product),
@@ -55,7 +59,9 @@ export class StockExporter {
         { wch: 15 }, // Category
         { wch: 10 }, // Size
         { wch: 15 }, // Barcode
-        { wch: 12 }, // Price
+        { wch: 12 }, // Cost Price
+        { wch: 12 }, // Selling Price
+        { wch: 10 }, // Profit
         { wch: 12 }, // Current Stock
         { wch: 15 }, // Low Stock Threshold
         { wch: 12 }, // Stock Status
@@ -69,7 +75,7 @@ export class StockExporter {
       // Add conditional formatting for stock status
       const range = XLSX.utils.decode_range(worksheet['!ref'] || 'A1');
       for (let row = 1; row <= range.e.r; row++) {
-        const stockStatusCell = `H${row + 1}`;
+        const stockStatusCell = `J${row + 1}`;
         
         // You can add more sophisticated formatting here if needed
         if (worksheet[stockStatusCell]) {

@@ -235,13 +235,12 @@ export function Stock() {
 
       {/* Filters */}
       <Card>
-        <div className="flex flex-wrap gap-4">
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
           <Input
             placeholder="Search by name or barcode..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             icon={<Search size={18} />}
-            className="flex-1 min-w-[200px]"
           />
 
           <Select
@@ -251,7 +250,6 @@ export function Stock() {
               { value: 'all', label: 'All Categories' },
               ...categories.map(cat => ({ value: cat, label: cat }))
             ]}
-            className="w-40"
           />
 
           <Select
@@ -261,7 +259,6 @@ export function Stock() {
               { value: 'all', label: 'All Sizes' },
               ...sizes.map(size => ({ value: size, label: size }))
             ]}
-            className="w-32"
           />
 
           <Select
@@ -272,7 +269,6 @@ export function Stock() {
               { value: 'low', label: 'Low Stock' },
               { value: 'out', label: 'Out of Stock' },
             ]}
-            className="w-36"
           />
         </div>
       </Card>

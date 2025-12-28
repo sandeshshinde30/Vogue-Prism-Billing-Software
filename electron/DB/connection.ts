@@ -17,6 +17,7 @@ export async function initDatabase() {
       category TEXT NOT NULL,
       size TEXT,
       barcode TEXT UNIQUE,
+      costPrice REAL DEFAULT 0,
       price REAL NOT NULL,
       stock INTEGER NOT NULL DEFAULT 0,
       lowStockThreshold INTEGER NOT NULL DEFAULT 5,
@@ -35,6 +36,14 @@ export async function initDatabase() {
       console.log('Adding isActive column to products table...');
       db.exec('ALTER TABLE products ADD COLUMN isActive INTEGER NOT NULL DEFAULT 1');
       console.log('Migration completed: isActive column added');
+    }
+    
+    // Migration: Add costPrice column if it doesn't exist
+    const hasCostPrice = tableInfo.some((column: any) => column.name === 'costPrice');
+    if (!hasCostPrice) {
+      console.log('Adding costPrice column to products table...');
+      db.exec('ALTER TABLE products ADD COLUMN costPrice REAL DEFAULT 0');
+      console.log('Migration completed: costPrice column added');
     }
   } catch (error) {
     console.error('Migration error:', error);

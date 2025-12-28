@@ -140,6 +140,11 @@ export function Cart() {
                   }}
                 >
                   ₹{item.product.price.toLocaleString()} × {item.quantity}
+                  {item.product.costPrice ? (
+                    <span style={{ color: '#10b981', marginLeft: '8px' }}>
+                      (CP: ₹{item.product.costPrice.toLocaleString()})
+                    </span>
+                  ) : null}
                 </p>
               </div>
               <button
