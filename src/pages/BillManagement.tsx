@@ -73,13 +73,16 @@ export function BillManagement() {
   const loadBills = async () => {
     setLoading(true);
     try {
+      const searchParam = debouncedSearchQuery && debouncedSearchQuery.trim() ? debouncedSearchQuery.trim() : undefined;
+      console.log('Loading bills with search:', searchParam);
       const data = await window.electronAPI.getBills(
         dateFrom || undefined, 
         dateTo || undefined, 
-        debouncedSearchQuery || undefined
+        searchParam
       );
       setBills(data as Bill[]);
     } catch (error) {
+      console.error('Error loading bills:', error);
       toast.error('Error loading bills');
     }
     setLoading(false);

@@ -210,7 +210,10 @@ export function setupIpcHandlers() {
 
   ipcMain.handle('bills:getAll', async (_, dateFrom?: string, dateTo?: string, searchQuery?: string) => {
     try {
-      return getBills(dateFrom, dateTo, searchQuery);
+      console.log('bills:getAll called with:', { dateFrom, dateTo, searchQuery });
+      const results = getBills(dateFrom, dateTo, searchQuery);
+      console.log('bills:getAll returning', results.length, 'bills');
+      return results;
     } catch (error) {
       console.error('Error getting bills:', error);
       throw error;

@@ -32,8 +32,8 @@ export function createBill(data: BillData) {
   const transaction = db.transaction(() => {
     // Insert bill with local time
     const billStmt = db.prepare(`
-      INSERT INTO bills (billNumber, subtotal, discountPercent, discountAmount, total, paymentMode, cashAmount, upiAmount, createdAt)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now', 'localtime'))
+      INSERT INTO bills (billNumber, subtotal, discountPercent, discountAmount, total, paymentMode, cashAmount, upiAmount, customerMobileNumber, createdAt)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now', 'localtime'))
     `);
     
     const billResult = billStmt.run(
@@ -44,7 +44,8 @@ export function createBill(data: BillData) {
       data.total,
       data.paymentMode,
       data.cashAmount || 0,
-      data.upiAmount || 0
+      data.upiAmount || 0,
+      data.customerMobileNumber || null
     );
     
     const billId = billResult.lastInsertRowid as number;

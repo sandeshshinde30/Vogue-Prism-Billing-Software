@@ -556,8 +556,8 @@ function createBill(data) {
   const billNumber = generateBillNumber();
   const transaction = db2.transaction(() => {
     const billStmt2 = db2.prepare(`
-      INSERT INTO bills (billNumber, subtotal, discountPercent, discountAmount, total, paymentMode, cashAmount, upiAmount, createdAt)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now', 'localtime'))
+      INSERT INTO bills (billNumber, subtotal, discountPercent, discountAmount, total, paymentMode, cashAmount, upiAmount, customerMobileNumber, createdAt)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now', 'localtime'))
     `);
     const billResult = billStmt2.run(
       billNumber,
@@ -567,7 +567,8 @@ function createBill(data) {
       data.total,
       data.paymentMode,
       data.cashAmount || 0,
-      data.upiAmount || 0
+      data.upiAmount || 0,
+      data.customerMobileNumber || null
     );
     const billId2 = billResult.lastInsertRowid;
     const itemStmt = db2.prepare(`
@@ -1419,7 +1420,10 @@ function setupIpcHandlers() {
   });
   ipcMain.handle("bills:getAll", async (_, dateFrom, dateTo, searchQuery) => {
     try {
-      return getBills(dateFrom, dateTo, searchQuery);
+      console.log("bills:getAll called with:", { dateFrom, dateTo, searchQuery });
+      const results = getBills(dateFrom, dateTo, searchQuery);
+      console.log("bills:getAll returning", results.length, "bills");
+      return results;
     } catch (error) {
       console.error("Error getting bills:", error);
       throw error;
