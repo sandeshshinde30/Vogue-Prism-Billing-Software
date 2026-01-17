@@ -94,14 +94,15 @@ async function initDatabase() {
           paymentMode TEXT NOT NULL CHECK (paymentMode IN ('cash', 'upi', 'mixed')),
           cashAmount REAL DEFAULT 0,
           upiAmount REAL DEFAULT 0,
+          customerMobileNumber TEXT,
           status TEXT NOT NULL DEFAULT 'completed' CHECK (status IN ('completed', 'cancelled', 'held')),
           createdAt TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
         );
       `);
       db.exec(`
-        INSERT INTO bills (id, billNumber, subtotal, discountPercent, discountAmount, total, paymentMode, cashAmount, upiAmount, status, createdAt)
+        INSERT INTO bills (id, billNumber, subtotal, discountPercent, discountAmount, total, paymentMode, cashAmount, upiAmount, customerMobileNumber, status, createdAt)
         SELECT id, billNumber, subtotal, discountPercent, discountAmount, total, paymentMode, 
-               COALESCE(cashAmount, 0), COALESCE(upiAmount, 0), status, createdAt
+               COALESCE(cashAmount, 0), COALESCE(upiAmount, 0), NULL as customerMobileNumber, status, createdAt
         FROM bills_backup;
       `);
       db.exec("DROP TABLE bills_backup;");
@@ -110,6 +111,12 @@ async function initDatabase() {
     }
     if (!hasCashAmount || !hasUpiAmount) {
       console.log("Migration completed: payment columns added");
+    }
+    const hasCustomerMobile = billsTableInfo.some((column) => column.name === "customerMobileNumber");
+    if (!hasCustomerMobile) {
+      console.log("Adding customerMobileNumber column to bills table...");
+      db.exec("ALTER TABLE bills ADD COLUMN customerMobileNumber TEXT");
+      console.log("Migration completed: customerMobileNumber column added");
     }
   } catch (error) {
     console.error("Bills migration error:", error);
@@ -125,6 +132,7 @@ async function initDatabase() {
       paymentMode TEXT NOT NULL CHECK (paymentMode IN ('cash', 'upi', 'mixed')),
       cashAmount REAL DEFAULT 0,
       upiAmount REAL DEFAULT 0,
+      customerMobileNumber TEXT,
       status TEXT NOT NULL DEFAULT 'completed' CHECK (status IN ('completed', 'cancelled', 'held')),
       createdAt TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
     );
@@ -623,8 +631,16 @@ function getBills(dateFrom, dateTo, searchQuery) {
     query += " WHERE " + conditions.join(" AND ");
   }
   query += " ORDER BY createdAt DESC";
-  const stmt = db2.prepare(query);
-  return stmt.all(...params);
+  console.log("Bills query:", query, "params:", params);
+  try {
+    const stmt = db2.prepare(query);
+    const results = stmt.all(...params);
+    console.log("Bills query results:", results.length, "bills found");
+    return results;
+  } catch (error) {
+    console.error("Error executing bills query:", error);
+    throw error;
+  }
 }
 function getBillById(id) {
   const db2 = getDatabase();

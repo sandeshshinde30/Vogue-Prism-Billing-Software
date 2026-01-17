@@ -133,8 +133,17 @@ export function getBills(dateFrom?: string, dateTo?: string, searchQuery?: strin
   
   query += ' ORDER BY createdAt DESC';
   
-  const stmt = db.prepare(query);
-  return stmt.all(...params);
+  console.log('Bills query:', query, 'params:', params);
+  
+  try {
+    const stmt = db.prepare(query);
+    const results = stmt.all(...params);
+    console.log('Bills query results:', results.length, 'bills found');
+    return results;
+  } catch (error) {
+    console.error('Error executing bills query:', error);
+    throw error;
+  }
 }
 
 // READ - Get bill by ID with items
