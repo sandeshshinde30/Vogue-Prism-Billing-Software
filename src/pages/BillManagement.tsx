@@ -46,6 +46,7 @@ export function BillManagement() {
   const [bills, setBills] = useState<Bill[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [selectedBill, setSelectedBill] = useState<{ bill: Bill; items: BillItem[] } | null>(null);
@@ -57,14 +58,26 @@ export function BillManagement() {
   const [showBillModal, setShowBillModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
 
+  // Debounce search query
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchQuery(searchQuery);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
   useEffect(() => {
     loadBills();
-  }, [dateFrom, dateTo]);
+  }, [dateFrom, dateTo, debouncedSearchQuery]);
 
   const loadBills = async () => {
     setLoading(true);
     try {
-      const data = await window.electronAPI.getBills(dateFrom || undefined, dateTo || undefined);
+      const data = await window.electronAPI.getBills(
+        dateFrom || undefined, 
+        dateTo || undefined, 
+        debouncedSearchQuery || undefined
+      );
       setBills(data as Bill[]);
     } catch (error) {
       toast.error('Error loading bills');
@@ -165,9 +178,7 @@ export function BillManagement() {
     setPrintingBill(null);
   };
 
-  const filteredBills = bills.filter(bill =>
-    bill.billNumber.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const filteredBills = bills;
 
   const getPaymentModeColor = (mode: string) => {
     switch (mode) {
@@ -206,7 +217,7 @@ export function BillManagement() {
               <Search size={18} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
               <Input
                 type="text"
-                placeholder="Search by bill number..."
+                placeholder="Search by bill number or mobile number..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="pl-10"

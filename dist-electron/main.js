@@ -599,19 +599,28 @@ function createBill(data) {
   );
   return bill;
 }
-function getBills(dateFrom, dateTo) {
+function getBills(dateFrom, dateTo, searchQuery) {
   const db2 = getDatabase();
   let query = "SELECT * FROM bills";
   const params = [];
+  const conditions = [];
   if (dateFrom && dateTo) {
-    query += " WHERE date(createdAt) BETWEEN ? AND ?";
+    conditions.push("date(createdAt) BETWEEN ? AND ?");
     params.push(dateFrom, dateTo);
   } else if (dateFrom) {
-    query += " WHERE date(createdAt) >= ?";
+    conditions.push("date(createdAt) >= ?");
     params.push(dateFrom);
   } else if (dateTo) {
-    query += " WHERE date(createdAt) <= ?";
+    conditions.push("date(createdAt) <= ?");
     params.push(dateTo);
+  }
+  if (searchQuery && searchQuery.trim()) {
+    conditions.push("(billNumber LIKE ? OR customerMobileNumber LIKE ?)");
+    const searchTerm = `%${searchQuery.trim()}%`;
+    params.push(searchTerm, searchTerm);
+  }
+  if (conditions.length > 0) {
+    query += " WHERE " + conditions.join(" AND ");
   }
   query += " ORDER BY createdAt DESC";
   const stmt = db2.prepare(query);
@@ -1392,9 +1401,9 @@ function setupIpcHandlers() {
       throw new Error(`Failed to create bill: ${error instanceof Error ? error.message : "Unknown error"}`);
     }
   });
-  ipcMain.handle("bills:getAll", async (_, dateFrom, dateTo) => {
+  ipcMain.handle("bills:getAll", async (_, dateFrom, dateTo, searchQuery) => {
     try {
-      return getBills(dateFrom, dateTo);
+      return getBills(dateFrom, dateTo, searchQuery);
     } catch (error) {
       console.error("Error getting bills:", error);
       throw error;

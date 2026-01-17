@@ -14,6 +14,8 @@ export function PaymentPanel() {
     upiAmount,
     setCashAmount,
     setUpiAmount,
+    customerMobileNumber,
+    setCustomerMobileNumber,
     getSubtotal,
     getTotal,
     discountPercent,
@@ -102,6 +104,7 @@ export function PaymentPanel() {
       paymentMode,
       cashAmount: paymentMode === 'mixed' ? cashAmount : (paymentMode === 'cash' ? total : 0),
       upiAmount: paymentMode === 'mixed' ? upiAmount : (paymentMode === 'upi' ? total : 0),
+      customerMobileNumber: customerMobileNumber.trim() || undefined,
     };
   };
 
@@ -327,6 +330,42 @@ export function PaymentPanel() {
               </div>
             )}
           </div>
+        </div>
+
+        {/* Customer Mobile Number */}
+        <div>
+          <p 
+            className="text-xs font-medium text-slate-500 mb-2"
+            style={{ fontSize: '12px', fontWeight: '500', color: '#64748b', marginBottom: '8px' }}
+          >
+            Customer Mobile (Optional)
+          </p>
+          <input
+            type="tel"
+            value={customerMobileNumber}
+            onChange={(e) => {
+              // Allow only numbers and limit to 10 digits
+              const value = e.target.value.replace(/\D/g, '').slice(0, 10);
+              setCustomerMobileNumber(value);
+            }}
+            className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-colors"
+            style={{
+              width: '100%',
+              padding: '8px 12px',
+              fontSize: '14px',
+              border: '1px solid #d1d5db',
+              borderRadius: '8px',
+              outline: 'none',
+              transition: 'all 0.2s ease'
+            }}
+            placeholder="Enter 10-digit mobile number"
+            maxLength={10}
+          />
+          {customerMobileNumber && customerMobileNumber.length !== 10 && (
+            <p className="text-xs text-amber-600 mt-1" style={{ fontSize: '12px', color: '#d97706', marginTop: '4px' }}>
+              Mobile number should be 10 digits
+            </p>
+          )}
         </div>
 
         {/* Payment Mode */}

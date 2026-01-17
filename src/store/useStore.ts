@@ -28,9 +28,11 @@ interface AppState {
   paymentMode: 'cash' | 'upi' | 'mixed';
   cashAmount: number;
   upiAmount: number;
+  customerMobileNumber: string;
   setPaymentMode: (mode: 'cash' | 'upi' | 'mixed') => void;
   setCashAmount: (amount: number) => void;
   setUpiAmount: (amount: number) => void;
+  setCustomerMobileNumber: (mobile: string) => void;
 
   // Settings
   settings: Settings | null;
@@ -141,7 +143,7 @@ export const useStore = create<AppState>((set, get) => ({
           : item
       ),
     })),
-  clearCart: () => set({ cart: [], discountPercent: 0, discountAmount: 0, manualTotal: null, cashAmount: 0, upiAmount: 0 }),
+  clearCart: () => set({ cart: [], discountPercent: 0, discountAmount: 0, manualTotal: null, cashAmount: 0, upiAmount: 0, customerMobileNumber: '' }),
 
   // Discount
   discountPercent: 0,
@@ -161,9 +163,11 @@ export const useStore = create<AppState>((set, get) => ({
   paymentMode: 'cash',
   cashAmount: 0,
   upiAmount: 0,
+  customerMobileNumber: '',
   setPaymentMode: (mode) => set({ paymentMode: mode }),
   setCashAmount: (amount) => set({ cashAmount: amount }),
   setUpiAmount: (amount) => set({ upiAmount: amount }),
+  setCustomerMobileNumber: (mobile) => set({ customerMobileNumber: mobile }),
 
   // Settings
   settings: null,

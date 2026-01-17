@@ -101,21 +101,34 @@ export function createBill(data: BillData) {
 }
 
 // READ - Get all bills with date filtering
-export function getBills(dateFrom?: string, dateTo?: string) {
+export function getBills(dateFrom?: string, dateTo?: string, searchQuery?: string) {
   const db = getDatabase();
   
   let query = 'SELECT * FROM bills';
   const params: any[] = [];
+  const conditions: string[] = [];
   
+  // Date filtering
   if (dateFrom && dateTo) {
-    query += ' WHERE date(createdAt) BETWEEN ? AND ?';
+    conditions.push('date(createdAt) BETWEEN ? AND ?');
     params.push(dateFrom, dateTo);
   } else if (dateFrom) {
-    query += ' WHERE date(createdAt) >= ?';
+    conditions.push('date(createdAt) >= ?');
     params.push(dateFrom);
   } else if (dateTo) {
-    query += ' WHERE date(createdAt) <= ?';
+    conditions.push('date(createdAt) <= ?');
     params.push(dateTo);
+  }
+  
+  // Search filtering
+  if (searchQuery && searchQuery.trim()) {
+    conditions.push('(billNumber LIKE ? OR customerMobileNumber LIKE ?)');
+    const searchTerm = `%${searchQuery.trim()}%`;
+    params.push(searchTerm, searchTerm);
+  }
+  
+  if (conditions.length > 0) {
+    query += ' WHERE ' + conditions.join(' AND ');
   }
   
   query += ' ORDER BY createdAt DESC';

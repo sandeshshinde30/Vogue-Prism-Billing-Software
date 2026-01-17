@@ -16,7 +16,7 @@ export interface ElectronAPI {
 
   // Bills
   createBill: (billData: any) => Promise<any>;
-  getBills: (dateFrom?: string, dateTo?: string) => Promise<any[]>;
+  getBills: (dateFrom?: string, dateTo?: string, searchQuery?: string) => Promise<any[]>;
   getBillById: (id: number) => Promise<any>;
   getDailySummary: (date?: string) => Promise<any>;
   getDateRangeSummary: (dateFrom: string, dateTo: string) => Promise<any>;
@@ -81,7 +81,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // Bills
   createBill: (billData: any) => ipcRenderer.invoke('bills:create', billData),
-  getBills: (dateFrom?: string, dateTo?: string) => ipcRenderer.invoke('bills:getAll', dateFrom, dateTo),
+  getBills: (dateFrom?: string, dateTo?: string, searchQuery?: string) => ipcRenderer.invoke('bills:getAll', dateFrom, dateTo, searchQuery),
   getBillById: (id: number) => ipcRenderer.invoke('bills:getById', id),
   getDailySummary: (date?: string) => ipcRenderer.invoke('bills:getDailySummary', date),
   getDateRangeSummary: (dateFrom: string, dateTo: string) => ipcRenderer.invoke('bills:getDateRangeSummary', dateFrom, dateTo),

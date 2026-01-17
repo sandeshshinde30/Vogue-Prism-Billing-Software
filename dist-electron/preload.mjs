@@ -15,7 +15,7 @@ electron.contextBridge.exposeInMainWorld("electronAPI", {
   getLowStockProducts: () => electron.ipcRenderer.invoke("products:getLowStock"),
   // Bills
   createBill: (billData) => electron.ipcRenderer.invoke("bills:create", billData),
-  getBills: (dateFrom, dateTo) => electron.ipcRenderer.invoke("bills:getAll", dateFrom, dateTo),
+  getBills: (dateFrom, dateTo, searchQuery) => electron.ipcRenderer.invoke("bills:getAll", dateFrom, dateTo, searchQuery),
   getBillById: (id) => electron.ipcRenderer.invoke("bills:getById", id),
   getDailySummary: (date) => electron.ipcRenderer.invoke("bills:getDailySummary", date),
   getDateRangeSummary: (dateFrom, dateTo) => electron.ipcRenderer.invoke("bills:getDateRangeSummary", dateFrom, dateTo),

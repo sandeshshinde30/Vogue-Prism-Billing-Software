@@ -208,9 +208,9 @@ export function setupIpcHandlers() {
     }
   });
 
-  ipcMain.handle('bills:getAll', async (_, dateFrom?: string, dateTo?: string) => {
+  ipcMain.handle('bills:getAll', async (_, dateFrom?: string, dateTo?: string, searchQuery?: string) => {
     try {
-      return getBills(dateFrom, dateTo);
+      return getBills(dateFrom, dateTo, searchQuery);
     } catch (error) {
       console.error('Error getting bills:', error);
       throw error;
