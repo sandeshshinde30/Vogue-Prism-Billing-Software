@@ -18,7 +18,7 @@ export function addProduct(data: ProductData) {
   const db = getDatabase();
   const stmt = db.prepare(`
     INSERT INTO products (name, category, size, barcode, costPrice, price, stock, lowStockThreshold, isActive, createdAt, updatedAt)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now', 'localtime'), datetime('now', 'localtime'))
   `);
   
   const result = stmt.run(
@@ -221,7 +221,7 @@ export function updateStock(id: number, quantity: number, changeType: 'sale' | '
     // Update product stock
     const updateStmt = db.prepare(`
       UPDATE products 
-      SET stock = stock + ?, updatedAt = datetime('now') 
+      SET stock = stock + ?, updatedAt = datetime('now', 'localtime') 
       WHERE id = ?
     `);
     updateStmt.run(quantity, id);
@@ -229,7 +229,7 @@ export function updateStock(id: number, quantity: number, changeType: 'sale' | '
     // Log the stock change
     const logStmt = db.prepare(`
       INSERT INTO stock_logs (productId, changeType, quantityChange, referenceId, createdAt)
-      VALUES (?, ?, ?, ?, datetime('now'))
+      VALUES (?, ?, ?, ?, datetime('now', 'localtime'))
     `);
     logStmt.run(id, changeType, quantity, referenceId || null);
   });
@@ -272,7 +272,7 @@ export function deleteProduct(id: number, forceDeactivate: boolean = false) {
       // Deactivate instead of delete
       const deactivateStmt = db.prepare(`
         UPDATE products 
-        SET isActive = 0, updatedAt = datetime('now') 
+        SET isActive = 0, updatedAt = datetime('now', 'localtime') 
         WHERE id = ?
       `);
       const result = deactivateStmt.run(id);
@@ -347,7 +347,7 @@ export function reactivateProduct(id: number) {
   
   const stmt = db.prepare(`
     UPDATE products 
-    SET isActive = 1, updatedAt = datetime('now') 
+    SET isActive = 1, updatedAt = datetime('now', 'localtime') 
     WHERE id = ?
   `);
   const result = stmt.run(id);

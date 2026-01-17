@@ -126,20 +126,27 @@ export async function generatePDFFromHTML(
     // Temporarily add to DOM for rendering
     document.body.appendChild(container);
     
-    // Convert to canvas
+    // Convert to canvas with optimized settings
     const canvas = await html2canvas(container.firstElementChild as HTMLElement, {
-      scale: 2,
+      scale: 1.6, // Increased from 1.5 to 1.6 for better quality
       useCORS: true,
       allowTaint: true,
-      backgroundColor: '#ffffff'
+      backgroundColor: '#ffffff',
+      logging: false,
+      removeContainer: true
     });
     
     // Remove from DOM
     document.body.removeChild(container);
     
-    // Create PDF
-    const imgData = canvas.toDataURL('image/png');
-    const pdf = new jsPDF('p', 'mm', 'a4');
+    // Create PDF with compression
+    const imgData = canvas.toDataURL('image/jpeg', 0.88); // Increased from 0.8 to 0.88 for better quality
+    const pdf = new jsPDF({
+      orientation: 'p',
+      unit: 'mm', 
+      format: 'a4',
+      compress: true // Enable compression
+    });
     
     const imgWidth = 210;
     const pageHeight = 297;
@@ -148,13 +155,13 @@ export async function generatePDFFromHTML(
     
     let position = 0;
     
-    pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+    pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight, undefined, 'FAST');
     heightLeft -= pageHeight;
     
     while (heightLeft >= 0) {
       position = heightLeft - imgHeight;
       pdf.addPage();
-      pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+      pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight, undefined, 'FAST');
       heightLeft -= pageHeight;
     }
     

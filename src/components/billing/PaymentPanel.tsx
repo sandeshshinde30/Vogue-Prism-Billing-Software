@@ -1,5 +1,5 @@
 import React from 'react';
-import { Banknote, Smartphone, CreditCard, Edit2, Check, X, Printer, Save } from 'lucide-react';
+import { Banknote, Smartphone, CreditCard, Edit2, Check, X } from 'lucide-react';
 import { useStore } from '../../store/useStore';
 import { DiscountInput } from './DiscountInput';
 import { BillPreview } from './BillPreview';
@@ -34,12 +34,11 @@ export function PaymentPanel() {
   const totalCostPrice = cart.reduce((sum, item) => {
     return sum + ((item.product.costPrice || 0) * item.quantity);
   }, 0);
-  const profit = subtotal - totalCostPrice;
+  const profit = total - totalCostPrice; // Profit after discount
   
   const [isEditingTotal, setIsEditingTotal] = React.useState(false);
   const [editedTotal, setEditedTotal] = React.useState('');
   const [mixedPaymentError, setMixedPaymentError] = React.useState('');
-  const [showPrintConfirm, setShowPrintConfirm] = React.useState(false);
   const [savedBillData, setSavedBillData] = React.useState<any>(null);
   const [showBillPreview, setShowBillPreview] = React.useState(false);
 
@@ -121,9 +120,6 @@ export function PaymentPanel() {
       }
     }
 
-    // Close the print confirm dialog immediately
-    setShowPrintConfirm(false);
-
     try {
       const billData = createBillData();
       const bill = await window.electronAPI.createBill(billData);
@@ -181,8 +177,8 @@ export function PaymentPanel() {
       }
     }
 
-    // Show print confirmation popup
-    setShowPrintConfirm(true);
+    // Directly save and go to print preview (skip the dialog)
+    await handleSaveBill(true);
   };
 
   const handleCloseBillPreview = () => {
@@ -225,18 +221,18 @@ export function PaymentPanel() {
           </span>
         </div>
 
-        {/* Cost Price & Profit */}
+        {/* Cost Price & Profit - Less visible */}
         {totalCostPrice > 0 && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '12px' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '11px', opacity: '0.6' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <span style={{ color: '#94a3b8' }}>Total Cost</span>
-              <span style={{ fontFamily: 'JetBrains Mono, monospace', color: '#94a3b8' }}>
+              <span style={{ color: '#9ca3af', fontSize: '10px' }}>Cost</span>
+              <span style={{ fontFamily: 'JetBrains Mono, monospace', color: '#9ca3af', fontSize: '10px' }}>
                 ₹{totalCostPrice.toLocaleString()}
               </span>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <span style={{ color: '#10b981', fontWeight: '500' }}>Profit</span>
-              <span style={{ fontFamily: 'JetBrains Mono, monospace', color: '#10b981', fontWeight: '600' }}>
+              <span style={{ color: '#6b7280', fontWeight: '400', fontSize: '10px' }}>P</span>
+              <span style={{ fontFamily: 'JetBrains Mono, monospace', color: '#6b7280', fontWeight: '500', fontSize: '10px' }}>
                 ₹{profit.toLocaleString()}
               </span>
             </div>
@@ -493,220 +489,6 @@ export function PaymentPanel() {
           <span>Complete Sale (F12)</span>
         </button>
       </div>
-
-      {/* Print Confirmation Popup */}
-      {showPrintConfirm && (
-        <>
-          <style>{`
-            .save-dialog-overlay {
-              position: fixed;
-              inset: 0;
-              background: rgba(0, 0, 0, 0.6);
-              backdrop-filter: blur(4px);
-              display: flex;
-              align-items: center;
-              justify-content: center;
-              z-index: 50;
-              animation: fadeIn 0.2s ease;
-            }
-            @keyframes fadeIn {
-              from { opacity: 0; }
-              to { opacity: 1; }
-            }
-            @keyframes slideUp {
-              from { opacity: 0; transform: translateY(20px) scale(0.95); }
-              to { opacity: 1; transform: translateY(0) scale(1); }
-            }
-            .save-dialog-card {
-              width: 420px;
-              background: #fff;
-              border-radius: 24px;
-              overflow: hidden;
-              box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.4);
-              animation: slideUp 0.3s ease;
-            }
-            .save-dialog-header {
-              background: linear-gradient(135deg, #111827 0%, #1f2937 100%);
-              padding: 28px;
-              text-align: center;
-            }
-            .save-dialog-icon {
-              width: 64px;
-              height: 64px;
-              background: linear-gradient(135deg, #059669 0%, #10b981 100%);
-              border-radius: 16px;
-              display: flex;
-              align-items: center;
-              justify-content: center;
-              margin: 0 auto 16px;
-              box-shadow: 0 8px 20px rgba(16, 185, 129, 0.4);
-            }
-            .save-dialog-icon svg {
-              color: #fff;
-              width: 28px;
-              height: 28px;
-            }
-            .save-dialog-title {
-              font-size: 20px;
-              font-weight: 600;
-              color: #fff;
-              margin-bottom: 6px;
-            }
-            .save-dialog-total {
-              font-size: 32px;
-              font-weight: 700;
-              color: #10b981;
-              font-family: 'JetBrains Mono', monospace;
-            }
-            .save-dialog-body {
-              padding: 28px;
-            }
-            .save-dialog-label {
-              font-size: 12px;
-              font-weight: 600;
-              text-transform: uppercase;
-              letter-spacing: 0.5px;
-              color: #6b7280;
-              margin-bottom: 16px;
-            }
-            .save-dialog-options {
-              display: flex;
-              flex-direction: column;
-              gap: 12px;
-            }
-            .save-option-btn {
-              width: 100%;
-              padding: 18px 20px;
-              border-radius: 14px;
-              font-size: 15px;
-              font-weight: 600;
-              cursor: pointer;
-              display: flex;
-              align-items: center;
-              gap: 14px;
-              transition: all 0.2s ease;
-              border: 2px solid transparent;
-            }
-            .save-option-primary {
-              background: linear-gradient(135deg, #059669 0%, #10b981 100%);
-              color: #fff;
-              box-shadow: 0 8px 20px rgba(16, 185, 129, 0.35);
-            }
-            .save-option-primary:hover {
-              transform: translateY(-2px);
-              box-shadow: 0 12px 28px rgba(16, 185, 129, 0.45);
-            }
-            .save-option-secondary {
-              background: #f8fafc;
-              color: #374151;
-              border-color: #e5e7eb;
-            }
-            .save-option-secondary:hover {
-              background: #f1f5f9;
-              border-color: #d1d5db;
-            }
-            .save-option-icon {
-              width: 44px;
-              height: 44px;
-              border-radius: 12px;
-              display: flex;
-              align-items: center;
-              justify-content: center;
-              flex-shrink: 0;
-            }
-            .save-option-primary .save-option-icon {
-              background: rgba(255, 255, 255, 0.2);
-            }
-            .save-option-secondary .save-option-icon {
-              background: #e5e7eb;
-            }
-            .save-option-text {
-              flex: 1;
-              text-align: left;
-            }
-            .save-option-title {
-              font-size: 15px;
-              font-weight: 600;
-              margin-bottom: 2px;
-            }
-            .save-option-desc {
-              font-size: 12px;
-              opacity: 0.7;
-              font-weight: 400;
-            }
-            .save-dialog-footer {
-              padding: 0 28px 28px;
-            }
-            .save-cancel-btn {
-              width: 100%;
-              padding: 14px;
-              background: transparent;
-              border: none;
-              color: #6b7280;
-              font-size: 14px;
-              font-weight: 500;
-              cursor: pointer;
-              border-radius: 10px;
-              transition: all 0.2s ease;
-            }
-            .save-cancel-btn:hover {
-              background: #f3f4f6;
-              color: #374151;
-            }
-          `}</style>
-          <div className="save-dialog-overlay">
-            <div className="save-dialog-card">
-              <div className="save-dialog-header">
-                <div className="save-dialog-icon">
-                  <CreditCard />
-                </div>
-                <div className="save-dialog-title">Complete Sale</div>
-                <div className="save-dialog-total">₹{total.toLocaleString()}</div>
-              </div>
-              
-              <div className="save-dialog-body">
-                <div className="save-dialog-label">Choose an option</div>
-                <div className="save-dialog-options">
-                  <button
-                    onClick={() => handleSaveBill(true)}
-                    className="save-option-btn save-option-primary"
-                  >
-                    <div className="save-option-icon">
-                      <Printer size={22} />
-                    </div>
-                    <div className="save-option-text">
-                      <div className="save-option-title">Save & Print Receipt</div>
-                      <div className="save-option-desc">Print thermal receipt after saving</div>
-                    </div>
-                  </button>
-                  
-                  <button
-                    onClick={() => handleSaveBill(false)}
-                    className="save-option-btn save-option-secondary"
-                  >
-                    <div className="save-option-icon">
-                      <Save size={22} />
-                    </div>
-                    <div className="save-option-text">
-                      <div className="save-option-title">Save Only</div>
-                      <div className="save-option-desc">Save bill without printing</div>
-                    </div>
-                  </button>
-                </div>
-              </div>
-              
-              <div className="save-dialog-footer">
-                <button
-                  onClick={() => setShowPrintConfirm(false)}
-                  className="save-cancel-btn"
-                >
-                  Cancel
-                </button>
-              </div>
-            </div>
-          </div>
-        </>
-      )}
 
       {/* Bill Preview Modal */}
       {showBillPreview && savedBillData && (

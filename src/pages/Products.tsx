@@ -6,12 +6,9 @@ import {
   Package,
   AlertTriangle,
   CheckCircle,
-  Tag,
-  Save,
 } from 'lucide-react';
 import { Card, Button, Input, Select, Modal, CategorySizeSelect } from '../components/common';
 import { Product, CATEGORIES } from '../types';
-import { openLabelPreviewForProduct } from './LabelManagement';
 import toast from 'react-hot-toast';
 
 export function Products() {
@@ -24,8 +21,6 @@ export function Products() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [loading, setLoading] = useState(true);
-  const [showPrintLabelConfirm, setShowPrintLabelConfirm] = useState(false);
-  const [savedProduct, setSavedProduct] = useState<Product | null>(null);
 
   const loadProducts = async () => {
     setLoading(true);
@@ -166,31 +161,15 @@ export function Products() {
           lowStockThreshold: productData.lowStockThreshold!,
         });
         setProducts([...products, created as Product]);
-        setSavedProduct(created as Product);
+        toast.success('Product created successfully!');
         setIsModalOpen(false);
-        // Show print label confirmation for new products
-        setShowPrintLabelConfirm(true);
       }
     } catch (error) {
       toast.error('Error saving product');
     }
   };
 
-  const handlePrintLabel = () => {
-    if (savedProduct) {
-      // Open label preview directly
-      openLabelPreviewForProduct(savedProduct);
-    }
-    setShowPrintLabelConfirm(false);
-    setSavedProduct(null);
-    toast.success('Product created');
-  };
 
-  const handleSkipPrint = () => {
-    toast.success('Product created');
-    setShowPrintLabelConfirm(false);
-    setSavedProduct(null);
-  };
 
   return (
     <div 
@@ -546,15 +525,6 @@ export function Products() {
                     >
                       <div className="flex items-center justify-end gap-2">
                         <button
-                          onClick={() => {
-                            openLabelPreviewForProduct(product);
-                          }}
-                          className="p-2 text-green-500 hover:text-green-700 hover:bg-green-50 rounded-lg transition-colors"
-                          title="Print label"
-                        >
-                          <Tag size={16} />
-                        </button>
-                        <button
                           onClick={() => handleEdit(product)}
                           className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
                           title="Edit product"
@@ -604,204 +574,6 @@ export function Products() {
         product={editingProduct}
         onSave={handleSave}
       />
-
-      {/* Print Label Confirmation Modal */}
-      {showPrintLabelConfirm && savedProduct && (
-        <>
-          <style>{`
-            .label-dialog-overlay {
-              position: fixed;
-              inset: 0;
-              background: rgba(0, 0, 0, 0.6);
-              backdrop-filter: blur(4px);
-              display: flex;
-              align-items: center;
-              justify-content: center;
-              z-index: 50;
-              animation: fadeIn 0.2s ease;
-            }
-            @keyframes fadeIn {
-              from { opacity: 0; }
-              to { opacity: 1; }
-            }
-            @keyframes slideUp {
-              from { opacity: 0; transform: translateY(20px) scale(0.95); }
-              to { opacity: 1; transform: translateY(0) scale(1); }
-            }
-            .label-dialog-card {
-              width: 420px;
-              background: #fff;
-              border-radius: 24px;
-              overflow: hidden;
-              box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.4);
-              animation: slideUp 0.3s ease;
-            }
-            .label-dialog-header {
-              background: linear-gradient(135deg, #111827 0%, #1f2937 100%);
-              padding: 28px;
-              text-align: center;
-            }
-            .label-dialog-icon {
-              width: 64px;
-              height: 64px;
-              background: linear-gradient(135deg, #059669 0%, #10b981 100%);
-              border-radius: 16px;
-              display: flex;
-              align-items: center;
-              justify-content: center;
-              margin: 0 auto 16px;
-              box-shadow: 0 8px 20px rgba(16, 185, 129, 0.4);
-            }
-            .label-dialog-icon svg {
-              color: #fff;
-              width: 28px;
-              height: 28px;
-            }
-            .label-dialog-title {
-              font-size: 20px;
-              font-weight: 600;
-              color: #fff;
-              margin-bottom: 6px;
-            }
-            .label-dialog-subtitle {
-              font-size: 14px;
-              color: #9ca3af;
-            }
-            .label-dialog-body {
-              padding: 28px;
-            }
-            .label-dialog-product {
-              background: #f9fafb;
-              border-radius: 12px;
-              padding: 16px;
-              margin-bottom: 20px;
-            }
-            .label-dialog-product-name {
-              font-size: 16px;
-              font-weight: 600;
-              color: #111827;
-              margin-bottom: 4px;
-            }
-            .label-dialog-product-details {
-              font-size: 13px;
-              color: #6b7280;
-            }
-            .label-dialog-options {
-              display: flex;
-              flex-direction: column;
-              gap: 12px;
-            }
-            .label-option-btn {
-              width: 100%;
-              padding: 18px 20px;
-              border-radius: 14px;
-              font-size: 15px;
-              font-weight: 600;
-              cursor: pointer;
-              display: flex;
-              align-items: center;
-              gap: 14px;
-              transition: all 0.2s ease;
-              border: 2px solid transparent;
-            }
-            .label-option-primary {
-              background: linear-gradient(135deg, #059669 0%, #10b981 100%);
-              color: #fff;
-              box-shadow: 0 8px 20px rgba(16, 185, 129, 0.35);
-            }
-            .label-option-primary:hover {
-              transform: translateY(-2px);
-              box-shadow: 0 12px 28px rgba(16, 185, 129, 0.45);
-            }
-            .label-option-secondary {
-              background: #f8fafc;
-              color: #374151;
-              border-color: #e5e7eb;
-            }
-            .label-option-secondary:hover {
-              background: #f1f5f9;
-              border-color: #d1d5db;
-            }
-            .label-option-icon {
-              width: 44px;
-              height: 44px;
-              border-radius: 12px;
-              display: flex;
-              align-items: center;
-              justify-content: center;
-              flex-shrink: 0;
-            }
-            .label-option-primary .label-option-icon {
-              background: rgba(255, 255, 255, 0.2);
-            }
-            .label-option-secondary .label-option-icon {
-              background: #e5e7eb;
-            }
-            .label-option-text {
-              flex: 1;
-              text-align: left;
-            }
-            .label-option-title {
-              font-size: 15px;
-              font-weight: 600;
-              margin-bottom: 2px;
-            }
-            .label-option-desc {
-              font-size: 12px;
-              opacity: 0.7;
-              font-weight: 400;
-            }
-          `}</style>
-          <div className="label-dialog-overlay">
-            <div className="label-dialog-card">
-              <div className="label-dialog-header">
-                <div className="label-dialog-icon">
-                  <CheckCircle />
-                </div>
-                <div className="label-dialog-title">Product Created!</div>
-                <div className="label-dialog-subtitle">Would you like to print labels?</div>
-              </div>
-              
-              <div className="label-dialog-body">
-                <div className="label-dialog-product">
-                  <div className="label-dialog-product-name">{savedProduct.name}</div>
-                  <div className="label-dialog-product-details">
-                    {savedProduct.category} {savedProduct.size && `• ${savedProduct.size}`} • ₹{savedProduct.price.toLocaleString()}
-                  </div>
-                </div>
-                
-                <div className="label-dialog-options">
-                  <button
-                    onClick={handlePrintLabel}
-                    className="label-option-btn label-option-primary"
-                  >
-                    <div className="label-option-icon">
-                      <Tag size={22} />
-                    </div>
-                    <div className="label-option-text">
-                      <div className="label-option-title">Print Labels</div>
-                      <div className="label-option-desc">Go to label printing</div>
-                    </div>
-                  </button>
-                  
-                  <button
-                    onClick={handleSkipPrint}
-                    className="label-option-btn label-option-secondary"
-                  >
-                    <div className="label-option-icon">
-                      <Save size={22} />
-                    </div>
-                    <div className="label-option-text">
-                      <div className="label-option-title">Save Only</div>
-                      <div className="label-option-desc">Skip label printing for now</div>
-                    </div>
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        </>
-      )}
     </div>
   );
 }

@@ -62,8 +62,7 @@ export function setupIpcHandlers() {
   // Clear any existing printer handlers to prevent duplicates
   const printerHandlers = [
     'printer:getList', 'printer:refresh', 'printer:getStatus', 
-    'printer:testPrint', 'printer:print', 'printer:printLabel',
-    'printer:printLabelWithImage', 'printer:getSettings', 'printer:setSettings'
+    'printer:testPrint', 'printer:print', 'printer:getSettings', 'printer:setSettings'
   ];
   
   printerHandlers.forEach(handler => {
@@ -1258,519 +1257,6 @@ if ($result -eq 0) {
     }
   });
 
-  // Print label - dedicated handler for label printers (Honeywell IH-210, etc.)
-  ipcMain.handle('printer:printLabel', async (_, content: string, printerName: string) => {
-    try {
-      const isWindows = process.platform === 'win32';
-      const fs = await import('fs');
-      const path = await import('path');
-      const os = await import('os');
-      
-      // Create temporary file for printing
-      const tempFile = path.join(os.tmpdir(), `label-${Date.now()}.prn`);
-      
-      // Write content to temp file (ZPL or ESC/POS commands)
-      fs.writeFileSync(tempFile, content, 'binary');
-      
-      console.log(`Printing label to: ${printerName}`);
-      console.log(`Content length: ${content.length} bytes`);
-      
-      if (isWindows) {
-        // Windows: Use raw printing
-        const escapedPrinter = printerName.replace(/'/g, "''").replace(/"/g, '""');
-        
-        try {
-          // Try .NET RawPrinterHelper
-          const psScript = `
-$ErrorActionPreference = 'Stop'
-$printerName = '${escapedPrinter}'
-$filePath = '${tempFile.replace(/\\/g, '\\\\')}'
-
-Add-Type -TypeDefinition @'
-using System;
-using System.IO;
-using System.Runtime.InteropServices;
-
-public class RawPrint {
-    [StructLayout(LayoutKind.Sequential)]
-    public struct DOCINFOA {
-        [MarshalAs(UnmanagedType.LPStr)] public string pDocName;
-        [MarshalAs(UnmanagedType.LPStr)] public string pOutputFile;
-        [MarshalAs(UnmanagedType.LPStr)] public string pDataType;
-    }
-
-    [DllImport("winspool.drv", EntryPoint = "OpenPrinterA", SetLastError = true, CharSet = CharSet.Ansi)]
-    public static extern bool OpenPrinter(string szPrinter, out IntPtr hPrinter, IntPtr pd);
-
-    [DllImport("winspool.drv", SetLastError = true)]
-    public static extern bool ClosePrinter(IntPtr hPrinter);
-
-    [DllImport("winspool.drv", EntryPoint = "StartDocPrinterA", SetLastError = true, CharSet = CharSet.Ansi)]
-    public static extern bool StartDocPrinter(IntPtr hPrinter, int level, ref DOCINFOA di);
-
-    [DllImport("winspool.drv", SetLastError = true)]
-    public static extern bool EndDocPrinter(IntPtr hPrinter);
-
-    [DllImport("winspool.drv", SetLastError = true)]
-    public static extern bool StartPagePrinter(IntPtr hPrinter);
-
-    [DllImport("winspool.drv", SetLastError = true)]
-    public static extern bool EndPagePrinter(IntPtr hPrinter);
-
-    [DllImport("winspool.drv", SetLastError = true)]
-    public static extern bool WritePrinter(IntPtr hPrinter, byte[] pBytes, int dwCount, out int dwWritten);
-
-    public static int Print(string printerName, byte[] data) {
-        IntPtr hPrinter = IntPtr.Zero;
-        DOCINFOA di = new DOCINFOA();
-        di.pDocName = "Label";
-        di.pDataType = "RAW";
-
-        if (!OpenPrinter(printerName, out hPrinter, IntPtr.Zero)) return Marshal.GetLastWin32Error();
-        if (!StartDocPrinter(hPrinter, 1, ref di)) { ClosePrinter(hPrinter); return Marshal.GetLastWin32Error(); }
-        if (!StartPagePrinter(hPrinter)) { EndDocPrinter(hPrinter); ClosePrinter(hPrinter); return Marshal.GetLastWin32Error(); }
-        
-        int written = 0;
-        if (!WritePrinter(hPrinter, data, data.Length, out written)) {
-            EndPagePrinter(hPrinter); EndDocPrinter(hPrinter); ClosePrinter(hPrinter);
-            return Marshal.GetLastWin32Error();
-        }
-        
-        EndPagePrinter(hPrinter); EndDocPrinter(hPrinter); ClosePrinter(hPrinter);
-        return 0;
-    }
-}
-'@
-
-$bytes = [System.IO.File]::ReadAllBytes($filePath)
-$result = [RawPrint]::Print($printerName, $bytes)
-if ($result -eq 0) { Write-Output "SUCCESS" } else { Write-Output "ERROR:$result" }
-`;
-          const psFile = path.join(os.tmpdir(), `labelprint-${Date.now()}.ps1`);
-          fs.writeFileSync(psFile, psScript, 'utf8');
-          
-          const { stdout } = await execAsync(`powershell -ExecutionPolicy Bypass -File "${psFile}"`, { timeout: 30000 });
-          setTimeout(() => { try { fs.unlinkSync(psFile); } catch (e) {} }, 1000);
-          
-          if (!stdout.trim().includes('SUCCESS')) {
-            throw new Error(`Print failed: ${stdout.trim()}`);
-          }
-        } catch (winError) {
-          console.error('Windows label print error:', winError);
-          throw winError;
-        }
-      } else {
-        // Linux: Use lp command with raw option for label printers
-        // The -o raw option sends data directly to the printer without processing
-        try {
-          // First try with raw option (best for ZPL/ESC-POS)
-          await execAsync(`lp -d "${printerName}" -o raw "${tempFile}"`);
-          console.log('Label printed successfully using lp -o raw');
-        } catch (lpError) {
-          console.log('lp -o raw failed, trying alternative methods...');
-          
-          try {
-            // Try without raw option
-            await execAsync(`lp -d "${printerName}" "${tempFile}"`);
-            console.log('Label printed successfully using lp');
-          } catch (lpError2) {
-            // Try using lpr as fallback
-            try {
-              await execAsync(`lpr -P "${printerName}" -o raw "${tempFile}"`);
-              console.log('Label printed successfully using lpr');
-            } catch (lprError) {
-              // Final fallback: try direct device write if we can find the device
-              try {
-                // Get printer device URI
-                const { stdout: printerInfo } = await execAsync(`lpstat -v "${printerName}"`);
-                const deviceMatch = printerInfo.match(/device for [^:]+:\s*(.+)/);
-                
-                if (deviceMatch && deviceMatch[1]) {
-                  const deviceUri = deviceMatch[1].trim();
-                  
-                  // If it's a USB device, try direct write
-                  if (deviceUri.startsWith('usb://') || deviceUri.includes('/dev/usb')) {
-                    // Extract device path or use common USB printer paths
-                    const usbDevices = ['/dev/usb/lp0', '/dev/usb/lp1', '/dev/lp0'];
-                    
-                    for (const device of usbDevices) {
-                      try {
-                        await execAsync(`cat "${tempFile}" > ${device}`);
-                        console.log(`Label printed via direct device: ${device}`);
-                        break;
-                      } catch (devError) {
-                        continue;
-                      }
-                    }
-                  }
-                }
-              } catch (deviceError) {
-                console.error('All print methods failed');
-                throw new Error('Failed to print label. Please check printer connection and permissions.');
-              }
-            }
-          }
-        }
-      }
-      
-      // Clean up temp file after a delay
-      setTimeout(() => {
-        try { fs.unlinkSync(tempFile); } catch (e) { /* ignore */ }
-      }, 5000);
-      
-      return { success: true };
-    } catch (error) {
-      console.error('Label print error:', error);
-      return { 
-        success: false, 
-        error: error instanceof Error ? error.message : 'Label print failed' 
-      };
-    }
-  });
-
-  // Print label with image - uses TSPL commands for Honeywell IH-210 and similar label printers
-  ipcMain.handle('printer:printLabelWithImage', async (_, barcode: string, price: number, printerName: string, design?: { logoWidth?: number; barcodeWidth?: number; barcodeHeight?: number; textSize?: number; priceSize?: number }) => {
-    try {
-      const fs = await import('fs');
-      const path = await import('path');
-      const os = await import('os');
-      const { app } = await import('electron');
-      const { PNG } = await import('pngjs');
-      
-      // Validate printer name
-      if (!printerName || printerName.trim() === '') {
-        return { success: false, error: 'No printer selected. Please select a label printer.' };
-      }
-      
-      console.log('Printing label:', barcode, 'Price:', price, 'to printer:', printerName);
-      
-      const isWindows = process.platform === 'win32';
-      const barcodeHeight = design?.barcodeHeight || 50;
-      
-      // Get the app path for logo files
-      const appPath = app.isPackaged 
-        ? path.join(process.resourcesPath, 'app.asar.unpacked', 'public')
-        : path.join(app.getAppPath(), 'public');
-      
-      // Helper function to convert PNG to TSPL BITMAP command
-      const pngToTsplBitmap = (pngPath: string, targetWidth: number, targetHeight: number, x: number, y: number): string => {
-        try {
-          if (!fs.existsSync(pngPath)) {
-            console.log('Logo file not found:', pngPath);
-            return '';
-          }
-          
-          // Read and parse PNG
-          const pngBuffer = fs.readFileSync(pngPath);
-          const png = PNG.sync.read(pngBuffer);
-          
-          // Calculate scale to fit target dimensions
-          const scaleX = targetWidth / png.width;
-          const scaleY = targetHeight / png.height;
-          const scale = Math.min(scaleX, scaleY);
-          
-          const scaledWidth = Math.floor(png.width * scale);
-          const scaledHeight = Math.floor(png.height * scale);
-          
-          // TSPL BITMAP: width is in bytes (8 pixels per byte)
-          const widthBytes = Math.ceil(scaledWidth / 8);
-          const bitmapData: number[] = [];
-          
-          // Convert to 1-bit monochrome bitmap
-          for (let row = 0; row < scaledHeight; row++) {
-            for (let byteCol = 0; byteCol < widthBytes; byteCol++) {
-              let byte = 0;
-              for (let bit = 0; bit < 8; bit++) {
-                const pixelX = byteCol * 8 + bit;
-                if (pixelX < scaledWidth) {
-                  // Map to original image coordinates
-                  const srcX = Math.floor(pixelX / scale);
-                  const srcY = Math.floor(row / scale);
-                  
-                  if (srcX < png.width && srcY < png.height) {
-                    const idx = (srcY * png.width + srcX) * 4;
-                    const r = png.data[idx];
-                    const g = png.data[idx + 1];
-                    const b = png.data[idx + 2];
-                    const a = png.data[idx + 3];
-                    
-                    // Convert to grayscale and threshold
-                    // Consider alpha - if transparent, treat as white (no print)
-                    if (a > 128) {
-                      const gray = (r * 0.299 + g * 0.587 + b * 0.114);
-                      // If dark pixel (gray < 128), set bit to 1 (print black)
-                      if (gray < 128) {
-                        byte |= (1 << (7 - bit));
-                      }
-                    }
-                  }
-                }
-              }
-              bitmapData.push(byte);
-            }
-          }
-          
-          // Generate TSPL BITMAP command
-          // BITMAP X,Y,width,height,mode,data
-          // mode 0 = overwrite
-          let cmd = `BITMAP ${x},${y},${widthBytes},${scaledHeight},0,`;
-          
-          // Convert bitmap data to hex string
-          const hexData = bitmapData.map(b => b.toString(16).padStart(2, '0').toUpperCase()).join('');
-          cmd += hexData + '\r\n';
-          
-          console.log(`Logo bitmap: ${scaledWidth}x${scaledHeight} pixels, ${widthBytes}x${scaledHeight} bytes`);
-          
-          return cmd;
-        } catch (e) {
-          console.log('Error processing logo:', e);
-          return '';
-        }
-      };
-      
-      // Generate TSPL commands for Honeywell IH-210 (50mm x 25mm label)
-      // At 203 DPI: 50mm = ~400 dots, 25mm = ~200 dots
-      let tspl = '';
-      
-      // Set label size: 50mm width, 25mm height (in mm)
-      tspl += 'SIZE 50 mm, 25 mm\r\n';
-      
-      // Set gap between labels (typically 2-3mm)
-      tspl += 'GAP 2 mm, 0 mm\r\n';
-      
-      // Set print direction (0 = normal)
-      tspl += 'DIRECTION 0\r\n';
-      
-      // Set reference point
-      tspl += 'REFERENCE 0,0\r\n';
-      
-      // Clear image buffer
-      tspl += 'CLS\r\n';
-      
-      // Add logos (left side)
-      const logoUpPath = path.join(appPath, 'label-logo-up.png');
-      const logoDownPath = path.join(appPath, 'label-logo-down.png');
-      
-      // Logo up - top left (target: ~80 dots wide, ~50 dots tall)
-      const logoUpCmd = pngToTsplBitmap(logoUpPath, 80, 45, 5, 5);
-      if (logoUpCmd) {
-        tspl += logoUpCmd;
-      }
-      
-      // Logo down - bottom left (target: ~80 dots wide, ~50 dots tall)
-      const logoDownCmd = pngToTsplBitmap(logoDownPath, 80, 45, 5, 55);
-      if (logoDownCmd) {
-        tspl += logoDownCmd;
-      }
-      
-      // Print barcode - CODE128 (right side)
-      // BARCODE X,Y,"code type",height,human readable,rotation,narrow,wide,"content"
-      // Position: X=100 (after logo area), Y=10 (from top)
-      tspl += `BARCODE 100,8,"128",${barcodeHeight},0,0,2,4,"${barcode}"\r\n`;
-      
-      // Print barcode text below barcode
-      // TEXT X,Y,"font",rotation,x-multiplication,y-multiplication,"content"
-      // Font 2 = 12x20 dots
-      tspl += `TEXT 100,${8 + barcodeHeight + 3},"2",0,1,1,"${barcode}"\r\n`;
-      
-      // Print price - larger font
-      // Font 4 = 24x32 dots
-      tspl += `TEXT 100,${8 + barcodeHeight + 22},"4",0,1,1,"Rs.${price}"\r\n`;
-      
-      // Print 1 copy
-      tspl += 'PRINT 1,1\r\n';
-      
-      // Create temp file - write as binary since bitmap data may contain special chars
-      const tempFile = path.join(os.tmpdir(), `label-${Date.now()}.prn`);
-      fs.writeFileSync(tempFile, tspl, 'binary');
-      
-      console.log('TSPL commands generated, length:', tspl.length);
-      console.log('Temp file:', tempFile);
-      
-      let printed = false;
-      let lastError = '';
-      
-      if (isWindows) {
-        // Windows: Use raw printing via PowerShell
-        const escapedPrinter = printerName.replace(/'/g, "''").replace(/"/g, '""');
-        
-        const psScript = `
-$ErrorActionPreference = 'Stop'
-$printerName = '${escapedPrinter}'
-$filePath = '${tempFile.replace(/\\/g, '\\\\')}'
-
-Add-Type -TypeDefinition @'
-using System;
-using System.IO;
-using System.Runtime.InteropServices;
-
-public class RawPrint {
-    [StructLayout(LayoutKind.Sequential)]
-    public struct DOCINFOA {
-        [MarshalAs(UnmanagedType.LPStr)] public string pDocName;
-        [MarshalAs(UnmanagedType.LPStr)] public string pOutputFile;
-        [MarshalAs(UnmanagedType.LPStr)] public string pDataType;
-    }
-
-    [DllImport("winspool.drv", EntryPoint = "OpenPrinterA", SetLastError = true, CharSet = CharSet.Ansi)]
-    public static extern bool OpenPrinter(string szPrinter, out IntPtr hPrinter, IntPtr pd);
-
-    [DllImport("winspool.drv", SetLastError = true)]
-    public static extern bool ClosePrinter(IntPtr hPrinter);
-
-    [DllImport("winspool.drv", EntryPoint = "StartDocPrinterA", SetLastError = true, CharSet = CharSet.Ansi)]
-    public static extern bool StartDocPrinter(IntPtr hPrinter, int level, ref DOCINFOA di);
-
-    [DllImport("winspool.drv", SetLastError = true)]
-    public static extern bool EndDocPrinter(IntPtr hPrinter);
-
-    [DllImport("winspool.drv", SetLastError = true)]
-    public static extern bool StartPagePrinter(IntPtr hPrinter);
-
-    [DllImport("winspool.drv", SetLastError = true)]
-    public static extern bool EndPagePrinter(IntPtr hPrinter);
-
-    [DllImport("winspool.drv", SetLastError = true)]
-    public static extern bool WritePrinter(IntPtr hPrinter, byte[] pBytes, int dwCount, out int dwWritten);
-
-    public static int Print(string printerName, byte[] data) {
-        IntPtr hPrinter = IntPtr.Zero;
-        DOCINFOA di = new DOCINFOA();
-        di.pDocName = "Label";
-        di.pDataType = "RAW";
-
-        if (!OpenPrinter(printerName, out hPrinter, IntPtr.Zero)) return Marshal.GetLastWin32Error();
-        if (!StartDocPrinter(hPrinter, 1, ref di)) { ClosePrinter(hPrinter); return Marshal.GetLastWin32Error(); }
-        if (!StartPagePrinter(hPrinter)) { EndDocPrinter(hPrinter); ClosePrinter(hPrinter); return Marshal.GetLastWin32Error(); }
-        
-        int written = 0;
-        if (!WritePrinter(hPrinter, data, data.Length, out written)) {
-            EndPagePrinter(hPrinter); EndDocPrinter(hPrinter); ClosePrinter(hPrinter);
-            return Marshal.GetLastWin32Error();
-        }
-        
-        EndPagePrinter(hPrinter); EndDocPrinter(hPrinter); ClosePrinter(hPrinter);
-        return 0;
-    }
-}
-'@
-
-$bytes = [System.IO.File]::ReadAllBytes($filePath)
-$result = [RawPrint]::Print($printerName, $bytes)
-if ($result -eq 0) { Write-Output "SUCCESS" } else { Write-Output "ERROR:$result" }
-`;
-        const psFile = path.join(os.tmpdir(), `labelprint-${Date.now()}.ps1`);
-        fs.writeFileSync(psFile, psScript, 'utf8');
-        
-        try {
-          const { stdout } = await execAsync(`powershell -ExecutionPolicy Bypass -File "${psFile}"`, { timeout: 30000 });
-          setTimeout(() => { try { fs.unlinkSync(psFile); } catch (e) {} }, 1000);
-          
-          if (stdout.trim().includes('SUCCESS')) {
-            printed = true;
-            console.log('Windows raw print successful');
-          } else {
-            lastError = stdout.trim();
-          }
-        } catch (winError: any) {
-          lastError = winError.message;
-          console.error('Windows print error:', winError);
-        }
-      } else {
-        // Linux: Try multiple methods to send raw data to printer
-        
-        // First, check if printer exists and get its device
-        try {
-          const { stdout: printerInfo } = await execAsync(`lpstat -v "${printerName}" 2>&1`);
-          console.log('Printer info:', printerInfo);
-        } catch (e) {
-          console.log('Could not get printer info');
-        }
-        
-        // Method 1: lp with raw option (most reliable for TSPL printers)
-        if (!printed) {
-          try {
-            console.log('Trying: lp -d "' + printerName + '" -o raw "' + tempFile + '"');
-            await execAsync(`lp -d "${printerName}" -o raw "${tempFile}"`);
-            console.log('lp -o raw succeeded');
-            printed = true;
-          } catch (e: any) {
-            lastError = e.message;
-            console.log('lp -o raw failed:', e.message);
-          }
-        }
-        
-        // Method 2: Direct cat to printer device
-        if (!printed) {
-          try {
-            // Find the USB device for this printer
-            const { stdout: deviceInfo } = await execAsync(`lpstat -v "${printerName}" 2>&1`);
-            console.log('Device info:', deviceInfo);
-            
-            // Try common USB printer device paths
-            const usbDevices = ['/dev/usb/lp0', '/dev/usb/lp1', '/dev/usb/lp2', '/dev/lp0', '/dev/lp1'];
-            
-            for (const device of usbDevices) {
-              try {
-                // Check if device exists
-                await execAsync(`test -e ${device}`);
-                console.log(`Trying direct write to ${device}`);
-                await execAsync(`cat "${tempFile}" > ${device}`);
-                console.log(`Direct write to ${device} succeeded`);
-                printed = true;
-                break;
-              } catch (devErr) {
-                continue;
-              }
-            }
-          } catch (e: any) {
-            console.log('Direct device write failed:', e.message);
-          }
-        }
-        
-        // Method 3: lp without raw
-        if (!printed) {
-          try {
-            console.log('Trying: lp -d "' + printerName + '" "' + tempFile + '"');
-            await execAsync(`lp -d "${printerName}" "${tempFile}"`);
-            console.log('lp succeeded');
-            printed = true;
-          } catch (e: any) {
-            lastError = e.message;
-            console.log('lp failed:', e.message);
-          }
-        }
-        
-        // Method 4: lpr with raw
-        if (!printed) {
-          try {
-            console.log('Trying: lpr -P "' + printerName + '" -o raw "' + tempFile + '"');
-            await execAsync(`lpr -P "${printerName}" -o raw "${tempFile}"`);
-            console.log('lpr -o raw succeeded');
-            printed = true;
-          } catch (e: any) {
-            lastError = e.message;
-            console.log('lpr failed:', e.message);
-          }
-        }
-      }
-      
-      // Cleanup temp file
-      setTimeout(() => {
-        try { fs.unlinkSync(tempFile); } catch (e) { /* ignore */ }
-      }, 5000);
-      
-      if (printed) {
-        return { success: true };
-      } else {
-        return { success: false, error: `Print failed: ${lastError}. Make sure the printer is connected and CUPS is configured correctly.` };
-      }
-    } catch (error) {
-      console.error('Label print error:', error);
-      return { success: false, error: error instanceof Error ? error.message : 'Print failed' };
-    }
-  });
-
   // ===== LOGS HANDLERS =====
 
   ipcMain.handle('logs:getActivity', async (_, limit?: number, offset?: number, entityType?: string, dateFrom?: string, dateTo?: string) => {
@@ -1847,6 +1333,121 @@ if ($result -eq 0) { Write-Output "SUCCESS" } else { Write-Output "ERROR:$result
     } catch (error) {
       console.error('Error saving printer settings:', error);
       return { success: false, error: `Failed to save printer settings: ${error}` };
+    }
+  });
+
+  // Fast print handler - optimized for speed
+  ipcMain.handle('printer:fastPrint', async (_, printerName: string, content: string) => {
+    try {
+      const isWindows = process.platform === 'win32';
+      
+      // Replace ₹ with Rs. for thermal printer compatibility
+      content = content.replace(/₹/g, 'Rs.');
+      
+      // Create temporary file
+      const fs = await import('fs');
+      const path = await import('path');
+      const os = await import('os');
+      
+      const tempFile = path.join(os.tmpdir(), `fastprint-${Date.now()}.txt`);
+      
+      if (isWindows) {
+        // For Windows, try multiple fast methods in order
+        const escapedPrinter = printerName.replace(/"/g, '""');
+        
+        // Method 1: Try direct printer port if it's a USB/Serial printer
+        try {
+          // Get printer port info
+          const { stdout: portInfo } = await execAsync(`powershell -Command "try { (Get-Printer -Name '${escapedPrinter}').PortName } catch { 'UNKNOWN' }"`);
+          const portName = portInfo.trim();
+          
+          if (portName && (portName.includes('USB') || portName.includes('COM') || portName.includes('LPT'))) {
+            // For USB/Serial printers, write raw data with proper ESC/POS commands
+            const escInit = Buffer.from([0x1B, 0x40]); // Initialize
+            const escAlign = Buffer.from([0x1B, 0x61, 0x00]); // Left align
+            const contentBuffer = Buffer.from(content, 'ascii');
+            const feedCut = Buffer.from([0x0A, 0x0A, 0x0A, 0x0A, 0x1D, 0x56, 0x01]); // Feed and partial cut
+            
+            const finalBuffer = Buffer.concat([escInit, escAlign, contentBuffer, feedCut]);
+            fs.writeFileSync(tempFile, finalBuffer);
+            
+            // Try copy command for raw data
+            await execAsync(`copy "${tempFile}" "${portName}" /B`, { timeout: 8000 });
+            setTimeout(() => { try { fs.unlinkSync(tempFile); } catch (e) {} }, 1000);
+            return { success: true };
+          }
+        } catch (portError) {
+          console.log('Port method failed:', portError.message);
+        }
+        
+        // Method 2: Use PowerShell with proper raw printing
+        try {
+          // Write content as raw bytes
+          const escInit = Buffer.from([0x1B, 0x40]); // Initialize
+          const contentBuffer = Buffer.from(content, 'ascii');
+          const feedCut = Buffer.from([0x0A, 0x0A, 0x0A, 0x1D, 0x56, 0x01]); // Feed and cut
+          
+          const finalBuffer = Buffer.concat([escInit, contentBuffer, feedCut]);
+          fs.writeFileSync(tempFile, finalBuffer);
+          
+          // Use PowerShell to send raw bytes
+          const psScript = `
+$printerName = "${escapedPrinter}"
+$filePath = "${tempFile.replace(/\\/g, '\\\\')}"
+$bytes = [System.IO.File]::ReadAllBytes($filePath)
+$printer = New-Object -ComObject WScript.Network
+$printer.SetDefaultPrinter($printerName)
+$shell = New-Object -ComObject WScript.Shell
+$shell.Run("notepad /p \\"$filePath\\"", 0, $true)
+`;
+          
+          const psFile = path.join(os.tmpdir(), `fastprint-${Date.now()}.ps1`);
+          fs.writeFileSync(psFile, psScript, 'utf8');
+          
+          await execAsync(`powershell -ExecutionPolicy Bypass -File "${psFile}"`, { timeout: 8000 });
+          
+          setTimeout(() => { 
+            try { 
+              fs.unlinkSync(tempFile); 
+              fs.unlinkSync(psFile);
+            } catch (e) {} 
+          }, 2000);
+          
+          return { success: true };
+        } catch (psError) {
+          console.log('PowerShell method failed:', psError.message);
+        }
+        
+        // Method 3: Fallback to regular print method but with timeout
+        try {
+          // Write simple text file and use print command
+          fs.writeFileSync(tempFile, content, 'utf8');
+          await execAsync(`print "${tempFile}"`, { timeout: 8000 });
+          setTimeout(() => { try { fs.unlinkSync(tempFile); } catch (e) {} }, 1000);
+          return { success: true };
+        } catch (printError) {
+          return { success: false, error: 'All fast print methods failed' };
+        }
+        
+      } else {
+        // Linux/Mac - use lp command with raw option
+        try {
+          const escInit = Buffer.from([0x1B, 0x40]); // Initialize
+          const contentBuffer = Buffer.from(content, 'ascii');
+          const feedCut = Buffer.from([0x0A, 0x0A, 0x0A, 0x1D, 0x56, 0x01]); // Feed and cut
+          
+          const finalBuffer = Buffer.concat([escInit, contentBuffer, feedCut]);
+          fs.writeFileSync(tempFile, finalBuffer);
+          
+          await execAsync(`lp -d "${printerName}" -o raw "${tempFile}"`, { timeout: 8000 });
+          setTimeout(() => { try { fs.unlinkSync(tempFile); } catch (e) {} }, 1000);
+          return { success: true };
+        } catch (error) {
+          return { success: false, error: 'Fast print failed: ' + error.message };
+        }
+      }
+    } catch (error) {
+      return { success: false, error: String(error) };
     }
   });
 

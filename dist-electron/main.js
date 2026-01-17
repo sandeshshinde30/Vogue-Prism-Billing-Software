@@ -21,8 +21,8 @@ async function initDatabase() {
       stock INTEGER NOT NULL DEFAULT 0,
       lowStockThreshold INTEGER NOT NULL DEFAULT 5,
       isActive INTEGER NOT NULL DEFAULT 1,
-      createdAt TEXT NOT NULL DEFAULT (datetime('now')),
-      updatedAt TEXT NOT NULL DEFAULT (datetime('now'))
+      createdAt TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+      updatedAt TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
     );
   `);
   try {
@@ -52,7 +52,7 @@ async function initDatabase() {
       oldValue TEXT,
       newValue TEXT,
       userId TEXT DEFAULT 'system',
-      createdAt TEXT NOT NULL DEFAULT (datetime('now'))
+      createdAt TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
     );
   `);
   try {
@@ -95,7 +95,7 @@ async function initDatabase() {
           cashAmount REAL DEFAULT 0,
           upiAmount REAL DEFAULT 0,
           status TEXT NOT NULL DEFAULT 'completed' CHECK (status IN ('completed', 'cancelled', 'held')),
-          createdAt TEXT NOT NULL DEFAULT (datetime('now'))
+          createdAt TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
         );
       `);
       db.exec(`
@@ -150,7 +150,7 @@ async function initDatabase() {
       changeType TEXT NOT NULL CHECK (changeType IN ('sale', 'restock', 'adjustment')),
       quantityChange INTEGER NOT NULL,
       referenceId INTEGER,
-      createdAt TEXT NOT NULL DEFAULT (datetime('now')),
+      createdAt TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
       FOREIGN KEY (productId) REFERENCES products (id)
     );
   `);
@@ -158,7 +158,7 @@ async function initDatabase() {
     CREATE TABLE IF NOT EXISTS settings (
       key TEXT PRIMARY KEY,
       value TEXT NOT NULL,
-      updatedAt TEXT NOT NULL DEFAULT (datetime('now'))
+      updatedAt TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
     );
   `);
   const defaultSettings = [
@@ -203,7 +203,7 @@ function addActivityLog(action, entityType, details, entityId, oldValue, newValu
   const db2 = getDatabase();
   const stmt = db2.prepare(`
     INSERT INTO activity_logs (action, entityType, entityId, details, oldValue, newValue, userId, createdAt)
-    VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
+    VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now', 'localtime'))
   `);
   const result = stmt.run(
     action,
@@ -281,7 +281,7 @@ function addProduct(data) {
   const db2 = getDatabase();
   const stmt = db2.prepare(`
     INSERT INTO products (name, category, size, barcode, costPrice, price, stock, lowStockThreshold, isActive, createdAt, updatedAt)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now', 'localtime'), datetime('now', 'localtime'))
   `);
   const result = stmt.run(
     data.name,
@@ -438,13 +438,13 @@ function updateStock(id, quantity, changeType, referenceId) {
   const transaction = db2.transaction(() => {
     const updateStmt = db2.prepare(`
       UPDATE products 
-      SET stock = stock + ?, updatedAt = datetime('now') 
+      SET stock = stock + ?, updatedAt = datetime('now', 'localtime') 
       WHERE id = ?
     `);
     updateStmt.run(quantity, id);
     const logStmt = db2.prepare(`
       INSERT INTO stock_logs (productId, changeType, quantityChange, referenceId, createdAt)
-      VALUES (?, ?, ?, ?, datetime('now'))
+      VALUES (?, ?, ?, ?, datetime('now', 'localtime'))
     `);
     logStmt.run(id, changeType, quantity, referenceId || null);
   });
@@ -473,7 +473,7 @@ function deleteProduct(id, forceDeactivate = false) {
     if (forceDeactivate) {
       const deactivateStmt = db2.prepare(`
         UPDATE products 
-        SET isActive = 0, updatedAt = datetime('now') 
+        SET isActive = 0, updatedAt = datetime('now', 'localtime') 
         WHERE id = ?
       `);
       const result = deactivateStmt.run(id);
@@ -527,7 +527,7 @@ function reactivateProduct(id) {
   const product = getProductById(id);
   const stmt = db2.prepare(`
     UPDATE products 
-    SET isActive = 1, updatedAt = datetime('now') 
+    SET isActive = 1, updatedAt = datetime('now', 'localtime') 
     WHERE id = ?
   `);
   const result = stmt.run(id);
@@ -878,7 +878,7 @@ function updateSetting(key, value) {
   const oldValue = getSetting(key);
   const stmt = db2.prepare(`
     INSERT OR REPLACE INTO settings (key, value, updatedAt) 
-    VALUES (?, ?, datetime('now'))
+    VALUES (?, ?, datetime('now', 'localtime'))
   `);
   const result = stmt.run(key, value);
   if (result.changes > 0) {
@@ -899,7 +899,7 @@ function updateAllSettings(settings) {
   const transaction = db2.transaction(() => {
     const stmt = db2.prepare(`
       INSERT OR REPLACE INTO settings (key, value, updatedAt) 
-      VALUES (?, ?, datetime('now'))
+      VALUES (?, ?, datetime('now', 'localtime'))
     `);
     for (const [key, value] of Object.entries(settings)) {
       stmt.run(key, value);
@@ -1265,8 +1265,6 @@ function setupIpcHandlers() {
     "printer:getStatus",
     "printer:testPrint",
     "printer:print",
-    "printer:printLabel",
-    "printer:printLabelWithImage",
     "printer:getSettings",
     "printer:setSettings"
   ];
@@ -2393,414 +2391,6 @@ if ($result -eq 0) {
       };
     }
   });
-  ipcMain.handle("printer:printLabel", async (_, content, printerName) => {
-    try {
-      const isWindows = process.platform === "win32";
-      const fs2 = await import("fs");
-      const path2 = await import("path");
-      const os = await import("os");
-      const tempFile = path2.join(os.tmpdir(), `label-${Date.now()}.prn`);
-      fs2.writeFileSync(tempFile, content, "binary");
-      console.log(`Printing label to: ${printerName}`);
-      console.log(`Content length: ${content.length} bytes`);
-      if (isWindows) {
-        const escapedPrinter = printerName.replace(/'/g, "''").replace(/"/g, '""');
-        try {
-          const psScript = `
-$ErrorActionPreference = 'Stop'
-$printerName = '${escapedPrinter}'
-$filePath = '${tempFile.replace(/\\/g, "\\\\")}'
-
-Add-Type -TypeDefinition @'
-using System;
-using System.IO;
-using System.Runtime.InteropServices;
-
-public class RawPrint {
-    [StructLayout(LayoutKind.Sequential)]
-    public struct DOCINFOA {
-        [MarshalAs(UnmanagedType.LPStr)] public string pDocName;
-        [MarshalAs(UnmanagedType.LPStr)] public string pOutputFile;
-        [MarshalAs(UnmanagedType.LPStr)] public string pDataType;
-    }
-
-    [DllImport("winspool.drv", EntryPoint = "OpenPrinterA", SetLastError = true, CharSet = CharSet.Ansi)]
-    public static extern bool OpenPrinter(string szPrinter, out IntPtr hPrinter, IntPtr pd);
-
-    [DllImport("winspool.drv", SetLastError = true)]
-    public static extern bool ClosePrinter(IntPtr hPrinter);
-
-    [DllImport("winspool.drv", EntryPoint = "StartDocPrinterA", SetLastError = true, CharSet = CharSet.Ansi)]
-    public static extern bool StartDocPrinter(IntPtr hPrinter, int level, ref DOCINFOA di);
-
-    [DllImport("winspool.drv", SetLastError = true)]
-    public static extern bool EndDocPrinter(IntPtr hPrinter);
-
-    [DllImport("winspool.drv", SetLastError = true)]
-    public static extern bool StartPagePrinter(IntPtr hPrinter);
-
-    [DllImport("winspool.drv", SetLastError = true)]
-    public static extern bool EndPagePrinter(IntPtr hPrinter);
-
-    [DllImport("winspool.drv", SetLastError = true)]
-    public static extern bool WritePrinter(IntPtr hPrinter, byte[] pBytes, int dwCount, out int dwWritten);
-
-    public static int Print(string printerName, byte[] data) {
-        IntPtr hPrinter = IntPtr.Zero;
-        DOCINFOA di = new DOCINFOA();
-        di.pDocName = "Label";
-        di.pDataType = "RAW";
-
-        if (!OpenPrinter(printerName, out hPrinter, IntPtr.Zero)) return Marshal.GetLastWin32Error();
-        if (!StartDocPrinter(hPrinter, 1, ref di)) { ClosePrinter(hPrinter); return Marshal.GetLastWin32Error(); }
-        if (!StartPagePrinter(hPrinter)) { EndDocPrinter(hPrinter); ClosePrinter(hPrinter); return Marshal.GetLastWin32Error(); }
-        
-        int written = 0;
-        if (!WritePrinter(hPrinter, data, data.Length, out written)) {
-            EndPagePrinter(hPrinter); EndDocPrinter(hPrinter); ClosePrinter(hPrinter);
-            return Marshal.GetLastWin32Error();
-        }
-        
-        EndPagePrinter(hPrinter); EndDocPrinter(hPrinter); ClosePrinter(hPrinter);
-        return 0;
-    }
-}
-'@
-
-$bytes = [System.IO.File]::ReadAllBytes($filePath)
-$result = [RawPrint]::Print($printerName, $bytes)
-if ($result -eq 0) { Write-Output "SUCCESS" } else { Write-Output "ERROR:$result" }
-`;
-          const psFile = path2.join(os.tmpdir(), `labelprint-${Date.now()}.ps1`);
-          fs2.writeFileSync(psFile, psScript, "utf8");
-          const { stdout } = await execAsync(`powershell -ExecutionPolicy Bypass -File "${psFile}"`, { timeout: 3e4 });
-          setTimeout(() => {
-            try {
-              fs2.unlinkSync(psFile);
-            } catch (e) {
-            }
-          }, 1e3);
-          if (!stdout.trim().includes("SUCCESS")) {
-            throw new Error(`Print failed: ${stdout.trim()}`);
-          }
-        } catch (winError) {
-          console.error("Windows label print error:", winError);
-          throw winError;
-        }
-      } else {
-        try {
-          await execAsync(`lp -d "${printerName}" -o raw "${tempFile}"`);
-          console.log("Label printed successfully using lp -o raw");
-        } catch (lpError) {
-          console.log("lp -o raw failed, trying alternative methods...");
-          try {
-            await execAsync(`lp -d "${printerName}" "${tempFile}"`);
-            console.log("Label printed successfully using lp");
-          } catch (lpError2) {
-            try {
-              await execAsync(`lpr -P "${printerName}" -o raw "${tempFile}"`);
-              console.log("Label printed successfully using lpr");
-            } catch (lprError) {
-              try {
-                const { stdout: printerInfo } = await execAsync(`lpstat -v "${printerName}"`);
-                const deviceMatch = printerInfo.match(/device for [^:]+:\s*(.+)/);
-                if (deviceMatch && deviceMatch[1]) {
-                  const deviceUri = deviceMatch[1].trim();
-                  if (deviceUri.startsWith("usb://") || deviceUri.includes("/dev/usb")) {
-                    const usbDevices = ["/dev/usb/lp0", "/dev/usb/lp1", "/dev/lp0"];
-                    for (const device of usbDevices) {
-                      try {
-                        await execAsync(`cat "${tempFile}" > ${device}`);
-                        console.log(`Label printed via direct device: ${device}`);
-                        break;
-                      } catch (devError) {
-                        continue;
-                      }
-                    }
-                  }
-                }
-              } catch (deviceError) {
-                console.error("All print methods failed");
-                throw new Error("Failed to print label. Please check printer connection and permissions.");
-              }
-            }
-          }
-        }
-      }
-      setTimeout(() => {
-        try {
-          fs2.unlinkSync(tempFile);
-        } catch (e) {
-        }
-      }, 5e3);
-      return { success: true };
-    } catch (error) {
-      console.error("Label print error:", error);
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : "Label print failed"
-      };
-    }
-  });
-  ipcMain.handle("printer:printLabelWithImage", async (_, barcode, price, printerName, design) => {
-    try {
-      const fs2 = await import("fs");
-      const path2 = await import("path");
-      const os = await import("os");
-      const { app: app2 } = await import("electron");
-      const { PNG } = await import("./png-Dm-iI_bl.js").then((n) => n.p);
-      if (!printerName || printerName.trim() === "") {
-        return { success: false, error: "No printer selected. Please select a label printer." };
-      }
-      console.log("Printing label:", barcode, "Price:", price, "to printer:", printerName);
-      const isWindows = process.platform === "win32";
-      const barcodeHeight = (design == null ? void 0 : design.barcodeHeight) || 50;
-      const appPath = app2.isPackaged ? path2.join(process.resourcesPath, "app.asar.unpacked", "public") : path2.join(app2.getAppPath(), "public");
-      const pngToTsplBitmap = (pngPath, targetWidth, targetHeight, x, y) => {
-        try {
-          if (!fs2.existsSync(pngPath)) {
-            console.log("Logo file not found:", pngPath);
-            return "";
-          }
-          const pngBuffer = fs2.readFileSync(pngPath);
-          const png = PNG.sync.read(pngBuffer);
-          const scaleX = targetWidth / png.width;
-          const scaleY = targetHeight / png.height;
-          const scale = Math.min(scaleX, scaleY);
-          const scaledWidth = Math.floor(png.width * scale);
-          const scaledHeight = Math.floor(png.height * scale);
-          const widthBytes = Math.ceil(scaledWidth / 8);
-          const bitmapData = [];
-          for (let row = 0; row < scaledHeight; row++) {
-            for (let byteCol = 0; byteCol < widthBytes; byteCol++) {
-              let byte = 0;
-              for (let bit = 0; bit < 8; bit++) {
-                const pixelX = byteCol * 8 + bit;
-                if (pixelX < scaledWidth) {
-                  const srcX = Math.floor(pixelX / scale);
-                  const srcY = Math.floor(row / scale);
-                  if (srcX < png.width && srcY < png.height) {
-                    const idx = (srcY * png.width + srcX) * 4;
-                    const r = png.data[idx];
-                    const g = png.data[idx + 1];
-                    const b = png.data[idx + 2];
-                    const a = png.data[idx + 3];
-                    if (a > 128) {
-                      const gray = r * 0.299 + g * 0.587 + b * 0.114;
-                      if (gray < 128) {
-                        byte |= 1 << 7 - bit;
-                      }
-                    }
-                  }
-                }
-              }
-              bitmapData.push(byte);
-            }
-          }
-          let cmd = `BITMAP ${x},${y},${widthBytes},${scaledHeight},0,`;
-          const hexData = bitmapData.map((b) => b.toString(16).padStart(2, "0").toUpperCase()).join("");
-          cmd += hexData + "\r\n";
-          console.log(`Logo bitmap: ${scaledWidth}x${scaledHeight} pixels, ${widthBytes}x${scaledHeight} bytes`);
-          return cmd;
-        } catch (e) {
-          console.log("Error processing logo:", e);
-          return "";
-        }
-      };
-      let tspl = "";
-      tspl += "SIZE 50 mm, 25 mm\r\n";
-      tspl += "GAP 2 mm, 0 mm\r\n";
-      tspl += "DIRECTION 0\r\n";
-      tspl += "REFERENCE 0,0\r\n";
-      tspl += "CLS\r\n";
-      const logoUpPath = path2.join(appPath, "label-logo-up.png");
-      const logoDownPath = path2.join(appPath, "label-logo-down.png");
-      const logoUpCmd = pngToTsplBitmap(logoUpPath, 80, 45, 5, 5);
-      if (logoUpCmd) {
-        tspl += logoUpCmd;
-      }
-      const logoDownCmd = pngToTsplBitmap(logoDownPath, 80, 45, 5, 55);
-      if (logoDownCmd) {
-        tspl += logoDownCmd;
-      }
-      tspl += `BARCODE 100,8,"128",${barcodeHeight},0,0,2,4,"${barcode}"\r
-`;
-      tspl += `TEXT 100,${8 + barcodeHeight + 3},"2",0,1,1,"${barcode}"\r
-`;
-      tspl += `TEXT 100,${8 + barcodeHeight + 22},"4",0,1,1,"Rs.${price}"\r
-`;
-      tspl += "PRINT 1,1\r\n";
-      const tempFile = path2.join(os.tmpdir(), `label-${Date.now()}.prn`);
-      fs2.writeFileSync(tempFile, tspl, "binary");
-      console.log("TSPL commands generated, length:", tspl.length);
-      console.log("Temp file:", tempFile);
-      let printed = false;
-      let lastError = "";
-      if (isWindows) {
-        const escapedPrinter = printerName.replace(/'/g, "''").replace(/"/g, '""');
-        const psScript = `
-$ErrorActionPreference = 'Stop'
-$printerName = '${escapedPrinter}'
-$filePath = '${tempFile.replace(/\\/g, "\\\\")}'
-
-Add-Type -TypeDefinition @'
-using System;
-using System.IO;
-using System.Runtime.InteropServices;
-
-public class RawPrint {
-    [StructLayout(LayoutKind.Sequential)]
-    public struct DOCINFOA {
-        [MarshalAs(UnmanagedType.LPStr)] public string pDocName;
-        [MarshalAs(UnmanagedType.LPStr)] public string pOutputFile;
-        [MarshalAs(UnmanagedType.LPStr)] public string pDataType;
-    }
-
-    [DllImport("winspool.drv", EntryPoint = "OpenPrinterA", SetLastError = true, CharSet = CharSet.Ansi)]
-    public static extern bool OpenPrinter(string szPrinter, out IntPtr hPrinter, IntPtr pd);
-
-    [DllImport("winspool.drv", SetLastError = true)]
-    public static extern bool ClosePrinter(IntPtr hPrinter);
-
-    [DllImport("winspool.drv", EntryPoint = "StartDocPrinterA", SetLastError = true, CharSet = CharSet.Ansi)]
-    public static extern bool StartDocPrinter(IntPtr hPrinter, int level, ref DOCINFOA di);
-
-    [DllImport("winspool.drv", SetLastError = true)]
-    public static extern bool EndDocPrinter(IntPtr hPrinter);
-
-    [DllImport("winspool.drv", SetLastError = true)]
-    public static extern bool StartPagePrinter(IntPtr hPrinter);
-
-    [DllImport("winspool.drv", SetLastError = true)]
-    public static extern bool EndPagePrinter(IntPtr hPrinter);
-
-    [DllImport("winspool.drv", SetLastError = true)]
-    public static extern bool WritePrinter(IntPtr hPrinter, byte[] pBytes, int dwCount, out int dwWritten);
-
-    public static int Print(string printerName, byte[] data) {
-        IntPtr hPrinter = IntPtr.Zero;
-        DOCINFOA di = new DOCINFOA();
-        di.pDocName = "Label";
-        di.pDataType = "RAW";
-
-        if (!OpenPrinter(printerName, out hPrinter, IntPtr.Zero)) return Marshal.GetLastWin32Error();
-        if (!StartDocPrinter(hPrinter, 1, ref di)) { ClosePrinter(hPrinter); return Marshal.GetLastWin32Error(); }
-        if (!StartPagePrinter(hPrinter)) { EndDocPrinter(hPrinter); ClosePrinter(hPrinter); return Marshal.GetLastWin32Error(); }
-        
-        int written = 0;
-        if (!WritePrinter(hPrinter, data, data.Length, out written)) {
-            EndPagePrinter(hPrinter); EndDocPrinter(hPrinter); ClosePrinter(hPrinter);
-            return Marshal.GetLastWin32Error();
-        }
-        
-        EndPagePrinter(hPrinter); EndDocPrinter(hPrinter); ClosePrinter(hPrinter);
-        return 0;
-    }
-}
-'@
-
-$bytes = [System.IO.File]::ReadAllBytes($filePath)
-$result = [RawPrint]::Print($printerName, $bytes)
-if ($result -eq 0) { Write-Output "SUCCESS" } else { Write-Output "ERROR:$result" }
-`;
-        const psFile = path2.join(os.tmpdir(), `labelprint-${Date.now()}.ps1`);
-        fs2.writeFileSync(psFile, psScript, "utf8");
-        try {
-          const { stdout } = await execAsync(`powershell -ExecutionPolicy Bypass -File "${psFile}"`, { timeout: 3e4 });
-          setTimeout(() => {
-            try {
-              fs2.unlinkSync(psFile);
-            } catch (e) {
-            }
-          }, 1e3);
-          if (stdout.trim().includes("SUCCESS")) {
-            printed = true;
-            console.log("Windows raw print successful");
-          } else {
-            lastError = stdout.trim();
-          }
-        } catch (winError) {
-          lastError = winError.message;
-          console.error("Windows print error:", winError);
-        }
-      } else {
-        try {
-          const { stdout: printerInfo } = await execAsync(`lpstat -v "${printerName}" 2>&1`);
-          console.log("Printer info:", printerInfo);
-        } catch (e) {
-          console.log("Could not get printer info");
-        }
-        if (!printed) {
-          try {
-            console.log('Trying: lp -d "' + printerName + '" -o raw "' + tempFile + '"');
-            await execAsync(`lp -d "${printerName}" -o raw "${tempFile}"`);
-            console.log("lp -o raw succeeded");
-            printed = true;
-          } catch (e) {
-            lastError = e.message;
-            console.log("lp -o raw failed:", e.message);
-          }
-        }
-        if (!printed) {
-          try {
-            const { stdout: deviceInfo } = await execAsync(`lpstat -v "${printerName}" 2>&1`);
-            console.log("Device info:", deviceInfo);
-            const usbDevices = ["/dev/usb/lp0", "/dev/usb/lp1", "/dev/usb/lp2", "/dev/lp0", "/dev/lp1"];
-            for (const device of usbDevices) {
-              try {
-                await execAsync(`test -e ${device}`);
-                console.log(`Trying direct write to ${device}`);
-                await execAsync(`cat "${tempFile}" > ${device}`);
-                console.log(`Direct write to ${device} succeeded`);
-                printed = true;
-                break;
-              } catch (devErr) {
-                continue;
-              }
-            }
-          } catch (e) {
-            console.log("Direct device write failed:", e.message);
-          }
-        }
-        if (!printed) {
-          try {
-            console.log('Trying: lp -d "' + printerName + '" "' + tempFile + '"');
-            await execAsync(`lp -d "${printerName}" "${tempFile}"`);
-            console.log("lp succeeded");
-            printed = true;
-          } catch (e) {
-            lastError = e.message;
-            console.log("lp failed:", e.message);
-          }
-        }
-        if (!printed) {
-          try {
-            console.log('Trying: lpr -P "' + printerName + '" -o raw "' + tempFile + '"');
-            await execAsync(`lpr -P "${printerName}" -o raw "${tempFile}"`);
-            console.log("lpr -o raw succeeded");
-            printed = true;
-          } catch (e) {
-            lastError = e.message;
-            console.log("lpr failed:", e.message);
-          }
-        }
-      }
-      setTimeout(() => {
-        try {
-          fs2.unlinkSync(tempFile);
-        } catch (e) {
-        }
-      }, 5e3);
-      if (printed) {
-        return { success: true };
-      } else {
-        return { success: false, error: `Print failed: ${lastError}. Make sure the printer is connected and CUPS is configured correctly.` };
-      }
-    } catch (error) {
-      console.error("Label print error:", error);
-      return { success: false, error: error instanceof Error ? error.message : "Print failed" };
-    }
-  });
   ipcMain.handle("logs:getActivity", async (_, limit, offset, entityType, dateFrom, dateTo) => {
     try {
       return getActivityLogs(limit, offset, entityType, dateFrom, dateTo);
@@ -2866,6 +2456,103 @@ if ($result -eq 0) { Write-Output "SUCCESS" } else { Write-Output "ERROR:$result
     } catch (error) {
       console.error("Error saving printer settings:", error);
       return { success: false, error: `Failed to save printer settings: ${error}` };
+    }
+  });
+  ipcMain.handle("printer:fastPrint", async (_, printerName, content) => {
+    try {
+      const isWindows = process.platform === "win32";
+      content = content.replace(/₹/g, "Rs.");
+      const fs2 = await import("fs");
+      const path2 = await import("path");
+      const os = await import("os");
+      const tempFile = path2.join(os.tmpdir(), `fastprint-${Date.now()}.txt`);
+      if (isWindows) {
+        const escapedPrinter = printerName.replace(/"/g, '""');
+        try {
+          const { stdout: portInfo } = await execAsync(`powershell -Command "try { (Get-Printer -Name '${escapedPrinter}').PortName } catch { 'UNKNOWN' }"`);
+          const portName = portInfo.trim();
+          if (portName && (portName.includes("USB") || portName.includes("COM") || portName.includes("LPT"))) {
+            const escInit = Buffer.from([27, 64]);
+            const escAlign = Buffer.from([27, 97, 0]);
+            const contentBuffer = Buffer.from(content, "ascii");
+            const feedCut = Buffer.from([10, 10, 10, 10, 29, 86, 1]);
+            const finalBuffer = Buffer.concat([escInit, escAlign, contentBuffer, feedCut]);
+            fs2.writeFileSync(tempFile, finalBuffer);
+            await execAsync(`copy "${tempFile}" "${portName}" /B`, { timeout: 8e3 });
+            setTimeout(() => {
+              try {
+                fs2.unlinkSync(tempFile);
+              } catch (e) {
+              }
+            }, 1e3);
+            return { success: true };
+          }
+        } catch (portError) {
+          console.log("Port method failed:", portError.message);
+        }
+        try {
+          const escInit = Buffer.from([27, 64]);
+          const contentBuffer = Buffer.from(content, "ascii");
+          const feedCut = Buffer.from([10, 10, 10, 29, 86, 1]);
+          const finalBuffer = Buffer.concat([escInit, contentBuffer, feedCut]);
+          fs2.writeFileSync(tempFile, finalBuffer);
+          const psScript = `
+$printerName = "${escapedPrinter}"
+$filePath = "${tempFile.replace(/\\/g, "\\\\")}"
+$bytes = [System.IO.File]::ReadAllBytes($filePath)
+$printer = New-Object -ComObject WScript.Network
+$printer.SetDefaultPrinter($printerName)
+$shell = New-Object -ComObject WScript.Shell
+$shell.Run("notepad /p \\"$filePath\\"", 0, $true)
+`;
+          const psFile = path2.join(os.tmpdir(), `fastprint-${Date.now()}.ps1`);
+          fs2.writeFileSync(psFile, psScript, "utf8");
+          await execAsync(`powershell -ExecutionPolicy Bypass -File "${psFile}"`, { timeout: 8e3 });
+          setTimeout(() => {
+            try {
+              fs2.unlinkSync(tempFile);
+              fs2.unlinkSync(psFile);
+            } catch (e) {
+            }
+          }, 2e3);
+          return { success: true };
+        } catch (psError) {
+          console.log("PowerShell method failed:", psError.message);
+        }
+        try {
+          fs2.writeFileSync(tempFile, content, "utf8");
+          await execAsync(`print "${tempFile}"`, { timeout: 8e3 });
+          setTimeout(() => {
+            try {
+              fs2.unlinkSync(tempFile);
+            } catch (e) {
+            }
+          }, 1e3);
+          return { success: true };
+        } catch (printError) {
+          return { success: false, error: "All fast print methods failed" };
+        }
+      } else {
+        try {
+          const escInit = Buffer.from([27, 64]);
+          const contentBuffer = Buffer.from(content, "ascii");
+          const feedCut = Buffer.from([10, 10, 10, 29, 86, 1]);
+          const finalBuffer = Buffer.concat([escInit, contentBuffer, feedCut]);
+          fs2.writeFileSync(tempFile, finalBuffer);
+          await execAsync(`lp -d "${printerName}" -o raw "${tempFile}"`, { timeout: 8e3 });
+          setTimeout(() => {
+            try {
+              fs2.unlinkSync(tempFile);
+            } catch (e) {
+            }
+          }, 1e3);
+          return { success: true };
+        } catch (error) {
+          return { success: false, error: "Fast print failed: " + error.message };
+        }
+      }
+    } catch (error) {
+      return { success: false, error: String(error) };
     }
   });
   console.log("All IPC handlers set up successfully");

@@ -25,7 +25,7 @@ export function addActivityLog(
   const db = getDatabase();
   const stmt = db.prepare(`
     INSERT INTO activity_logs (action, entityType, entityId, details, oldValue, newValue, userId, createdAt)
-    VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
+    VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now', 'localtime'))
   `);
   
   const result = stmt.run(

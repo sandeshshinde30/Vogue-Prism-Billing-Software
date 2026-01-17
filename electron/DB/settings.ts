@@ -33,7 +33,7 @@ export function updateSetting(key: string, value: string) {
   
   const stmt = db.prepare(`
     INSERT OR REPLACE INTO settings (key, value, updatedAt) 
-    VALUES (?, ?, datetime('now'))
+    VALUES (?, ?, datetime('now', 'localtime'))
   `);
   const result = stmt.run(key, value);
   
@@ -62,7 +62,7 @@ export function updateAllSettings(settings: Record<string, string>) {
   const transaction = db.transaction(() => {
     const stmt = db.prepare(`
       INSERT OR REPLACE INTO settings (key, value, updatedAt) 
-      VALUES (?, ?, datetime('now'))
+      VALUES (?, ?, datetime('now', 'localtime'))
     `);
     
     for (const [key, value] of Object.entries(settings)) {

@@ -64,7 +64,9 @@ export class ThermalPrinterFormatter {
       lines.push(this.center(data.storeAddress.replace(/\n/g, ', ').substring(0, W)));
     }
     if (data.phone) {
-      lines.push(this.center('Ph: ' + data.phone));
+      // Format phone with +91 prefix
+      const phoneFormatted = data.phone.startsWith('+91') ? data.phone : `+91 ${data.phone}`;
+      lines.push(this.center('Ph: ' + phoneFormatted));
     }
     if (data.gstNumber) {
       lines.push(this.center('GST: ' + data.gstNumber));
@@ -127,8 +129,8 @@ export class ThermalPrinterFormatter {
     }
 
     lines.push(this.line('='));
-    lines.push(this.center('Thank you for your business!'));
-    lines.push(this.center('Visit again!'));
+    lines.push(this.center('NO REFUND'));
+    lines.push(this.center('Exchange within 7 days'));
     lines.push(this.line('='));
 
     // MORE space before cut so "Visit again!" is visible
@@ -163,7 +165,7 @@ export class ThermalPrinterFormatter {
   }
 }
 
-// Print a bill
+// Print a bill - using reliable method
 export async function printBill(billData: BillData, printerName?: string): Promise<{ success: boolean; error?: string }> {
   try {
     const settings = await window.electronAPI.getPrinterSettings();
@@ -176,6 +178,7 @@ export async function printBill(billData: BillData, printerName?: string): Promi
     const formatter = new ThermalPrinterFormatter(settings);
     const content = formatter.formatBill(billData);
     
+    // Use the reliable testPrint method that was working before
     return await window.electronAPI.testPrint(printer, content);
   } catch (error) {
     return { success: false, error: String(error) };

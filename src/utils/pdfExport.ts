@@ -19,7 +19,7 @@ export class PDFExporter {
     try {
       const {
         filename = `bill-${billData.billNumber}-${new Date().toISOString().split('T')[0]}.pdf`,
-        quality = 2.0,
+        quality = 1.2, // Increased from 1.0 to 1.2 for better quality
         format = 'a4',
         orientation = 'portrait'
       } = options;
@@ -132,21 +132,27 @@ export class PDFExporter {
       // Wait for images to load
       await new Promise(resolve => setTimeout(resolve, 1000));
 
-      // Generate canvas from the invoice
+      // Generate canvas from the invoice with optimized settings
       const canvas = await html2canvas(tempContainer.firstElementChild as HTMLElement, {
         scale: quality,
         useCORS: true,
         allowTaint: false,
         backgroundColor: '#ffffff',
-        logging: false
+        logging: false,
+        width: tempContainer.firstElementChild?.scrollWidth,
+        height: tempContainer.firstElementChild?.scrollHeight,
+        // Optimize for smaller file size
+        removeContainer: true,
+        imageTimeout: 5000
       });
 
-      // Create PDF
-      const imgData = canvas.toDataURL('image/png');
+      // Create PDF with compression
+      const imgData = canvas.toDataURL('image/jpeg', 0.85); // Increased from 0.7 to 0.85 for better quality
       const pdf = new jsPDF({
         orientation,
         unit: 'mm',
-        format
+        format,
+        compress: true // Enable PDF compression
       });
 
       const pdfWidth = pdf.internal.pageSize.getWidth();
@@ -164,7 +170,7 @@ export class PDFExporter {
       const x = (pdfWidth - finalWidth) / 2;
       const y = 0;
 
-      pdf.addImage(imgData, 'PNG', x, y, finalWidth, finalHeight);
+      pdf.addImage(imgData, 'JPEG', x, y, finalWidth, finalHeight, undefined, 'FAST'); // Use FAST instead of MEDIUM for better quality
 
       // Save the PDF
       pdf.save(filename);

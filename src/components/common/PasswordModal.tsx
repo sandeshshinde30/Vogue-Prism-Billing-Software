@@ -25,7 +25,7 @@ export function PasswordModal({
   const [loading, setLoading] = useState(false);
 
   // Default admin password - in production, this should be configurable
-  const ADMIN_PASSWORD = 'admin123';
+  const ADMIN_PASSWORD = 'sunil123';
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -109,7 +109,7 @@ export function PasswordModal({
         </form>
 
         <div className="text-xs text-gray-500 text-center">
-          Default password: admin123
+          Enter admin password
         </div>
       </div>
     </Modal>

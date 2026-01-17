@@ -113,12 +113,14 @@ export const CATEGORIES = [
   'Night Pants',
   'Shorts',
   'Underwear',
+  'Benian',
 ] as const;
 
 // Category-specific sizes
 export const CLOTHING_SIZES = ['XS', 'S', 'M', 'L', 'XL', 'XXL', 'XXXL', '4XL'] as const;
 export const PANTS_SIZES = ['28', '30', '32', '34', '36', '38', '40', '42', '44', '46', '48'] as const;
-export const UNDERWEAR_SIZES = ['S', 'M', 'L', 'XL', 'XXL', 'XXXL', '4XL'] as const;
+export const UNDERWEAR_SIZES = ['75', '80', '85', '90', '95', '100', '105'] as const;
+export const BENIAN_SIZES = ['75', '80', '85', '90', '95', '100', '105'] as const;
 
 // Size mapping for categories
 export const CATEGORY_SIZES = {
@@ -131,19 +133,22 @@ export const CATEGORY_SIZES = {
   'Night Pants': PANTS_SIZES,
   'Shorts': CLOTHING_SIZES,
   'Underwear': UNDERWEAR_SIZES,
+  'Benian': BENIAN_SIZES,
 } as const;
 
 // All possible sizes (union of all size types)
 export const ALL_SIZES = [
   ...CLOTHING_SIZES,
   ...PANTS_SIZES,
-  ...UNDERWEAR_SIZES
+  ...UNDERWEAR_SIZES,
+  ...BENIAN_SIZES
 ] as const;
 
 export type Category = typeof CATEGORIES[number];
 export type ClothingSize = typeof CLOTHING_SIZES[number];
 export type PantsSize = typeof PANTS_SIZES[number];
 export type UnderwearSize = typeof UNDERWEAR_SIZES[number];
+export type BenianSize = typeof BENIAN_SIZES[number];
 export type Size = typeof ALL_SIZES[number];
 
 // Helper function to get sizes for a category

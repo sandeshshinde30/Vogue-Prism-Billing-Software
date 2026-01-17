@@ -22,8 +22,8 @@ export async function initDatabase() {
       stock INTEGER NOT NULL DEFAULT 0,
       lowStockThreshold INTEGER NOT NULL DEFAULT 5,
       isActive INTEGER NOT NULL DEFAULT 1,
-      createdAt TEXT NOT NULL DEFAULT (datetime('now')),
-      updatedAt TEXT NOT NULL DEFAULT (datetime('now'))
+      createdAt TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+      updatedAt TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
     );
   `);
 
@@ -60,7 +60,7 @@ export async function initDatabase() {
       oldValue TEXT,
       newValue TEXT,
       userId TEXT DEFAULT 'system',
-      createdAt TEXT NOT NULL DEFAULT (datetime('now'))
+      createdAt TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
     );
   `);
   try {
@@ -121,7 +121,7 @@ export async function initDatabase() {
           cashAmount REAL DEFAULT 0,
           upiAmount REAL DEFAULT 0,
           status TEXT NOT NULL DEFAULT 'completed' CHECK (status IN ('completed', 'cancelled', 'held')),
-          createdAt TEXT NOT NULL DEFAULT (datetime('now'))
+          createdAt TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
         );
       `);
       
@@ -190,7 +190,7 @@ export async function initDatabase() {
       changeType TEXT NOT NULL CHECK (changeType IN ('sale', 'restock', 'adjustment')),
       quantityChange INTEGER NOT NULL,
       referenceId INTEGER,
-      createdAt TEXT NOT NULL DEFAULT (datetime('now')),
+      createdAt TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
       FOREIGN KEY (productId) REFERENCES products (id)
     );
   `);
@@ -200,7 +200,7 @@ export async function initDatabase() {
     CREATE TABLE IF NOT EXISTS settings (
       key TEXT PRIMARY KEY,
       value TEXT NOT NULL,
-      updatedAt TEXT NOT NULL DEFAULT (datetime('now'))
+      updatedAt TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
     );
   `);
 

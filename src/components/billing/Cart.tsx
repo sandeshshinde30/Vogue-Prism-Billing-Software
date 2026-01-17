@@ -141,8 +141,8 @@ export function Cart() {
                 >
                   ₹{item.product.price.toLocaleString()} × {item.quantity}
                   {item.product.costPrice ? (
-                    <span style={{ color: '#10b981', marginLeft: '8px' }}>
-                      (CP: ₹{item.product.costPrice.toLocaleString()})
+                    <span style={{ color: '#d1d5db', marginLeft: '6px', fontSize: '10px', opacity: '0.7' }}>
+                      (C: ₹{item.product.costPrice.toLocaleString()})
                     </span>
                   ) : null}
                 </p>
