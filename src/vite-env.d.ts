@@ -33,7 +33,7 @@ interface ElectronAPI {
     cashAmount?: number;
     upiAmount?: number;
   }) => Promise<any>;
-  getBills: (dateFrom?: string, dateTo?: string) => Promise<any[]>;
+  getBills: (dateFrom?: string, dateTo?: string, searchQuery?: string) => Promise<any[]>;
   getBillById: (id: number) => Promise<any>;
   getDailySummary: (date?: string) => Promise<any>;
   getDateRangeSummary: (dateFrom: string, dateTo: string) => Promise<any>;

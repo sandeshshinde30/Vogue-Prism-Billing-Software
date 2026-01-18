@@ -25,7 +25,7 @@ export interface ElectronAPI {
     cashAmount?: number;
     upiAmount?: number;
   }) => Promise<Bill>;
-  getBills: (dateFrom?: string, dateTo?: string) => Promise<Bill[]>;
+  getBills: (dateFrom?: string, dateTo?: string, searchQuery?: string) => Promise<Bill[]>;
   getBillById: (id: number) => Promise<{ bill: Bill; items: BillItem[] }>;
   getDailySummary: (date?: string) => Promise<DailySummary>;
   getDateRangeSummary: (dateFrom: string, dateTo: string) => Promise<DailySummary>;

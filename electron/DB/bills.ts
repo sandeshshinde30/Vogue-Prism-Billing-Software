@@ -19,6 +19,7 @@ export interface BillData {
   paymentMode: 'cash' | 'upi' | 'mixed';
   cashAmount?: number;
   upiAmount?: number;
+  customerMobileNumber?: string;
 }
 
 // CREATE - Create new bill with items

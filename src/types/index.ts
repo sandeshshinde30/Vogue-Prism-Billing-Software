@@ -31,6 +31,7 @@ export interface Bill {
   paymentMode: 'cash' | 'upi' | 'mixed';
   cashAmount?: number;
   upiAmount?: number;
+  customerMobileNumber?: string;
   status: 'completed' | 'cancelled' | 'held';
   createdAt: string;
 }

@@ -28,6 +28,7 @@ interface Bill {
   paymentMode: 'cash' | 'upi' | 'mixed';
   cashAmount?: number;
   upiAmount?: number;
+  customerMobileNumber?: string;
   status: string;
   createdAt: string;
 }

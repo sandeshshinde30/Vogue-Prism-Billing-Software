@@ -1,15 +1,14 @@
-import { app, dialog, ipcMain, BrowserWindow } from "electron";
-import path from "path";
-import { fileURLToPath } from "node:url";
-import Database from "better-sqlite3";
-import { exec } from "child_process";
-import { promisify } from "util";
-import fs from "fs";
-let db;
-async function initDatabase() {
-  const dbPath = path.join(app.getPath("userData"), "billing.db");
-  db = new Database(dbPath);
-  db.exec(`
+import { app as C, dialog as W, ipcMain as d, BrowserWindow as Y } from "electron";
+import k from "path";
+import { fileURLToPath as j } from "node:url";
+import K from "better-sqlite3";
+import { exec as J } from "child_process";
+import { promisify as Q } from "util";
+import x from "fs";
+let f;
+async function Z() {
+  const o = k.join(C.getPath("userData"), "billing.db");
+  f = new K(o), f.exec(`
     CREATE TABLE IF NOT EXISTS products (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL,
@@ -26,23 +25,12 @@ async function initDatabase() {
     );
   `);
   try {
-    const tableInfo = db.prepare("PRAGMA table_info(products)").all();
-    const hasIsActive = tableInfo.some((column) => column.name === "isActive");
-    if (!hasIsActive) {
-      console.log("Adding isActive column to products table...");
-      db.exec("ALTER TABLE products ADD COLUMN isActive INTEGER NOT NULL DEFAULT 1");
-      console.log("Migration completed: isActive column added");
-    }
-    const hasCostPrice = tableInfo.some((column) => column.name === "costPrice");
-    if (!hasCostPrice) {
-      console.log("Adding costPrice column to products table...");
-      db.exec("ALTER TABLE products ADD COLUMN costPrice REAL DEFAULT 0");
-      console.log("Migration completed: costPrice column added");
-    }
-  } catch (error) {
-    console.error("Migration error:", error);
+    const e = f.prepare("PRAGMA table_info(products)").all();
+    e.some((n) => n.name === "isActive") || (console.log("Adding isActive column to products table..."), f.exec("ALTER TABLE products ADD COLUMN isActive INTEGER NOT NULL DEFAULT 1"), console.log("Migration completed: isActive column added")), e.some((n) => n.name === "costPrice") || (console.log("Adding costPrice column to products table..."), f.exec("ALTER TABLE products ADD COLUMN costPrice REAL DEFAULT 0"), console.log("Migration completed: costPrice column added"));
+  } catch (e) {
+    console.error("Migration error:", e);
   }
-  db.exec(`
+  f.exec(`
     CREATE TABLE IF NOT EXISTS activity_logs (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       action TEXT NOT NULL,
@@ -56,34 +44,17 @@ async function initDatabase() {
     );
   `);
   try {
-    const billsTableInfo = db.prepare("PRAGMA table_info(bills)").all();
-    const hasCashAmount = billsTableInfo.some((column) => column.name === "cashAmount");
-    const hasUpiAmount = billsTableInfo.some((column) => column.name === "upiAmount");
-    if (!hasCashAmount) {
-      console.log("Adding cashAmount column to bills table...");
-      db.exec("ALTER TABLE bills ADD COLUMN cashAmount REAL DEFAULT 0");
-    }
-    if (!hasUpiAmount) {
-      console.log("Adding upiAmount column to bills table...");
-      db.exec("ALTER TABLE bills ADD COLUMN upiAmount REAL DEFAULT 0");
-    }
+    const e = f.prepare("PRAGMA table_info(bills)").all(), r = e.some((c) => c.name === "cashAmount"), t = e.some((c) => c.name === "upiAmount");
+    r || (console.log("Adding cashAmount column to bills table..."), f.exec("ALTER TABLE bills ADD COLUMN cashAmount REAL DEFAULT 0")), t || (console.log("Adding upiAmount column to bills table..."), f.exec("ALTER TABLE bills ADD COLUMN upiAmount REAL DEFAULT 0"));
     try {
-      const testStmt = db.prepare(`
+      f.prepare(`
         INSERT INTO bills (billNumber, subtotal, discountPercent, discountAmount, total, paymentMode, cashAmount, upiAmount)
         VALUES ('TEST_MIXED', 100, 0, 0, 100, 'mixed', 50, 50)
-      `);
-      testStmt.run();
-      db.exec("DELETE FROM bills WHERE billNumber = 'TEST_MIXED'");
-      console.log("Mixed payment mode already supported");
-    } catch (constraintError) {
-      console.log("Updating bills table to support mixed payment mode...");
-      db.exec("PRAGMA foreign_keys = OFF;");
-      db.exec("DROP TABLE IF EXISTS bills_backup;");
-      db.exec(`
+      `).run(), f.exec("DELETE FROM bills WHERE billNumber = 'TEST_MIXED'"), console.log("Mixed payment mode already supported");
+    } catch {
+      console.log("Updating bills table to support mixed payment mode..."), f.exec("PRAGMA foreign_keys = OFF;"), f.exec("DROP TABLE IF EXISTS bills_backup;"), f.exec(`
         CREATE TABLE bills_backup AS SELECT * FROM bills;
-      `);
-      db.exec("DROP TABLE bills;");
-      db.exec(`
+      `), f.exec("DROP TABLE bills;"), f.exec(`
         CREATE TABLE bills (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           billNumber TEXT NOT NULL UNIQUE,
@@ -98,30 +69,18 @@ async function initDatabase() {
           status TEXT NOT NULL DEFAULT 'completed' CHECK (status IN ('completed', 'cancelled', 'held')),
           createdAt TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
         );
-      `);
-      db.exec(`
+      `), f.exec(`
         INSERT INTO bills (id, billNumber, subtotal, discountPercent, discountAmount, total, paymentMode, cashAmount, upiAmount, customerMobileNumber, status, createdAt)
         SELECT id, billNumber, subtotal, discountPercent, discountAmount, total, paymentMode, 
                COALESCE(cashAmount, 0), COALESCE(upiAmount, 0), NULL as customerMobileNumber, status, createdAt
         FROM bills_backup;
-      `);
-      db.exec("DROP TABLE bills_backup;");
-      db.exec("PRAGMA foreign_keys = ON;");
-      console.log("Bills table updated to support mixed payment mode");
+      `), f.exec("DROP TABLE bills_backup;"), f.exec("PRAGMA foreign_keys = ON;"), console.log("Bills table updated to support mixed payment mode");
     }
-    if (!hasCashAmount || !hasUpiAmount) {
-      console.log("Migration completed: payment columns added");
-    }
-    const hasCustomerMobile = billsTableInfo.some((column) => column.name === "customerMobileNumber");
-    if (!hasCustomerMobile) {
-      console.log("Adding customerMobileNumber column to bills table...");
-      db.exec("ALTER TABLE bills ADD COLUMN customerMobileNumber TEXT");
-      console.log("Migration completed: customerMobileNumber column added");
-    }
-  } catch (error) {
-    console.error("Bills migration error:", error);
+    (!r || !t) && console.log("Migration completed: payment columns added"), e.some((c) => c.name === "customerMobileNumber") || (console.log("Adding customerMobileNumber column to bills table..."), f.exec("ALTER TABLE bills ADD COLUMN customerMobileNumber TEXT"), console.log("Migration completed: customerMobileNumber column added"));
+  } catch (e) {
+    console.error("Bills migration error:", e);
   }
-  db.exec(`
+  f.exec(`
     CREATE TABLE IF NOT EXISTS bills (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       billNumber TEXT NOT NULL UNIQUE,
@@ -136,8 +95,7 @@ async function initDatabase() {
       status TEXT NOT NULL DEFAULT 'completed' CHECK (status IN ('completed', 'cancelled', 'held')),
       createdAt TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
     );
-  `);
-  db.exec(`
+  `), f.exec(`
     CREATE TABLE IF NOT EXISTS bill_items (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       billId INTEGER NOT NULL,
@@ -150,8 +108,7 @@ async function initDatabase() {
       FOREIGN KEY (billId) REFERENCES bills (id),
       FOREIGN KEY (productId) REFERENCES products (id)
     );
-  `);
-  db.exec(`
+  `), f.exec(`
     CREATE TABLE IF NOT EXISTS stock_logs (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       productId INTEGER NOT NULL,
@@ -161,15 +118,14 @@ async function initDatabase() {
       createdAt TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
       FOREIGN KEY (productId) REFERENCES products (id)
     );
-  `);
-  db.exec(`
+  `), f.exec(`
     CREATE TABLE IF NOT EXISTS settings (
       key TEXT PRIMARY KEY,
       value TEXT NOT NULL,
       updatedAt TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
     );
   `);
-  const defaultSettings = [
+  const s = [
     ["storeName", "Vogue Prism"],
     ["addressLine1", ""],
     ["addressLine2", ""],
@@ -182,489 +138,302 @@ async function initDatabase() {
     ["printerName", ""],
     ["paperWidth", "80mm"],
     ["autoPrint", "false"]
-  ];
-  const insertSetting = db.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)");
-  for (const [key, value] of defaultSettings) {
-    insertSetting.run(key, value);
-  }
-  db.exec(`
+  ], i = f.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)");
+  for (const [e, r] of s)
+    i.run(e, r);
+  f.exec(`
     CREATE INDEX IF NOT EXISTS idx_products_barcode ON products(barcode);
     CREATE INDEX IF NOT EXISTS idx_products_category ON products(category);
     CREATE INDEX IF NOT EXISTS idx_products_stock ON products(stock);
     CREATE INDEX IF NOT EXISTS idx_bills_created ON bills(createdAt);
     CREATE INDEX IF NOT EXISTS idx_bill_items_bill ON bill_items(billId);
     CREATE INDEX IF NOT EXISTS idx_stock_logs_product ON stock_logs(productId);
-  `);
-  console.log("Database initialized at", dbPath);
+  `), console.log("Database initialized at", o);
 }
-function getDatabase() {
-  if (!db) throw new Error("Database not initialized");
-  return db;
+function m() {
+  if (!f) throw new Error("Database not initialized");
+  return f;
 }
-async function closeDatabase() {
-  if (db) {
-    db.close();
-    console.log("Database closed");
-  }
+async function tt() {
+  f && (f.close(), console.log("Database closed"));
 }
-function addActivityLog(action, entityType, details, entityId, oldValue, newValue, userId) {
-  const db2 = getDatabase();
-  const stmt = db2.prepare(`
+function w(o, s, i, e, r, t, n) {
+  return m().prepare(`
     INSERT INTO activity_logs (action, entityType, entityId, details, oldValue, newValue, userId, createdAt)
     VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now', 'localtime'))
-  `);
-  const result = stmt.run(
-    action,
-    entityType,
-    entityId || null,
-    details,
-    oldValue || null,
-    newValue || null,
+  `).run(
+    o,
+    s,
+    e || null,
+    i,
+    r || null,
+    t || null,
     "system"
-  );
-  return result.lastInsertRowid;
+  ).lastInsertRowid;
 }
-function getActivityLogs(limit = 100, offset = 0, entityType, dateFrom, dateTo) {
-  const db2 = getDatabase();
-  let query = "SELECT * FROM activity_logs";
-  const params = [];
-  const conditions = [];
-  if (entityType) {
-    conditions.push("entityType = ?");
-    params.push(entityType);
-  }
-  if (dateFrom) {
-    conditions.push("date(createdAt) >= ?");
-    params.push(dateFrom);
-  }
-  if (dateTo) {
-    conditions.push("date(createdAt) <= ?");
-    params.push(dateTo);
-  }
-  if (conditions.length > 0) {
-    query += " WHERE " + conditions.join(" AND ");
-  }
-  query += " ORDER BY createdAt DESC LIMIT ? OFFSET ?";
-  params.push(limit, offset);
-  const stmt = db2.prepare(query);
-  return stmt.all(...params);
+function et(o = 100, s = 0, i, e, r) {
+  const t = m();
+  let n = "SELECT * FROM activity_logs";
+  const c = [], p = [];
+  return i && (p.push("entityType = ?"), c.push(i)), e && (p.push("date(createdAt) >= ?"), c.push(e)), r && (p.push("date(createdAt) <= ?"), c.push(r)), p.length > 0 && (n += " WHERE " + p.join(" AND ")), n += " ORDER BY createdAt DESC LIMIT ? OFFSET ?", c.push(o, s), t.prepare(n).all(...c);
 }
-function getLogsCount(entityType, dateFrom, dateTo) {
-  const db2 = getDatabase();
-  let query = "SELECT COUNT(*) as count FROM activity_logs";
-  const params = [];
-  const conditions = [];
-  if (entityType) {
-    conditions.push("entityType = ?");
-    params.push(entityType);
-  }
-  if (dateFrom) {
-    conditions.push("date(createdAt) >= ?");
-    params.push(dateFrom);
-  }
-  if (dateTo) {
-    conditions.push("date(createdAt) <= ?");
-    params.push(dateTo);
-  }
-  if (conditions.length > 0) {
-    query += " WHERE " + conditions.join(" AND ");
-  }
-  const stmt = db2.prepare(query);
-  return stmt.get(...params);
+function rt(o, s, i) {
+  const e = m();
+  let r = "SELECT COUNT(*) as count FROM activity_logs";
+  const t = [], n = [];
+  return o && (n.push("entityType = ?"), t.push(o)), s && (n.push("date(createdAt) >= ?"), t.push(s)), i && (n.push("date(createdAt) <= ?"), t.push(i)), n.length > 0 && (r += " WHERE " + n.join(" AND ")), e.prepare(r).get(...t);
 }
-function cleanupOldLogs() {
-  const db2 = getDatabase();
-  const stmt = db2.prepare(`
+function ot() {
+  return m().prepare(`
     DELETE FROM activity_logs 
     WHERE id NOT IN (
       SELECT id FROM activity_logs 
       ORDER BY createdAt DESC 
       LIMIT 1000
     )
-  `);
-  const result = stmt.run();
-  return result.changes;
+  `).run().changes;
 }
-function addProduct(data) {
-  const db2 = getDatabase();
-  const stmt = db2.prepare(`
+function st(o) {
+  const r = m().prepare(`
     INSERT INTO products (name, category, size, barcode, costPrice, price, stock, lowStockThreshold, isActive, createdAt, updatedAt)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now', 'localtime'), datetime('now', 'localtime'))
-  `);
-  const result = stmt.run(
-    data.name,
-    data.category,
-    data.size || null,
-    data.barcode || null,
-    data.costPrice || 0,
-    data.price,
-    data.stock,
-    data.lowStockThreshold,
-    data.isActive !== false ? 1 : 0
-  );
-  const productId = result.lastInsertRowid;
-  addActivityLog(
+  `).run(
+    o.name,
+    o.category,
+    o.size || null,
+    o.barcode || null,
+    o.costPrice || 0,
+    o.price,
+    o.stock,
+    o.lowStockThreshold,
+    o.isActive !== !1 ? 1 : 0
+  ).lastInsertRowid;
+  return w(
     "create",
     "product",
-    `Created product: ${data.name}`,
-    productId,
+    `Created product: ${o.name}`,
+    r,
     void 0,
-    JSON.stringify(data)
-  );
-  return productId;
+    JSON.stringify(o)
+  ), r;
 }
-function getProducts(includeInactive = false) {
-  const db2 = getDatabase();
-  let query = "SELECT * FROM products";
-  if (!includeInactive) {
-    query += " WHERE (isActive = 1 OR isActive IS NULL)";
-  }
-  query += " ORDER BY id DESC";
-  const stmt = db2.prepare(query);
-  const results = stmt.all();
-  return results.map((product) => ({
-    ...product,
-    isActive: product.isActive === null ? true : Boolean(product.isActive)
+function nt(o = !1) {
+  const s = m();
+  let i = "SELECT * FROM products";
+  return o || (i += " WHERE (isActive = 1 OR isActive IS NULL)"), i += " ORDER BY id DESC", s.prepare(i).all().map((t) => ({
+    ...t,
+    isActive: t.isActive === null ? !0 : !!t.isActive
   }));
 }
-function getProductById(id) {
-  const db2 = getDatabase();
-  const stmt = db2.prepare("SELECT * FROM products WHERE id = ?");
-  const result = stmt.get(id);
-  if (result) {
-    return {
-      ...result,
-      isActive: result.isActive === null ? true : Boolean(result.isActive)
-    };
-  }
-  return result;
+function M(o) {
+  const e = m().prepare("SELECT * FROM products WHERE id = ?").get(o);
+  return e && {
+    ...e,
+    isActive: e.isActive === null ? !0 : !!e.isActive
+  };
 }
-function getProductByBarcode(barcode) {
-  const db2 = getDatabase();
-  const stmt = db2.prepare("SELECT * FROM products WHERE barcode = ?");
-  const result = stmt.get(barcode);
-  if (result) {
-    return {
-      ...result,
-      isActive: result.isActive === null ? true : Boolean(result.isActive)
-    };
-  }
-  return result;
+function it(o) {
+  const e = m().prepare("SELECT * FROM products WHERE barcode = ?").get(o);
+  return e && {
+    ...e,
+    isActive: e.isActive === null ? !0 : !!e.isActive
+  };
 }
-function searchProducts(query) {
-  const db2 = getDatabase();
-  const stmt = db2.prepare(`
+function ct(o) {
+  const i = m().prepare(`
     SELECT * FROM products 
     WHERE (name LIKE ? OR barcode LIKE ?) AND (isActive = 1 OR isActive IS NULL)
     ORDER BY name
-  `);
-  const searchTerm = `%${query}%`;
-  const results = stmt.all(searchTerm, searchTerm);
-  return results.map((product) => ({
-    ...product,
-    isActive: product.isActive === null ? true : Boolean(product.isActive)
+  `), e = `%${o}%`;
+  return i.all(e, e).map((t) => ({
+    ...t,
+    isActive: t.isActive === null ? !0 : !!t.isActive
   }));
 }
-function getProductsByCategory(category) {
-  const db2 = getDatabase();
-  const stmt = db2.prepare("SELECT * FROM products WHERE category = ? AND (isActive = 1 OR isActive IS NULL) ORDER BY name");
-  const results = stmt.all(category);
-  return results.map((product) => ({
-    ...product,
-    isActive: product.isActive === null ? true : Boolean(product.isActive)
+function at(o) {
+  return m().prepare("SELECT * FROM products WHERE category = ? AND (isActive = 1 OR isActive IS NULL) ORDER BY name").all(o).map((r) => ({
+    ...r,
+    isActive: r.isActive === null ? !0 : !!r.isActive
   }));
 }
-function getLowStockProducts() {
-  const db2 = getDatabase();
-  const stmt = db2.prepare(`
+function lt() {
+  return m().prepare(`
     SELECT * FROM products 
     WHERE stock <= lowStockThreshold 
     ORDER BY stock ASC, name
-  `);
-  return stmt.all();
+  `).all();
 }
-function updateProduct(id, data) {
-  const db2 = getDatabase();
-  const oldProduct = getProductById(id);
-  const fields = [];
-  const values = [];
-  if (data.name !== void 0) {
-    fields.push("name = ?");
-    values.push(data.name);
-  }
-  if (data.category !== void 0) {
-    fields.push("category = ?");
-    values.push(data.category);
-  }
-  if (data.size !== void 0) {
-    fields.push("size = ?");
-    values.push(data.size || null);
-  }
-  if (data.barcode !== void 0) {
-    fields.push("barcode = ?");
-    values.push(data.barcode || null);
-  }
-  if (data.costPrice !== void 0) {
-    fields.push("costPrice = ?");
-    values.push(data.costPrice);
-  }
-  if (data.price !== void 0) {
-    fields.push("price = ?");
-    values.push(data.price);
-  }
-  if (data.stock !== void 0) {
-    fields.push("stock = ?");
-    values.push(data.stock);
-  }
-  if (data.lowStockThreshold !== void 0) {
-    fields.push("lowStockThreshold = ?");
-    values.push(data.lowStockThreshold);
-  }
-  if (data.isActive !== void 0) {
-    fields.push("isActive = ?");
-    values.push(data.isActive ? 1 : 0);
-  }
-  fields.push("updatedAt = datetime('now')");
-  values.push(id);
-  const stmt = db2.prepare(`UPDATE products SET ${fields.join(", ")} WHERE id = ?`);
-  const result = stmt.run(...values);
-  if (result.changes > 0 && oldProduct) {
-    addActivityLog(
-      "update",
-      "product",
-      `Updated product: ${oldProduct.name}`,
-      id,
-      JSON.stringify(oldProduct),
-      JSON.stringify(data)
-    );
-  }
-  return result.changes > 0;
+function ut(o, s) {
+  const i = m(), e = M(o), r = [], t = [];
+  s.name !== void 0 && (r.push("name = ?"), t.push(s.name)), s.category !== void 0 && (r.push("category = ?"), t.push(s.category)), s.size !== void 0 && (r.push("size = ?"), t.push(s.size || null)), s.barcode !== void 0 && (r.push("barcode = ?"), t.push(s.barcode || null)), s.costPrice !== void 0 && (r.push("costPrice = ?"), t.push(s.costPrice)), s.price !== void 0 && (r.push("price = ?"), t.push(s.price)), s.stock !== void 0 && (r.push("stock = ?"), t.push(s.stock)), s.lowStockThreshold !== void 0 && (r.push("lowStockThreshold = ?"), t.push(s.lowStockThreshold)), s.isActive !== void 0 && (r.push("isActive = ?"), t.push(s.isActive ? 1 : 0)), r.push("updatedAt = datetime('now')"), t.push(o);
+  const c = i.prepare(`UPDATE products SET ${r.join(", ")} WHERE id = ?`).run(...t);
+  return c.changes > 0 && e && w(
+    "update",
+    "product",
+    `Updated product: ${e.name}`,
+    o,
+    JSON.stringify(e),
+    JSON.stringify(s)
+  ), c.changes > 0;
 }
-function updateStock(id, quantity, changeType, referenceId) {
-  const db2 = getDatabase();
-  const product = getProductById(id);
-  const transaction = db2.transaction(() => {
-    const updateStmt = db2.prepare(`
+function B(o, s, i, e) {
+  const r = m(), t = M(o);
+  return r.transaction(() => {
+    r.prepare(`
       UPDATE products 
       SET stock = stock + ?, updatedAt = datetime('now', 'localtime') 
       WHERE id = ?
-    `);
-    updateStmt.run(quantity, id);
-    const logStmt = db2.prepare(`
+    `).run(s, o), r.prepare(`
       INSERT INTO stock_logs (productId, changeType, quantityChange, referenceId, createdAt)
       VALUES (?, ?, ?, ?, datetime('now', 'localtime'))
-    `);
-    logStmt.run(id, changeType, quantity, referenceId || null);
-  });
-  transaction();
-  if (product) {
-    const action = changeType === "sale" ? "Stock reduced (sale)" : changeType === "restock" ? "Stock increased (restock)" : "Stock adjusted";
-    addActivityLog(
-      "update",
-      "product",
-      `${action}: ${product.name} - Quantity: ${quantity > 0 ? "+" : ""}${quantity}`,
-      id,
-      void 0,
-      JSON.stringify({ changeType, quantity, referenceId })
-    );
-  }
-  return true;
+    `).run(o, i, s, e || null);
+  })(), t && w(
+    "update",
+    "product",
+    `${i === "sale" ? "Stock reduced (sale)" : i === "restock" ? "Stock increased (restock)" : "Stock adjusted"}: ${t.name} - Quantity: ${s > 0 ? "+" : ""}${s}`,
+    o,
+    void 0,
+    JSON.stringify({ changeType: i, quantity: s, referenceId: e })
+  ), !0;
 }
-function deleteProduct(id, forceDeactivate = false) {
-  const db2 = getDatabase();
-  const product = getProductById(id);
-  const billCheckStmt = db2.prepare(`
+function q(o, s = !1) {
+  const i = m(), e = M(o), t = i.prepare(`
     SELECT COUNT(*) as count FROM bill_items WHERE productId = ?
-  `);
-  const billCheck = billCheckStmt.get(id);
-  if (billCheck.count > 0) {
-    if (forceDeactivate) {
-      const deactivateStmt = db2.prepare(`
+  `).get(o);
+  if (t.count > 0)
+    if (s) {
+      const l = i.prepare(`
         UPDATE products 
         SET isActive = 0, updatedAt = datetime('now', 'localtime') 
         WHERE id = ?
-      `);
-      const result = deactivateStmt.run(id);
-      if (result.changes > 0 && product) {
-        addActivityLog(
-          "deactivate",
-          "product",
-          `Deactivated product: ${product.name} (referenced in ${billCheck.count} bills)`,
-          id,
-          JSON.stringify(product),
-          void 0
-        );
-      }
-      return {
-        success: result.changes > 0,
-        deactivated: true,
+      `).run(o);
+      return l.changes > 0 && e && w(
+        "deactivate",
+        "product",
+        `Deactivated product: ${e.name} (referenced in ${t.count} bills)`,
+        o,
+        JSON.stringify(e),
+        void 0
+      ), {
+        success: l.changes > 0,
+        deactivated: !0,
         message: "Product deactivated successfully (was referenced in bills)"
       };
-    } else {
-      throw new Error(`Cannot delete product. It is referenced in ${billCheck.count} bill(s). Use deactivate option instead.`);
-    }
-  }
-  const transaction = db2.transaction(() => {
-    const deleteLogsStmt = db2.prepare("DELETE FROM stock_logs WHERE productId = ?");
-    deleteLogsStmt.run(id);
-    const deleteProductStmt = db2.prepare("DELETE FROM products WHERE id = ?");
-    const result = deleteProductStmt.run(id);
-    if (result.changes === 0) {
+    } else
+      throw new Error(`Cannot delete product. It is referenced in ${t.count} bill(s). Use deactivate option instead.`);
+  const c = i.transaction(() => {
+    i.prepare("DELETE FROM stock_logs WHERE productId = ?").run(o);
+    const a = i.prepare("DELETE FROM products WHERE id = ?").run(o);
+    if (a.changes === 0)
       throw new Error("Product not found");
-    }
-    return result.changes > 0;
-  });
-  const success = transaction();
-  if (success && product) {
-    addActivityLog(
-      "delete",
-      "product",
-      `Deleted product: ${product.name}`,
-      id,
-      JSON.stringify(product),
-      void 0
-    );
-  }
-  return { success, deleted: true, message: "Product deleted successfully" };
+    return a.changes > 0;
+  })();
+  return c && e && w(
+    "delete",
+    "product",
+    `Deleted product: ${e.name}`,
+    o,
+    JSON.stringify(e),
+    void 0
+  ), { success: c, deleted: !0, message: "Product deleted successfully" };
 }
-function deactivateProduct(id) {
-  return deleteProduct(id, true);
+function dt(o) {
+  return q(o, !0);
 }
-function reactivateProduct(id) {
-  const db2 = getDatabase();
-  const product = getProductById(id);
-  const stmt = db2.prepare(`
+function pt(o) {
+  const s = m(), i = M(o), r = s.prepare(`
     UPDATE products 
     SET isActive = 1, updatedAt = datetime('now', 'localtime') 
     WHERE id = ?
-  `);
-  const result = stmt.run(id);
-  if (result.changes > 0 && product) {
-    addActivityLog(
-      "reactivate",
-      "product",
-      `Reactivated product: ${product.name}`,
-      id,
-      void 0,
-      JSON.stringify({ isActive: true })
-    );
-  }
-  return result.changes > 0;
+  `).run(o);
+  return r.changes > 0 && i && w(
+    "reactivate",
+    "product",
+    `Reactivated product: ${i.name}`,
+    o,
+    void 0,
+    JSON.stringify({ isActive: !0 })
+  ), r.changes > 0;
 }
-function createBill(data) {
-  const db2 = getDatabase();
-  const billNumber = generateBillNumber();
-  const transaction = db2.transaction(() => {
-    const billStmt2 = db2.prepare(`
+function mt(o) {
+  const s = m(), i = St(), r = s.transaction(() => {
+    const l = s.prepare(`
       INSERT INTO bills (billNumber, subtotal, discountPercent, discountAmount, total, paymentMode, cashAmount, upiAmount, customerMobileNumber, createdAt)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now', 'localtime'))
-    `);
-    const billResult = billStmt2.run(
-      billNumber,
-      data.subtotal,
-      data.discountPercent,
-      data.discountAmount,
-      data.total,
-      data.paymentMode,
-      data.cashAmount || 0,
-      data.upiAmount || 0,
-      data.customerMobileNumber || null
-    );
-    const billId2 = billResult.lastInsertRowid;
-    const itemStmt = db2.prepare(`
+    `).run(
+      i,
+      o.subtotal,
+      o.discountPercent,
+      o.discountAmount,
+      o.total,
+      o.paymentMode,
+      o.cashAmount || 0,
+      o.upiAmount || 0,
+      o.customerMobileNumber || null
+    ).lastInsertRowid, a = s.prepare(`
       INSERT INTO bill_items (billId, productId, productName, size, quantity, unitPrice, totalPrice)
       VALUES (?, ?, ?, ?, ?, ?, ?)
     `);
-    for (const item of data.items) {
-      const totalPrice = item.product.price * item.quantity;
-      itemStmt.run(
-        billId2,
-        item.product.id,
-        item.product.name,
-        item.product.size || null,
-        item.quantity,
-        item.product.price,
-        totalPrice
-      );
-      updateStock(item.product.id, -item.quantity, "sale", billId2);
+    for (const u of o.items) {
+      const E = u.product.price * u.quantity;
+      a.run(
+        l,
+        u.product.id,
+        u.product.name,
+        u.product.size || null,
+        u.quantity,
+        u.product.price,
+        E
+      ), B(u.product.id, -u.quantity, "sale", l);
     }
-    return billId2;
-  });
-  const billId = transaction();
-  const billStmt = db2.prepare("SELECT * FROM bills WHERE id = ?");
-  const bill = billStmt.get(billId);
-  addActivityLog(
+    return l;
+  })(), n = s.prepare("SELECT * FROM bills WHERE id = ?").get(r);
+  return w(
     "create",
     "bill",
-    `Created bill: ${billNumber} - Total: ₹${data.total} (${data.paymentMode})`,
-    billId,
+    `Created bill: ${i} - Total: ₹${o.total} (${o.paymentMode})`,
+    r,
     void 0,
     JSON.stringify({
-      billNumber,
-      total: data.total,
-      paymentMode: data.paymentMode,
-      itemCount: data.items.length
+      billNumber: i,
+      total: o.total,
+      paymentMode: o.paymentMode,
+      itemCount: o.items.length
     })
-  );
-  return bill;
+  ), n;
 }
-function getBills(dateFrom, dateTo, searchQuery) {
-  const db2 = getDatabase();
-  let query = "SELECT * FROM bills";
-  const params = [];
-  const conditions = [];
-  if (dateFrom && dateTo) {
-    conditions.push("date(createdAt) BETWEEN ? AND ?");
-    params.push(dateFrom, dateTo);
-  } else if (dateFrom) {
-    conditions.push("date(createdAt) >= ?");
-    params.push(dateFrom);
-  } else if (dateTo) {
-    conditions.push("date(createdAt) <= ?");
-    params.push(dateTo);
+function Et(o, s, i) {
+  const e = m();
+  let r = "SELECT * FROM bills";
+  const t = [], n = [];
+  if (o && s ? (n.push("date(createdAt) BETWEEN ? AND ?"), t.push(o, s)) : o ? (n.push("date(createdAt) >= ?"), t.push(o)) : s && (n.push("date(createdAt) <= ?"), t.push(s)), i && i.trim()) {
+    n.push("(billNumber LIKE ? OR customerMobileNumber LIKE ?)");
+    const c = `%${i.trim()}%`;
+    t.push(c, c);
   }
-  if (searchQuery && searchQuery.trim()) {
-    conditions.push("(billNumber LIKE ? OR customerMobileNumber LIKE ?)");
-    const searchTerm = `%${searchQuery.trim()}%`;
-    params.push(searchTerm, searchTerm);
-  }
-  if (conditions.length > 0) {
-    query += " WHERE " + conditions.join(" AND ");
-  }
-  query += " ORDER BY createdAt DESC";
-  console.log("Bills query:", query, "params:", params);
+  n.length > 0 && (r += " WHERE " + n.join(" AND ")), r += " ORDER BY createdAt DESC", console.log("Bills query:", r, "params:", t);
   try {
-    const stmt = db2.prepare(query);
-    const results = stmt.all(...params);
-    console.log("Bills query results:", results.length, "bills found");
-    return results;
-  } catch (error) {
-    console.error("Error executing bills query:", error);
-    throw error;
+    const p = e.prepare(r).all(...t);
+    return console.log("Bills query results:", p.length, "bills found"), p;
+  } catch (c) {
+    throw console.error("Error executing bills query:", c), c;
   }
 }
-function getBillById(id) {
-  const db2 = getDatabase();
-  const billStmt = db2.prepare("SELECT * FROM bills WHERE id = ?");
-  const bill = billStmt.get(id);
-  if (!bill) return null;
-  const itemsStmt = db2.prepare("SELECT * FROM bill_items WHERE billId = ?");
-  const items = itemsStmt.all(id);
-  return { bill, items };
+function F(o) {
+  const s = m(), e = s.prepare("SELECT * FROM bills WHERE id = ?").get(o);
+  if (!e) return null;
+  const t = s.prepare("SELECT * FROM bill_items WHERE billId = ?").all(o);
+  return { bill: e, items: t };
 }
-function getRecentBills(limit = 5) {
-  const db2 = getDatabase();
-  const stmt = db2.prepare(`
+function gt(o = 5) {
+  return m().prepare(`
     SELECT * FROM bills 
     ORDER BY createdAt DESC 
     LIMIT ?
-  `);
-  return stmt.all(limit);
+  `).all(o);
 }
-function getDailySummary(date) {
-  const db2 = getDatabase();
-  const targetDate = date || (/* @__PURE__ */ new Date()).toISOString().split("T")[0];
-  const stmt = db2.prepare(`
+function ht(o) {
+  const s = m(), i = o || (/* @__PURE__ */ new Date()).toISOString().split("T")[0], r = s.prepare(`
     SELECT 
       COALESCE(SUM(total), 0) as totalSales,
       COUNT(*) as totalBills,
@@ -687,22 +456,17 @@ function getDailySummary(date) {
       ), 0) as itemsSold
     FROM bills 
     WHERE date(createdAt) = ?
-  `);
-  const result = stmt.get(targetDate);
-  if (!result || result.totalBills === 0) {
-    return {
-      totalSales: 0,
-      totalBills: 0,
-      cashSales: 0,
-      upiSales: 0,
-      itemsSold: 0
-    };
-  }
-  return result;
+  `).get(i);
+  return !r || r.totalBills === 0 ? {
+    totalSales: 0,
+    totalBills: 0,
+    cashSales: 0,
+    upiSales: 0,
+    itemsSold: 0
+  } : r;
 }
-function getDateRangeSummary(dateFrom, dateTo) {
-  const db2 = getDatabase();
-  const stmt = db2.prepare(`
+function bt(o, s) {
+  const r = m().prepare(`
     SELECT 
       COALESCE(SUM(total), 0) as totalSales,
       COUNT(*) as totalBills,
@@ -725,23 +489,18 @@ function getDateRangeSummary(dateFrom, dateTo) {
       ), 0) as itemsSold
     FROM bills 
     WHERE date(createdAt) BETWEEN ? AND ?
-  `);
-  const result = stmt.get(dateFrom, dateTo);
-  if (!result || result.totalBills === 0) {
-    return {
-      totalSales: 0,
-      totalBills: 0,
-      cashSales: 0,
-      upiSales: 0,
-      itemsSold: 0
-    };
-  }
-  return result;
+  `).get(o, s);
+  return !r || r.totalBills === 0 ? {
+    totalSales: 0,
+    totalBills: 0,
+    cashSales: 0,
+    upiSales: 0,
+    itemsSold: 0
+  } : r;
 }
-function getTopSelling(date, limit = 5) {
-  const db2 = getDatabase();
-  const targetDate = date || (/* @__PURE__ */ new Date()).toISOString().split("T")[0];
-  const stmt = db2.prepare(`
+function ft(o, s = 5) {
+  const i = m(), e = o || (/* @__PURE__ */ new Date()).toISOString().split("T")[0];
+  return i.prepare(`
     SELECT 
       bi.productName,
       bi.size,
@@ -752,216 +511,138 @@ function getTopSelling(date, limit = 5) {
     GROUP BY bi.productName, bi.size
     ORDER BY totalQty DESC
     LIMIT ?
-  `);
-  return stmt.all(targetDate, limit);
+  `).all(e, s);
 }
-function generateBillNumber() {
-  var _a, _b;
-  const db2 = getDatabase();
-  const prefixStmt = db2.prepare("SELECT value FROM settings WHERE key = ?");
-  const prefix = ((_a = prefixStmt.get("billPrefix")) == null ? void 0 : _a.value) || "VP";
-  const startingStmt = db2.prepare("SELECT value FROM settings WHERE key = ?");
-  const startingNumber = parseInt(((_b = startingStmt.get("startingBillNumber")) == null ? void 0 : _b.value) || "1");
-  const lastBillStmt = db2.prepare(`
+function St() {
+  var p, l;
+  const o = m(), i = ((p = o.prepare("SELECT value FROM settings WHERE key = ?").get("billPrefix")) == null ? void 0 : p.value) || "VP", e = o.prepare("SELECT value FROM settings WHERE key = ?"), r = parseInt(((l = e.get("startingBillNumber")) == null ? void 0 : l.value) || "1"), n = o.prepare(`
     SELECT billNumber FROM bills 
     WHERE billNumber LIKE ? 
     ORDER BY id DESC 
     LIMIT 1
-  `);
-  const lastBill = lastBillStmt.get(`${prefix}%`);
-  let nextNumber = startingNumber;
-  if (lastBill) {
-    const lastNumber = parseInt(lastBill.billNumber.replace(prefix, ""));
-    nextNumber = lastNumber + 1;
-  }
-  return `${prefix}${nextNumber.toString().padStart(4, "0")}`;
+  `).get(`${i}%`);
+  let c = r;
+  return n && (c = parseInt(n.billNumber.replace(i, "")) + 1), `${i}${c.toString().padStart(4, "0")}`;
 }
-function updateBill(billId, data) {
-  const db2 = getDatabase();
-  const originalBill = getBillById(billId);
-  if (!originalBill) {
+function yt(o, s) {
+  const i = m(), e = F(o);
+  if (!e)
     throw new Error("Bill not found");
-  }
-  const transaction = db2.transaction(() => {
-    if (data.items) {
-      const oldItemsStmt = db2.prepare("SELECT * FROM bill_items WHERE billId = ?");
-      const oldItems = oldItemsStmt.all(billId);
-      for (const oldItem of oldItems) {
-        updateStock(oldItem.productId, oldItem.quantity, "adjustment");
-      }
-      db2.prepare("DELETE FROM bill_items WHERE billId = ?").run(billId);
-      const itemStmt = db2.prepare(`
+  return i.transaction(() => {
+    if (s.items) {
+      const p = i.prepare("SELECT * FROM bill_items WHERE billId = ?").all(o);
+      for (const a of p)
+        B(a.productId, a.quantity, "adjustment");
+      i.prepare("DELETE FROM bill_items WHERE billId = ?").run(o);
+      const l = i.prepare(`
         INSERT INTO bill_items (billId, productId, productName, size, quantity, unitPrice, totalPrice)
         VALUES (?, ?, ?, ?, ?, ?, ?)
       `);
-      for (const item of data.items) {
-        const totalPrice = item.product.price * item.quantity;
-        itemStmt.run(
-          billId,
-          item.product.id,
-          item.product.name,
-          item.product.size || null,
-          item.quantity,
-          item.product.price,
-          totalPrice
-        );
-        updateStock(item.product.id, -item.quantity, "sale", billId);
+      for (const a of s.items) {
+        const u = a.product.price * a.quantity;
+        l.run(
+          o,
+          a.product.id,
+          a.product.name,
+          a.product.size || null,
+          a.quantity,
+          a.product.price,
+          u
+        ), B(a.product.id, -a.quantity, "sale", o);
       }
     }
-    const updateFields = [];
-    const updateValues = [];
-    if (data.subtotal !== void 0) {
-      updateFields.push("subtotal = ?");
-      updateValues.push(data.subtotal);
-    }
-    if (data.discountPercent !== void 0) {
-      updateFields.push("discountPercent = ?");
-      updateValues.push(data.discountPercent);
-    }
-    if (data.discountAmount !== void 0) {
-      updateFields.push("discountAmount = ?");
-      updateValues.push(data.discountAmount);
-    }
-    if (data.total !== void 0) {
-      updateFields.push("total = ?");
-      updateValues.push(data.total);
-    }
-    if (data.paymentMode !== void 0) {
-      updateFields.push("paymentMode = ?");
-      updateValues.push(data.paymentMode);
-    }
-    if (data.cashAmount !== void 0) {
-      updateFields.push("cashAmount = ?");
-      updateValues.push(data.cashAmount);
-    }
-    if (data.upiAmount !== void 0) {
-      updateFields.push("upiAmount = ?");
-      updateValues.push(data.upiAmount);
-    }
-    if (updateFields.length > 0) {
-      updateValues.push(billId);
-      const updateStmt = db2.prepare(`
-        UPDATE bills SET ${updateFields.join(", ")} WHERE id = ?
-      `);
-      updateStmt.run(...updateValues);
-    }
-  });
-  transaction();
-  addActivityLog(
+    const t = [], n = [];
+    s.subtotal !== void 0 && (t.push("subtotal = ?"), n.push(s.subtotal)), s.discountPercent !== void 0 && (t.push("discountPercent = ?"), n.push(s.discountPercent)), s.discountAmount !== void 0 && (t.push("discountAmount = ?"), n.push(s.discountAmount)), s.total !== void 0 && (t.push("total = ?"), n.push(s.total)), s.paymentMode !== void 0 && (t.push("paymentMode = ?"), n.push(s.paymentMode)), s.cashAmount !== void 0 && (t.push("cashAmount = ?"), n.push(s.cashAmount)), s.upiAmount !== void 0 && (t.push("upiAmount = ?"), n.push(s.upiAmount)), t.length > 0 && (n.push(o), i.prepare(`
+        UPDATE bills SET ${t.join(", ")} WHERE id = ?
+      `).run(...n));
+  })(), w(
     "update",
     "bill",
-    `Updated bill: ${originalBill.bill.billNumber}`,
-    billId,
-    JSON.stringify(originalBill),
-    JSON.stringify(data)
-  );
-  return getBillById(billId);
+    `Updated bill: ${e.bill.billNumber}`,
+    o,
+    JSON.stringify(e),
+    JSON.stringify(s)
+  ), F(o);
 }
-function deleteBill(billId) {
-  const db2 = getDatabase();
-  const billData = getBillById(billId);
-  if (!billData) {
+function Tt(o) {
+  const s = m(), i = F(o);
+  if (!i)
     throw new Error("Bill not found");
-  }
-  const transaction = db2.transaction(() => {
-    const itemsStmt = db2.prepare("SELECT * FROM bill_items WHERE billId = ?");
-    const items = itemsStmt.all(billId);
-    for (const item of items) {
-      updateStock(item.productId, item.quantity, "adjustment");
-    }
-    db2.prepare("DELETE FROM bill_items WHERE billId = ?").run(billId);
-    db2.prepare("DELETE FROM bills WHERE id = ?").run(billId);
-  });
-  transaction();
-  addActivityLog(
+  return s.transaction(() => {
+    const t = s.prepare("SELECT * FROM bill_items WHERE billId = ?").all(o);
+    for (const n of t)
+      B(n.productId, n.quantity, "adjustment");
+    s.prepare("DELETE FROM bill_items WHERE billId = ?").run(o), s.prepare("DELETE FROM bills WHERE id = ?").run(o);
+  })(), w(
     "delete",
     "bill",
-    `Deleted bill: ${billData.bill.billNumber} - Total: ₹${billData.bill.total}`,
-    billId,
-    JSON.stringify(billData),
+    `Deleted bill: ${i.bill.billNumber} - Total: ₹${i.bill.total}`,
+    o,
+    JSON.stringify(i),
     void 0
-  );
-  return { success: true, message: "Bill deleted and stock restored" };
+  ), { success: !0, message: "Bill deleted and stock restored" };
 }
-function getSettings() {
-  const db2 = getDatabase();
-  const stmt = db2.prepare("SELECT key, value FROM settings");
-  const rows = stmt.all();
-  const settings = {};
-  for (const row of rows) {
-    settings[row.key] = row.value;
-  }
-  return settings;
+function _() {
+  const i = m().prepare("SELECT key, value FROM settings").all(), e = {};
+  for (const r of i)
+    e[r.key] = r.value;
+  return e;
 }
-function getSetting(key) {
-  const db2 = getDatabase();
-  const stmt = db2.prepare("SELECT value FROM settings WHERE key = ?");
-  const result = stmt.get(key);
-  return result == null ? void 0 : result.value;
+function V(o) {
+  const e = m().prepare("SELECT value FROM settings WHERE key = ?").get(o);
+  return e == null ? void 0 : e.value;
 }
-function updateSetting(key, value) {
-  const db2 = getDatabase();
-  const oldValue = getSetting(key);
-  const stmt = db2.prepare(`
+function Nt(o, s) {
+  const i = m(), e = V(o), t = i.prepare(`
     INSERT OR REPLACE INTO settings (key, value, updatedAt) 
     VALUES (?, ?, datetime('now', 'localtime'))
-  `);
-  const result = stmt.run(key, value);
-  if (result.changes > 0) {
-    addActivityLog(
-      "update",
-      "setting",
-      `Updated setting: ${key}`,
-      void 0,
-      oldValue,
-      value
-    );
-  }
-  return result.changes > 0;
+  `).run(o, s);
+  return t.changes > 0 && w(
+    "update",
+    "setting",
+    `Updated setting: ${o}`,
+    void 0,
+    e,
+    s
+  ), t.changes > 0;
 }
-function updateAllSettings(settings) {
-  const db2 = getDatabase();
-  const oldSettings = getSettings();
-  const transaction = db2.transaction(() => {
-    const stmt = db2.prepare(`
+function X(o) {
+  const s = m(), i = _();
+  return s.transaction(() => {
+    const r = s.prepare(`
       INSERT OR REPLACE INTO settings (key, value, updatedAt) 
       VALUES (?, ?, datetime('now', 'localtime'))
     `);
-    for (const [key, value] of Object.entries(settings)) {
-      stmt.run(key, value);
-    }
-  });
-  transaction();
-  addActivityLog(
+    for (const [t, n] of Object.entries(o))
+      r.run(t, n);
+  })(), w(
     "update",
     "setting",
-    `Updated multiple settings: ${Object.keys(settings).join(", ")}`,
+    `Updated multiple settings: ${Object.keys(o).join(", ")}`,
     void 0,
-    JSON.stringify(oldSettings),
-    JSON.stringify(settings)
-  );
-  return true;
+    JSON.stringify(i),
+    JSON.stringify(o)
+  ), !0;
 }
-function getTypedSettings() {
-  const settings = getSettings();
+function Pt() {
+  const o = _();
   return {
-    storeName: settings.storeName || "Vogue Prism",
-    addressLine1: settings.addressLine1 || "",
-    addressLine2: settings.addressLine2 || "",
-    phone: settings.phone || "",
-    gstNumber: settings.gstNumber || "",
-    billPrefix: settings.billPrefix || "VP",
-    startingBillNumber: parseInt(settings.startingBillNumber || "1"),
-    maxDiscountPercent: parseFloat(settings.maxDiscountPercent || "20"),
-    lowStockThreshold: parseInt(settings.lowStockThreshold || "5"),
-    printerName: settings.printerName || "",
-    paperWidth: settings.paperWidth || "80mm",
-    autoPrint: settings.autoPrint === "true"
+    storeName: o.storeName || "Vogue Prism",
+    addressLine1: o.addressLine1 || "",
+    addressLine2: o.addressLine2 || "",
+    phone: o.phone || "",
+    gstNumber: o.gstNumber || "",
+    billPrefix: o.billPrefix || "VP",
+    startingBillNumber: parseInt(o.startingBillNumber || "1"),
+    maxDiscountPercent: parseFloat(o.maxDiscountPercent || "20"),
+    lowStockThreshold: parseInt(o.lowStockThreshold || "5"),
+    printerName: o.printerName || "",
+    paperWidth: o.paperWidth || "80mm",
+    autoPrint: o.autoPrint === "true"
   };
 }
-function getSalesReport(dateFrom, dateTo) {
-  const db2 = getDatabase();
-  const stmt = db2.prepare(`
+function At(o, s) {
+  return m().prepare(`
     SELECT 
       bi.productName,
       bi.size,
@@ -974,12 +655,10 @@ function getSalesReport(dateFrom, dateTo) {
     WHERE date(b.createdAt) BETWEEN ? AND ?
     GROUP BY bi.productName, bi.size, p.category
     ORDER BY totalAmount DESC
-  `);
-  return stmt.all(dateFrom, dateTo);
+  `).all(o, s);
 }
-function exportData(dateFrom, dateTo) {
-  const db2 = getDatabase();
-  const stmt = db2.prepare(`
+function Lt(o, s) {
+  return m().prepare(`
     SELECT 
       b.billNumber as bill_number,
       b.createdAt as created_at,
@@ -999,12 +678,10 @@ function exportData(dateFrom, dateTo) {
     JOIN bills b ON bi.billId = b.id
     WHERE date(b.createdAt) BETWEEN ? AND ?
     ORDER BY b.createdAt DESC, bi.id
-  `);
-  return stmt.all(dateFrom, dateTo);
+  `).all(o, s);
 }
-function getStockMovementReport(dateFrom, dateTo) {
-  const db2 = getDatabase();
-  const stmt = db2.prepare(`
+function wt(o, s) {
+  return m().prepare(`
     SELECT 
       p.name as productName,
       p.size,
@@ -1022,12 +699,10 @@ function getStockMovementReport(dateFrom, dateTo) {
     JOIN products p ON sl.productId = p.id
     WHERE date(sl.createdAt) BETWEEN ? AND ?
     ORDER BY sl.createdAt DESC
-  `);
-  return stmt.all(dateFrom, dateTo);
+  `).all(o, s);
 }
-function getCategorySales(dateFrom, dateTo) {
-  const db2 = getDatabase();
-  const stmt = db2.prepare(`
+function Rt(o, s) {
+  return m().prepare(`
     SELECT 
       p.category,
       COUNT(DISTINCT bi.productId) as uniqueProducts,
@@ -1039,12 +714,10 @@ function getCategorySales(dateFrom, dateTo) {
     WHERE date(b.createdAt) BETWEEN ? AND ?
     GROUP BY p.category
     ORDER BY totalAmount DESC
-  `);
-  return stmt.all(dateFrom, dateTo);
+  `).all(o, s);
 }
-function getPaymentModeSummary(dateFrom, dateTo) {
-  const db2 = getDatabase();
-  const stmt = db2.prepare(`
+function Ot(o, s) {
+  return m().prepare(`
     SELECT 
       paymentMode,
       COUNT(*) as billCount,
@@ -1053,12 +726,10 @@ function getPaymentModeSummary(dateFrom, dateTo) {
     FROM bills
     WHERE date(createdAt) BETWEEN ? AND ?
     GROUP BY paymentMode
-  `);
-  return stmt.all(dateFrom, dateTo);
+  `).all(o, s);
 }
-function getHourlySales(date) {
-  const db2 = getDatabase();
-  const stmt = db2.prepare(`
+function It(o) {
+  return m().prepare(`
     SELECT 
       strftime('%H', createdAt) as hour,
       COUNT(*) as billCount,
@@ -1067,12 +738,10 @@ function getHourlySales(date) {
     WHERE date(createdAt) = ?
     GROUP BY strftime('%H', createdAt)
     ORDER BY hour
-  `);
-  return stmt.all(date);
+  `).all(o);
 }
-function getLowStockAlert() {
-  const db2 = getDatabase();
-  const stmt = db2.prepare(`
+function Ct() {
+  return m().prepare(`
     SELECT 
       id,
       name,
@@ -1084,12 +753,10 @@ function getLowStockAlert() {
     FROM products
     WHERE stock <= lowStockThreshold
     ORDER BY shortfall DESC, name
-  `);
-  return stmt.all();
+  `).all();
 }
-function getProductPerformance(dateFrom, dateTo, limit = 10) {
-  const db2 = getDatabase();
-  const stmt = db2.prepare(`
+function Dt(o, s, i = 10) {
+  return m().prepare(`
     SELECT 
       bi.productName,
       bi.size,
@@ -1106,16 +773,14 @@ function getProductPerformance(dateFrom, dateTo, limit = 10) {
     GROUP BY bi.productName, bi.size
     ORDER BY totalRevenue DESC
     LIMIT ?
-  `);
-  return stmt.all(dateFrom, dateTo, limit);
+  `).all(o, s, i);
 }
-async function exportBackup() {
+async function Mt() {
   try {
-    const db2 = getDatabase();
-    const result = await dialog.showSaveDialog({
+    const o = m(), s = await W.showSaveDialog({
       title: "Export Database Backup",
-      defaultPath: path.join(
-        app.getPath("desktop"),
+      defaultPath: k.join(
+        C.getPath("desktop"),
         `vogue-prism-backup-${(/* @__PURE__ */ new Date()).toISOString().split("T")[0]}.sql`
       ),
       filters: [
@@ -1123,79 +788,61 @@ async function exportBackup() {
         { name: "All Files", extensions: ["*"] }
       ]
     });
-    if (result.canceled) {
-      return { success: false, cancelled: true };
-    }
-    const backup = {
+    if (s.canceled)
+      return { success: !1, cancelled: !0 };
+    const i = {
       timestamp: (/* @__PURE__ */ new Date()).toISOString(),
       version: "1.0",
       data: {
-        products: db2.prepare("SELECT * FROM products ORDER BY id").all(),
-        bills: db2.prepare("SELECT * FROM bills ORDER BY id").all(),
-        bill_items: db2.prepare("SELECT * FROM bill_items ORDER BY id").all(),
-        stock_logs: db2.prepare("SELECT * FROM stock_logs ORDER BY id").all(),
-        settings: db2.prepare("SELECT * FROM settings ORDER BY key").all()
+        products: o.prepare("SELECT * FROM products ORDER BY id").all(),
+        bills: o.prepare("SELECT * FROM bills ORDER BY id").all(),
+        bill_items: o.prepare("SELECT * FROM bill_items ORDER BY id").all(),
+        stock_logs: o.prepare("SELECT * FROM stock_logs ORDER BY id").all(),
+        settings: o.prepare("SELECT * FROM settings ORDER BY key").all()
       }
     };
-    let sqlContent = `-- Vogue Prism Database Backup
+    let e = `-- Vogue Prism Database Backup
 `;
-    sqlContent += `-- Created: ${backup.timestamp}
-`;
-    sqlContent += `-- Version: ${backup.version}
+    e += `-- Created: ${i.timestamp}
+`, e += `-- Version: ${i.version}
 
 `;
-    const escapeValue = (value) => {
-      if (value === null || value === void 0) {
-        return "NULL";
+    const r = (n) => n == null ? "NULL" : typeof n == "string" ? `'${n.replace(/'/g, "''")}'` : String(n), t = (n, c) => {
+      if (c.length === 0) return "";
+      const p = Object.keys(c[0]);
+      let l = `-- Table: ${n}
+`;
+      l += `DELETE FROM ${n};
+`;
+      for (const a of c) {
+        const u = p.map((E) => r(a[E])).join(", ");
+        l += `INSERT INTO ${n} (${p.join(", ")}) VALUES (${u});
+`;
       }
-      if (typeof value === "string") {
-        return `'${value.replace(/'/g, "''")}'`;
-      }
-      return String(value);
+      return l += `
+`, l;
     };
-    const generateInserts = (tableName, rows) => {
-      if (rows.length === 0) return "";
-      const columns = Object.keys(rows[0]);
-      let sql = `-- Table: ${tableName}
-`;
-      sql += `DELETE FROM ${tableName};
-`;
-      for (const row of rows) {
-        const values = columns.map((col) => escapeValue(row[col])).join(", ");
-        sql += `INSERT INTO ${tableName} (${columns.join(", ")}) VALUES (${values});
-`;
-      }
-      sql += "\n";
-      return sql;
-    };
-    sqlContent += generateInserts("settings", backup.data.settings);
-    sqlContent += generateInserts("products", backup.data.products);
-    sqlContent += generateInserts("bills", backup.data.bills);
-    sqlContent += generateInserts("bill_items", backup.data.bill_items);
-    sqlContent += generateInserts("stock_logs", backup.data.stock_logs);
-    fs.writeFileSync(result.filePath, sqlContent, "utf8");
-    return {
-      success: true,
-      path: result.filePath,
+    return e += t("settings", i.data.settings), e += t("products", i.data.products), e += t("bills", i.data.bills), e += t("bill_items", i.data.bill_items), e += t("stock_logs", i.data.stock_logs), x.writeFileSync(s.filePath, e, "utf8"), {
+      success: !0,
+      path: s.filePath,
       recordCount: {
-        products: backup.data.products.length,
-        bills: backup.data.bills.length,
-        bill_items: backup.data.bill_items.length,
-        stock_logs: backup.data.stock_logs.length,
-        settings: backup.data.settings.length
+        products: i.data.products.length,
+        bills: i.data.bills.length,
+        bill_items: i.data.bill_items.length,
+        stock_logs: i.data.stock_logs.length,
+        settings: i.data.settings.length
       }
     };
-  } catch (error) {
-    console.error("Backup export error:", error);
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : "Unknown error"
+  } catch (o) {
+    return console.error("Backup export error:", o), {
+      success: !1,
+      error: o instanceof Error ? o.message : "Unknown error"
     };
   }
 }
-async function importBackup() {
+async function Ut() {
   try {
-    const result = await dialog.showOpenDialog({
+    const o = await W.showOpenDialog({
       title: "Import Database Backup",
       filters: [
         { name: "SQL Files", extensions: ["sql"] },
@@ -1203,10 +850,9 @@ async function importBackup() {
       ],
       properties: ["openFile"]
     });
-    if (result.canceled || !result.filePaths.length) {
-      return { success: false, cancelled: true };
-    }
-    const confirmResult = await dialog.showMessageBox({
+    if (o.canceled || !o.filePaths.length)
+      return { success: !1, cancelled: !0 };
+    if ((await W.showMessageBox({
       type: "warning",
       title: "Confirm Database Restore",
       message: "This will replace all current data with the backup data. This action cannot be undone.",
@@ -1214,78 +860,65 @@ async function importBackup() {
       buttons: ["Cancel", "Restore"],
       defaultId: 0,
       cancelId: 0
-    });
-    if (confirmResult.response === 0) {
-      return { success: false, cancelled: true };
-    }
-    const db2 = getDatabase();
-    const backupPath = result.filePaths[0];
-    const sqlContent = fs.readFileSync(backupPath, "utf8");
-    const transaction = db2.transaction(() => {
-      db2.exec("PRAGMA foreign_keys = OFF;");
-      const lines = sqlContent.split("\n");
-      let currentStatement = "";
-      for (const line of lines) {
-        const trimmedLine = line.trim();
-        if (!trimmedLine || trimmedLine.startsWith("--")) {
-          continue;
-        }
-        currentStatement += line + "\n";
-        if (trimmedLine.endsWith(";")) {
-          const statement = currentStatement.trim();
-          if (statement && statement !== ";") {
+    })).response === 0)
+      return { success: !1, cancelled: !0 };
+    const i = m(), e = o.filePaths[0], r = x.readFileSync(e, "utf8");
+    return i.transaction(() => {
+      i.exec("PRAGMA foreign_keys = OFF;");
+      const n = r.split(`
+`);
+      let c = "";
+      for (const p of n) {
+        const l = p.trim();
+        if (!(!l || l.startsWith("--")) && (c += p + `
+`, l.endsWith(";"))) {
+          const a = c.trim();
+          if (a && a !== ";")
             try {
-              db2.exec(statement);
-            } catch (error) {
-              console.error("Error executing statement:", statement);
-              console.error("Error:", error);
+              i.exec(a);
+            } catch (u) {
+              console.error("Error executing statement:", a), console.error("Error:", u);
             }
-          }
-          currentStatement = "";
+          c = "";
         }
       }
-      db2.exec("PRAGMA foreign_keys = ON;");
-    });
-    transaction();
-    return {
-      success: true,
-      requiresRestart: true,
+      i.exec("PRAGMA foreign_keys = ON;");
+    })(), {
+      success: !0,
+      requiresRestart: !0,
       message: "Database restored successfully. Please restart the application."
     };
-  } catch (error) {
-    console.error("Backup import error:", error);
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : "Unknown error"
+  } catch (o) {
+    return console.error("Backup import error:", o), {
+      success: !1,
+      error: o instanceof Error ? o.message : "Unknown error"
     };
   }
 }
-function getDatabaseStats() {
-  const db2 = getDatabase();
-  const stats = {
-    products: db2.prepare("SELECT COUNT(*) as count FROM products").get(),
-    bills: db2.prepare("SELECT COUNT(*) as count FROM bills").get(),
-    bill_items: db2.prepare("SELECT COUNT(*) as count FROM bill_items").get(),
-    stock_logs: db2.prepare("SELECT COUNT(*) as count FROM stock_logs").get(),
-    settings: db2.prepare("SELECT COUNT(*) as count FROM settings").get(),
-    database_size: getDatabaseSize()
+function kt() {
+  const o = m();
+  return {
+    products: o.prepare("SELECT COUNT(*) as count FROM products").get(),
+    bills: o.prepare("SELECT COUNT(*) as count FROM bills").get(),
+    bill_items: o.prepare("SELECT COUNT(*) as count FROM bill_items").get(),
+    stock_logs: o.prepare("SELECT COUNT(*) as count FROM stock_logs").get(),
+    settings: o.prepare("SELECT COUNT(*) as count FROM settings").get(),
+    database_size: vt()
   };
-  return stats;
 }
-function getDatabaseSize() {
+function vt() {
   try {
-    const dbPath = path.join(app.getPath("userData"), "billing.db");
-    const stats = fs.statSync(dbPath);
+    const o = k.join(C.getPath("userData"), "billing.db"), s = x.statSync(o);
     return {
-      bytes: stats.size,
-      mb: Math.round(stats.size / 1024 / 1024 * 100) / 100
+      bytes: s.size,
+      mb: Math.round(s.size / 1024 / 1024 * 100) / 100
     };
-  } catch (error) {
+  } catch {
     return { bytes: 0, mb: 0 };
   }
 }
-function setupIpcHandlers() {
-  const printerHandlers = [
+function Bt() {
+  [
     "printer:getList",
     "printer:refresh",
     "printer:getStatus",
@@ -1293,632 +926,494 @@ function setupIpcHandlers() {
     "printer:print",
     "printer:getSettings",
     "printer:setSettings"
-  ];
-  printerHandlers.forEach((handler) => {
+  ].forEach((e) => {
     try {
-      ipcMain.removeHandler(handler);
-    } catch (error) {
+      d.removeHandler(e);
+    } catch {
     }
-  });
-  ipcMain.handle("products:create", async (_, product) => {
+  }), d.handle("products:create", async (e, r) => {
     try {
-      const id = addProduct(product);
-      return getProductById(Number(id));
-    } catch (error) {
-      console.error("Error creating product:", error);
-      throw error;
+      const t = st(r);
+      return M(Number(t));
+    } catch (t) {
+      throw console.error("Error creating product:", t), t;
     }
-  });
-  ipcMain.handle("products:getAll", async (_, includeInactive) => {
+  }), d.handle("products:getAll", async (e, r) => {
     try {
-      return getProducts(includeInactive);
-    } catch (error) {
-      console.error("Error getting products:", error);
-      throw error;
+      return nt(r);
+    } catch (t) {
+      throw console.error("Error getting products:", t), t;
     }
-  });
-  ipcMain.handle("products:getById", async (_, id) => {
+  }), d.handle("products:getById", async (e, r) => {
     try {
-      return getProductById(id);
-    } catch (error) {
-      console.error("Error getting product by id:", error);
-      throw error;
+      return M(r);
+    } catch (t) {
+      throw console.error("Error getting product by id:", t), t;
     }
-  });
-  ipcMain.handle("products:getByBarcode", async (_, barcode) => {
+  }), d.handle("products:getByBarcode", async (e, r) => {
     try {
-      return getProductByBarcode(barcode);
-    } catch (error) {
-      console.error("Error getting product by barcode:", error);
-      throw error;
+      return it(r);
+    } catch (t) {
+      throw console.error("Error getting product by barcode:", t), t;
     }
-  });
-  ipcMain.handle("products:search", async (_, query) => {
+  }), d.handle("products:search", async (e, r) => {
     try {
-      return searchProducts(query);
-    } catch (error) {
-      console.error("Error searching products:", error);
-      throw error;
+      return ct(r);
+    } catch (t) {
+      throw console.error("Error searching products:", t), t;
     }
-  });
-  ipcMain.handle("products:getByCategory", async (_, category) => {
+  }), d.handle("products:getByCategory", async (e, r) => {
     try {
-      return getProductsByCategory(category);
-    } catch (error) {
-      console.error("Error getting products by category:", error);
-      throw error;
+      return at(r);
+    } catch (t) {
+      throw console.error("Error getting products by category:", t), t;
     }
-  });
-  ipcMain.handle("products:getLowStock", async () => {
+  }), d.handle("products:getLowStock", async () => {
     try {
-      return getLowStockProducts();
-    } catch (error) {
-      console.error("Error getting low stock products:", error);
-      throw error;
+      return lt();
+    } catch (e) {
+      throw console.error("Error getting low stock products:", e), e;
     }
-  });
-  ipcMain.handle("products:update", async (_, product) => {
+  }), d.handle("products:update", async (e, r) => {
     try {
-      const { id, ...data } = product;
-      const success = updateProduct(id, data);
-      if (success) {
-        return getProductById(id);
-      }
+      const { id: t, ...n } = r;
+      if (ut(t, n))
+        return M(t);
       throw new Error("Product not found");
-    } catch (error) {
-      console.error("Error updating product:", error);
-      throw error;
+    } catch (t) {
+      throw console.error("Error updating product:", t), t;
     }
-  });
-  ipcMain.handle("products:updateStock", async (_, id, quantity, changeType) => {
+  }), d.handle("products:updateStock", async (e, r, t, n) => {
     try {
-      const success = updateStock(id, quantity, changeType);
-      return { success };
-    } catch (error) {
-      console.error("Error updating stock:", error);
-      throw error;
+      return { success: B(r, t, n) };
+    } catch (c) {
+      throw console.error("Error updating stock:", c), c;
     }
-  });
-  ipcMain.handle("products:delete", async (_, id, forceDeactivate) => {
+  }), d.handle("products:delete", async (e, r, t) => {
     try {
-      const result = deleteProduct(id, forceDeactivate);
-      return result;
-    } catch (error) {
-      console.error("Error deleting product:", error);
-      throw error;
+      return q(r, t);
+    } catch (n) {
+      throw console.error("Error deleting product:", n), n;
     }
-  });
-  ipcMain.handle("products:deactivate", async (_, id) => {
+  }), d.handle("products:deactivate", async (e, r) => {
     try {
-      const result = deactivateProduct(id);
-      return result;
-    } catch (error) {
-      console.error("Error deactivating product:", error);
-      throw error;
+      return dt(r);
+    } catch (t) {
+      throw console.error("Error deactivating product:", t), t;
     }
-  });
-  ipcMain.handle("products:reactivate", async (_, id) => {
+  }), d.handle("products:reactivate", async (e, r) => {
     try {
-      const success = reactivateProduct(id);
-      return { success };
-    } catch (error) {
-      console.error("Error reactivating product:", error);
-      throw error;
+      return { success: pt(r) };
+    } catch (t) {
+      throw console.error("Error reactivating product:", t), t;
     }
-  });
-  ipcMain.handle("bills:create", async (_, billData) => {
+  }), d.handle("bills:create", async (e, r) => {
     try {
-      console.log("Creating bill with data:", billData);
-      const result = createBill(billData);
-      console.log("Bill created successfully:", result);
-      return result;
-    } catch (error) {
-      console.error("Error creating bill:", error);
-      console.error("Bill data that caused error:", billData);
-      throw new Error(`Failed to create bill: ${error instanceof Error ? error.message : "Unknown error"}`);
+      console.log("Creating bill with data:", r);
+      const t = mt(r);
+      return console.log("Bill created successfully:", t), t;
+    } catch (t) {
+      throw console.error("Error creating bill:", t), console.error("Bill data that caused error:", r), new Error(`Failed to create bill: ${t instanceof Error ? t.message : "Unknown error"}`);
     }
-  });
-  ipcMain.handle("bills:getAll", async (_, dateFrom, dateTo, searchQuery) => {
+  }), d.handle("bills:getAll", async (e, r, t, n) => {
     try {
-      console.log("bills:getAll called with:", { dateFrom, dateTo, searchQuery });
-      const results = getBills(dateFrom, dateTo, searchQuery);
-      console.log("bills:getAll returning", results.length, "bills");
-      return results;
-    } catch (error) {
-      console.error("Error getting bills:", error);
-      throw error;
+      console.log("bills:getAll called with:", { dateFrom: r, dateTo: t, searchQuery: n });
+      const c = Et(r, t, n);
+      return console.log("bills:getAll returning", c.length, "bills"), c;
+    } catch (c) {
+      throw console.error("Error getting bills:", c), c;
     }
-  });
-  ipcMain.handle("bills:getById", async (_, id) => {
+  }), d.handle("bills:getById", async (e, r) => {
     try {
-      return getBillById(id);
-    } catch (error) {
-      console.error("Error getting bill by id:", error);
-      throw error;
+      return F(r);
+    } catch (t) {
+      throw console.error("Error getting bill by id:", t), t;
     }
-  });
-  ipcMain.handle("bills:getRecent", async (_, limit) => {
+  }), d.handle("bills:getRecent", async (e, r) => {
     try {
-      return getRecentBills(limit);
-    } catch (error) {
-      console.error("Error getting recent bills:", error);
-      throw error;
+      return gt(r);
+    } catch (t) {
+      throw console.error("Error getting recent bills:", t), t;
     }
-  });
-  ipcMain.handle("bills:getDailySummary", async (_, date) => {
+  }), d.handle("bills:getDailySummary", async (e, r) => {
     try {
-      return getDailySummary(date);
-    } catch (error) {
-      console.error("Error getting daily summary:", error);
-      throw error;
+      return ht(r);
+    } catch (t) {
+      throw console.error("Error getting daily summary:", t), t;
     }
-  });
-  ipcMain.handle("bills:getDateRangeSummary", async (_, dateFrom, dateTo) => {
+  }), d.handle("bills:getDateRangeSummary", async (e, r, t) => {
     try {
-      return getDateRangeSummary(dateFrom, dateTo);
-    } catch (error) {
-      console.error("Error getting date range summary:", error);
-      throw error;
+      return bt(r, t);
+    } catch (n) {
+      throw console.error("Error getting date range summary:", n), n;
     }
-  });
-  ipcMain.handle("bills:getTopSelling", async (_, date) => {
+  }), d.handle("bills:getTopSelling", async (e, r) => {
     try {
-      return getTopSelling(date);
-    } catch (error) {
-      console.error("Error getting top selling:", error);
-      throw error;
+      return ft(r);
+    } catch (t) {
+      throw console.error("Error getting top selling:", t), t;
     }
-  });
-  ipcMain.handle("bills:update", async (_, billId, billData) => {
+  }), d.handle("bills:update", async (e, r, t) => {
     try {
-      return updateBill(billId, billData);
-    } catch (error) {
-      console.error("Error updating bill:", error);
-      throw error;
+      return yt(r, t);
+    } catch (n) {
+      throw console.error("Error updating bill:", n), n;
     }
-  });
-  ipcMain.handle("bills:delete", async (_, billId) => {
+  }), d.handle("bills:delete", async (e, r) => {
     try {
-      return deleteBill(billId);
-    } catch (error) {
-      console.error("Error deleting bill:", error);
-      throw error;
+      return Tt(r);
+    } catch (t) {
+      throw console.error("Error deleting bill:", t), t;
     }
-  });
-  ipcMain.handle("settings:getAll", async () => {
+  }), d.handle("settings:getAll", async () => {
     try {
-      return getSettings();
-    } catch (error) {
-      console.error("Error getting settings:", error);
-      throw error;
+      return _();
+    } catch (e) {
+      throw console.error("Error getting settings:", e), e;
     }
-  });
-  ipcMain.handle("settings:get", async (_, key) => {
+  }), d.handle("settings:get", async (e, r) => {
     try {
-      return getSetting(key);
-    } catch (error) {
-      console.error("Error getting setting:", error);
-      throw error;
+      return V(r);
+    } catch (t) {
+      throw console.error("Error getting setting:", t), t;
     }
-  });
-  ipcMain.handle("settings:update", async (_, key, value) => {
+  }), d.handle("settings:update", async (e, r, t) => {
     try {
-      const success = updateSetting(key, value);
-      return { success };
-    } catch (error) {
-      console.error("Error updating setting:", error);
-      throw error;
+      return { success: Nt(r, t) };
+    } catch (n) {
+      throw console.error("Error updating setting:", n), n;
     }
-  });
-  ipcMain.handle("settings:updateAll", async (_, settings) => {
+  }), d.handle("settings:updateAll", async (e, r) => {
     try {
-      const success = updateAllSettings(settings);
-      return { success };
-    } catch (error) {
-      console.error("Error updating all settings:", error);
-      throw error;
+      return { success: X(r) };
+    } catch (t) {
+      throw console.error("Error updating all settings:", t), t;
     }
-  });
-  ipcMain.handle("settings:getTyped", async () => {
+  }), d.handle("settings:getTyped", async () => {
     try {
-      return getTypedSettings();
-    } catch (error) {
-      console.error("Error getting typed settings:", error);
-      throw error;
+      return Pt();
+    } catch (e) {
+      throw console.error("Error getting typed settings:", e), e;
     }
-  });
-  ipcMain.handle("reports:getSales", async (_, dateFrom, dateTo) => {
+  }), d.handle("reports:getSales", async (e, r, t) => {
     try {
-      return getSalesReport(dateFrom, dateTo);
-    } catch (error) {
-      console.error("Error getting sales report:", error);
-      throw error;
+      return At(r, t);
+    } catch (n) {
+      throw console.error("Error getting sales report:", n), n;
     }
-  });
-  ipcMain.handle("reports:exportData", async (_, dateFrom, dateTo) => {
+  }), d.handle("reports:exportData", async (e, r, t) => {
     try {
-      return exportData(dateFrom, dateTo);
-    } catch (error) {
-      console.error("Error exporting data:", error);
-      throw error;
+      return Lt(r, t);
+    } catch (n) {
+      throw console.error("Error exporting data:", n), n;
     }
-  });
-  ipcMain.handle("reports:getStockMovement", async (_, dateFrom, dateTo) => {
+  }), d.handle("reports:getStockMovement", async (e, r, t) => {
     try {
-      return getStockMovementReport(dateFrom, dateTo);
-    } catch (error) {
-      console.error("Error getting stock movement report:", error);
-      throw error;
+      return wt(r, t);
+    } catch (n) {
+      throw console.error("Error getting stock movement report:", n), n;
     }
-  });
-  ipcMain.handle("reports:getCategorySales", async (_, dateFrom, dateTo) => {
+  }), d.handle("reports:getCategorySales", async (e, r, t) => {
     try {
-      return getCategorySales(dateFrom, dateTo);
-    } catch (error) {
-      console.error("Error getting category sales:", error);
-      throw error;
+      return Rt(r, t);
+    } catch (n) {
+      throw console.error("Error getting category sales:", n), n;
     }
-  });
-  ipcMain.handle("reports:getPaymentModeSummary", async (_, dateFrom, dateTo) => {
+  }), d.handle("reports:getPaymentModeSummary", async (e, r, t) => {
     try {
-      return getPaymentModeSummary(dateFrom, dateTo);
-    } catch (error) {
-      console.error("Error getting payment mode summary:", error);
-      throw error;
+      return Ot(r, t);
+    } catch (n) {
+      throw console.error("Error getting payment mode summary:", n), n;
     }
-  });
-  ipcMain.handle("reports:getHourlySales", async (_, date) => {
+  }), d.handle("reports:getHourlySales", async (e, r) => {
     try {
-      return getHourlySales(date);
-    } catch (error) {
-      console.error("Error getting hourly sales:", error);
-      throw error;
+      return It(r);
+    } catch (t) {
+      throw console.error("Error getting hourly sales:", t), t;
     }
-  });
-  ipcMain.handle("reports:getLowStockAlert", async () => {
+  }), d.handle("reports:getLowStockAlert", async () => {
     try {
-      return getLowStockAlert();
-    } catch (error) {
-      console.error("Error getting low stock alert:", error);
-      throw error;
+      return Ct();
+    } catch (e) {
+      throw console.error("Error getting low stock alert:", e), e;
     }
-  });
-  ipcMain.handle("reports:getProductPerformance", async (_, dateFrom, dateTo, limit) => {
+  }), d.handle("reports:getProductPerformance", async (e, r, t, n) => {
     try {
-      return getProductPerformance(dateFrom, dateTo, limit);
-    } catch (error) {
-      console.error("Error getting product performance:", error);
-      throw error;
+      return Dt(r, t, n);
+    } catch (c) {
+      throw console.error("Error getting product performance:", c), c;
     }
-  });
-  ipcMain.handle("backup:export", async () => {
+  }), d.handle("backup:export", async () => {
     try {
-      return await exportBackup();
-    } catch (error) {
-      console.error("Error exporting backup:", error);
-      throw error;
+      return await Mt();
+    } catch (e) {
+      throw console.error("Error exporting backup:", e), e;
     }
-  });
-  ipcMain.handle("backup:import", async () => {
+  }), d.handle("backup:import", async () => {
     try {
-      return await importBackup();
-    } catch (error) {
-      console.error("Error importing backup:", error);
-      throw error;
+      return await Ut();
+    } catch (e) {
+      throw console.error("Error importing backup:", e), e;
     }
-  });
-  ipcMain.handle("backup:getStats", async () => {
+  }), d.handle("backup:getStats", async () => {
     try {
-      return getDatabaseStats();
-    } catch (error) {
-      console.error("Error getting database stats:", error);
-      throw error;
+      return kt();
+    } catch (e) {
+      throw console.error("Error getting database stats:", e), e;
     }
   });
-  const execAsync = promisify(exec);
-  const discoverPrinters = async () => {
-    var _a, _b, _c, _d, _e, _f;
-    const printers = [];
-    const isWindows = process.platform === "win32";
-    if (isWindows) {
+  const s = Q(J), i = async () => {
+    var t, n, c, p, l, a;
+    const e = [];
+    if (process.platform === "win32")
       try {
-        const { stdout } = await execAsync('powershell -Command "Get-Printer | Select-Object Name, DriverName, PortName, PrinterStatus, Default | ConvertTo-Json"');
-        const windowsPrinters = JSON.parse(stdout);
-        const printerList = Array.isArray(windowsPrinters) ? windowsPrinters : [windowsPrinters];
-        for (const printer of printerList) {
-          if (!printer || !printer.Name) continue;
-          let status = "unknown";
-          switch (printer.PrinterStatus) {
+        const { stdout: u } = await s('powershell -Command "Get-Printer | Select-Object Name, DriverName, PortName, PrinterStatus, Default | ConvertTo-Json"'), E = JSON.parse(u), S = Array.isArray(E) ? E : [E];
+        for (const h of S) {
+          if (!h || !h.Name) continue;
+          let g = "unknown";
+          switch (h.PrinterStatus) {
             case 0:
-              status = "idle";
+              g = "idle";
               break;
             case 1:
-              status = "paused";
+              g = "paused";
               break;
             case 2:
-              status = "error";
+              g = "error";
               break;
             case 3:
-              status = "pending_deletion";
+              g = "pending_deletion";
               break;
             case 4:
-              status = "paper_jam";
+              g = "paper_jam";
               break;
             case 5:
-              status = "paper_out";
+              g = "paper_out";
               break;
             case 6:
-              status = "manual_feed";
+              g = "manual_feed";
               break;
             case 7:
-              status = "paper_problem";
+              g = "paper_problem";
               break;
             case 8:
-              status = "offline";
+              g = "offline";
               break;
             default:
-              status = "idle";
+              g = "idle";
           }
-          const name = printer.Name;
-          const isNetworkPrinter = ((_a = printer.PortName) == null ? void 0 : _a.includes("\\\\")) || ((_b = printer.PortName) == null ? void 0 : _b.includes("IP_"));
-          printers.push({
-            name,
-            displayName: name,
-            description: printer.DriverName || "Windows Printer",
-            location: isNetworkPrinter ? "Network" : "Local",
-            status,
-            isDefault: printer.Default === true,
-            deviceUri: printer.PortName || "",
-            makeModel: printer.DriverName || "",
-            paperSize: name.toLowerCase().includes("80") || name.toLowerCase().includes("pos") ? "80mm" : name.toLowerCase().includes("58") ? "58mm" : "Unknown",
-            driverName: printer.DriverName || "",
-            isNetworkPrinter,
+          const T = h.Name, b = ((t = h.PortName) == null ? void 0 : t.includes("\\\\")) || ((n = h.PortName) == null ? void 0 : n.includes("IP_"));
+          e.push({
+            name: T,
+            displayName: T,
+            description: h.DriverName || "Windows Printer",
+            location: b ? "Network" : "Local",
+            status: g,
+            isDefault: h.Default === !0,
+            deviceUri: h.PortName || "",
+            makeModel: h.DriverName || "",
+            paperSize: T.toLowerCase().includes("80") || T.toLowerCase().includes("pos") ? "80mm" : T.toLowerCase().includes("58") ? "58mm" : "Unknown",
+            driverName: h.DriverName || "",
+            isNetworkPrinter: b,
             capabilities: []
           });
         }
-        console.log(`Found ${printers.length} Windows printers`);
-      } catch (winError) {
-        console.error("Error getting Windows printers via PowerShell:", winError);
+        console.log(`Found ${e.length} Windows printers`);
+      } catch (u) {
+        console.error("Error getting Windows printers via PowerShell:", u);
         try {
-          const { stdout: wmicOutput } = await execAsync("wmic printer get Name,DriverName,PortName,Default /format:csv");
-          const lines = wmicOutput.split("\n").filter((line) => line.trim() && !line.startsWith("Node"));
-          for (const line of lines) {
-            const parts = line.split(",");
-            if (parts.length >= 4) {
-              const isDefault = ((_c = parts[1]) == null ? void 0 : _c.trim().toLowerCase()) === "true";
-              const driverName = ((_d = parts[2]) == null ? void 0 : _d.trim()) || "";
-              const name = ((_e = parts[3]) == null ? void 0 : _e.trim()) || "";
-              const portName = ((_f = parts[4]) == null ? void 0 : _f.trim()) || "";
-              if (name) {
-                printers.push({
-                  name,
-                  displayName: name,
-                  description: driverName || "Windows Printer",
-                  location: (portName == null ? void 0 : portName.includes("\\\\")) ? "Network" : "Local",
-                  status: "idle",
-                  isDefault,
-                  deviceUri: portName,
-                  makeModel: driverName,
-                  paperSize: name.toLowerCase().includes("80") || name.toLowerCase().includes("pos") ? "80mm" : "Unknown",
-                  driverName,
-                  isNetworkPrinter: (portName == null ? void 0 : portName.includes("\\\\")) || false,
-                  capabilities: []
-                });
-              }
+          const { stdout: E } = await s("wmic printer get Name,DriverName,PortName,Default /format:csv"), S = E.split(`
+`).filter((h) => h.trim() && !h.startsWith("Node"));
+          for (const h of S) {
+            const g = h.split(",");
+            if (g.length >= 4) {
+              const T = ((c = g[1]) == null ? void 0 : c.trim().toLowerCase()) === "true", b = ((p = g[2]) == null ? void 0 : p.trim()) || "", P = ((l = g[3]) == null ? void 0 : l.trim()) || "", A = ((a = g[4]) == null ? void 0 : a.trim()) || "";
+              P && e.push({
+                name: P,
+                displayName: P,
+                description: b || "Windows Printer",
+                location: A != null && A.includes("\\\\") ? "Network" : "Local",
+                status: "idle",
+                isDefault: T,
+                deviceUri: A,
+                makeModel: b,
+                paperSize: P.toLowerCase().includes("80") || P.toLowerCase().includes("pos") ? "80mm" : "Unknown",
+                driverName: b,
+                isNetworkPrinter: (A == null ? void 0 : A.includes("\\\\")) || !1,
+                capabilities: []
+              });
             }
           }
-          console.log(`Found ${printers.length} Windows printers via WMIC`);
-        } catch (wmicError) {
-          console.error("Error getting Windows printers via WMIC:", wmicError);
+          console.log(`Found ${e.length} Windows printers via WMIC`);
+        } catch (E) {
+          console.error("Error getting Windows printers via WMIC:", E);
         }
       }
-    } else {
+    else
       try {
-        const { stdout: cupsOutput } = await execAsync("lpstat -p -d");
-        const lines = cupsOutput.split("\n").filter((line) => line.trim());
-        let defaultPrinter = "";
-        const printerLines = [];
-        for (const line of lines) {
-          if (line.startsWith("system default destination:")) {
-            defaultPrinter = line.split(":")[1].trim();
-          } else if (line.startsWith("printer ")) {
-            printerLines.push(line);
-          }
-        }
-        for (const line of printerLines) {
-          const match = line.match(/printer (\S+) (.+)/);
-          if (match) {
-            const name = match[1];
-            const description = match[2];
+        const { stdout: u } = await s("lpstat -p -d"), E = u.split(`
+`).filter((g) => g.trim());
+        let S = "";
+        const h = [];
+        for (const g of E)
+          g.startsWith("system default destination:") ? S = g.split(":")[1].trim() : g.startsWith("printer ") && h.push(g);
+        for (const g of h) {
+          const T = g.match(/printer (\S+) (.+)/);
+          if (T) {
+            const b = T[1], P = T[2];
             try {
-              const { stdout: detailsOutput } = await execAsync(`lpoptions -p ${name} -l`);
-              const { stdout: statusOutput } = await execAsync(`lpstat -p ${name}`);
-              let status = "unknown";
-              if (statusOutput.includes("is idle")) status = "idle";
-              else if (statusOutput.includes("is printing")) status = "printing";
-              else if (statusOutput.includes("disabled")) status = "offline";
-              let deviceUri = "";
-              let makeModel = "";
+              const { stdout: A } = await s(`lpoptions -p ${b} -l`), { stdout: R } = await s(`lpstat -p ${b}`);
+              let U = "unknown";
+              R.includes("is idle") ? U = "idle" : R.includes("is printing") ? U = "printing" : R.includes("disabled") && (U = "offline");
+              let O = "", I = "";
               try {
-                const { stdout: uriOutput } = await execAsync(`lpoptions -p ${name} | grep device-uri`);
-                const uriMatch = uriOutput.match(/device-uri=(\S+)/);
-                if (uriMatch) deviceUri = uriMatch[1];
-              } catch (e) {
+                const { stdout: N } = await s(`lpoptions -p ${b} | grep device-uri`), L = N.match(/device-uri=(\S+)/);
+                L && (O = L[1]);
+              } catch {
               }
               try {
-                const { stdout: modelOutput } = await execAsync(`lpoptions -p ${name} | grep printer-make-and-model`);
-                const modelMatch = modelOutput.match(/printer-make-and-model=(.+)/);
-                if (modelMatch) makeModel = modelMatch[1];
-              } catch (e) {
+                const { stdout: N } = await s(`lpoptions -p ${b} | grep printer-make-and-model`), L = N.match(/printer-make-and-model=(.+)/);
+                L && (I = L[1]);
+              } catch {
               }
-              printers.push({
-                name,
-                displayName: name,
-                description: description.replace(/is\s+(idle|printing|disabled).*/, "").trim(),
-                location: deviceUri.includes("usb://") ? "USB" : deviceUri.includes("network://") ? "Network" : "Local",
-                status,
-                isDefault: name === defaultPrinter,
-                deviceUri,
-                makeModel,
-                paperSize: name.toLowerCase().includes("80") ? "80mm" : name.toLowerCase().includes("58") ? "58mm" : "Unknown",
-                driverName: makeModel,
-                isNetworkPrinter: deviceUri.includes("ipp://") || deviceUri.includes("http://") || deviceUri.includes("socket://"),
-                capabilities: detailsOutput.split("\n").filter((line2) => line2.includes("/")).map((line2) => line2.split("/")[0])
+              e.push({
+                name: b,
+                displayName: b,
+                description: P.replace(/is\s+(idle|printing|disabled).*/, "").trim(),
+                location: O.includes("usb://") ? "USB" : O.includes("network://") ? "Network" : "Local",
+                status: U,
+                isDefault: b === S,
+                deviceUri: O,
+                makeModel: I,
+                paperSize: b.toLowerCase().includes("80") ? "80mm" : b.toLowerCase().includes("58") ? "58mm" : "Unknown",
+                driverName: I,
+                isNetworkPrinter: O.includes("ipp://") || O.includes("http://") || O.includes("socket://"),
+                capabilities: A.split(`
+`).filter((N) => N.includes("/")).map((N) => N.split("/")[0])
               });
-            } catch (detailError) {
-              printers.push({
-                name,
-                displayName: name,
-                description: description.replace(/is\s+(idle|printing|disabled).*/, "").trim(),
+            } catch {
+              e.push({
+                name: b,
+                displayName: b,
+                description: P.replace(/is\s+(idle|printing|disabled).*/, "").trim(),
                 location: "Unknown",
                 status: "unknown",
-                isDefault: name === defaultPrinter,
+                isDefault: b === S,
                 deviceUri: "",
                 makeModel: "",
                 paperSize: "Unknown",
                 driverName: "",
-                isNetworkPrinter: false,
+                isNetworkPrinter: !1,
                 capabilities: []
               });
             }
           }
         }
-      } catch (cupsError) {
+      } catch {
         console.log("CUPS not available");
       }
-    }
-    if (printers.length === 0) {
-      printers.push({
-        name: "Default",
-        displayName: "Default Printer",
-        description: "System Default Printer",
-        location: "System",
-        status: "unknown",
-        isDefault: true,
-        deviceUri: "",
-        makeModel: "",
-        paperSize: "Unknown",
-        driverName: "",
-        isNetworkPrinter: false,
-        capabilities: []
-      });
-    }
-    return printers;
+    return e.length === 0 && e.push({
+      name: "Default",
+      displayName: "Default Printer",
+      description: "System Default Printer",
+      location: "System",
+      status: "unknown",
+      isDefault: !0,
+      deviceUri: "",
+      makeModel: "",
+      paperSize: "Unknown",
+      driverName: "",
+      isNetworkPrinter: !1,
+      capabilities: []
+    }), e;
   };
-  ipcMain.handle("printer:getList", async () => {
+  d.handle("printer:getList", async () => {
     try {
-      return await discoverPrinters();
-    } catch (error) {
-      console.error("Error getting printers:", error);
-      return [{
+      return await i();
+    } catch (e) {
+      return console.error("Error getting printers:", e), [{
         name: "Default",
         displayName: "Default Printer",
         description: "System Default Printer",
         location: "System",
         status: "unknown",
-        isDefault: true,
+        isDefault: !0,
         deviceUri: "",
         makeModel: "",
         paperSize: "Unknown",
         driverName: "",
-        isNetworkPrinter: false,
+        isNetworkPrinter: !1,
         capabilities: []
       }];
     }
-  });
-  ipcMain.handle("printer:refresh", async () => {
+  }), d.handle("printer:refresh", async () => {
     try {
-      return await discoverPrinters();
-    } catch (error) {
-      console.error("Error refreshing printers:", error);
-      return [{
+      return await i();
+    } catch (e) {
+      return console.error("Error refreshing printers:", e), [{
         name: "Default",
         displayName: "Default Printer",
         description: "System Default Printer",
         location: "System",
         status: "unknown",
-        isDefault: true,
+        isDefault: !0,
         deviceUri: "",
         makeModel: "",
         paperSize: "Unknown",
         driverName: "",
-        isNetworkPrinter: false,
+        isNetworkPrinter: !1,
         capabilities: []
       }];
     }
-  });
-  ipcMain.handle("printer:getStatus", async (_, printerName) => {
+  }), d.handle("printer:getStatus", async (e, r) => {
     try {
-      const isWindows = process.platform === "win32";
-      if (isWindows) {
-        const escapedPrinter = printerName.replace(/'/g, "''");
-        const { stdout } = await execAsync(`powershell -Command "(Get-Printer -Name '${escapedPrinter}').PrinterStatus"`);
-        const statusCode = parseInt(stdout.trim(), 10);
-        let status = "unknown";
-        let details = `Printer: ${printerName}`;
-        switch (statusCode) {
+      if (process.platform === "win32") {
+        const n = r.replace(/'/g, "''"), { stdout: c } = await s(`powershell -Command "(Get-Printer -Name '${n}').PrinterStatus"`), p = parseInt(c.trim(), 10);
+        let l = "unknown", a = `Printer: ${r}`;
+        switch (p) {
           case 0:
-            status = "idle";
-            details = "Printer is ready";
+            l = "idle", a = "Printer is ready";
             break;
           case 1:
-            status = "paused";
-            details = "Printer is paused";
+            l = "paused", a = "Printer is paused";
             break;
           case 2:
-            status = "error";
-            details = "Printer has an error";
+            l = "error", a = "Printer has an error";
             break;
           case 3:
-            status = "pending_deletion";
-            details = "Printer pending deletion";
+            l = "pending_deletion", a = "Printer pending deletion";
             break;
           case 4:
-            status = "paper_jam";
-            details = "Paper jam";
+            l = "paper_jam", a = "Paper jam";
             break;
           case 5:
-            status = "paper_out";
-            details = "Out of paper";
+            l = "paper_out", a = "Out of paper";
             break;
           case 6:
-            status = "manual_feed";
-            details = "Manual feed required";
+            l = "manual_feed", a = "Manual feed required";
             break;
           case 7:
-            status = "paper_problem";
-            details = "Paper problem";
+            l = "paper_problem", a = "Paper problem";
             break;
           case 8:
-            status = "offline";
-            details = "Printer is offline";
+            l = "offline", a = "Printer is offline";
             break;
           default:
-            status = "idle";
-            details = "Printer is ready";
+            l = "idle", a = "Printer is ready";
         }
-        return { status, details };
+        return { status: l, details: a };
       } else {
-        const { stdout } = await execAsync(`lpstat -p ${printerName}`);
-        let status = "unknown";
-        let details = stdout.trim();
-        if (stdout.includes("is idle")) {
-          status = "idle";
-        } else if (stdout.includes("is printing")) {
-          status = "printing";
-        } else if (stdout.includes("disabled")) {
-          status = "offline";
-        }
-        return { status, details };
+        const { stdout: n } = await s(`lpstat -p ${r}`);
+        let c = "unknown", p = n.trim();
+        return n.includes("is idle") ? c = "idle" : n.includes("is printing") ? c = "printing" : n.includes("disabled") && (c = "offline"), { status: c, details: p };
       }
-    } catch (error) {
-      return { status: "error", details: `Error checking printer status: ${error}` };
+    } catch (t) {
+      return { status: "error", details: `Error checking printer status: ${t}` };
     }
-  });
-  ipcMain.handle("printer:testPrint", async (_, printerName, customContent) => {
+  }), d.handle("printer:testPrint", async (e, r, t) => {
     try {
-      const isWindows = process.platform === "win32";
-      let content = customContent || `================================================
+      const n = process.platform === "win32";
+      let c = t || `================================================
                   VOGUE PRISM
 ================================================
                 Test Address
@@ -1945,61 +1440,45 @@ Payment:                                CASH
 
 
 `;
-      content = content.replace(/₹/g, "Rs.");
-      const escInit = Buffer.from([27, 64]);
-      const escWakeUp = Buffer.from([27, 61, 1]);
-      const escAlign = Buffer.from([27, 97, 0]);
-      const escFont = Buffer.from([27, 33, 0]);
-      const escLineSpacing = Buffer.from([27, 51, 32]);
-      const escCharSet = Buffer.from([27, 82, 0]);
-      const feedLines = Buffer.from([10, 10, 10, 10]);
-      const partialCut = Buffer.from([29, 86, 1]);
-      const fullCut = Buffer.from([29, 86, 0]);
-      const fs2 = await import("fs");
-      const path2 = await import("path");
-      const os = await import("os");
-      const tempFile = path2.join(os.tmpdir(), `print-${Date.now()}.txt`);
-      const contentBuffer = Buffer.from(content, "ascii");
-      const finalBuffer = Buffer.concat([
-        escInit,
+      c = c.replace(/₹/g, "Rs.");
+      const p = Buffer.from([27, 64]), l = Buffer.from([27, 61, 1]), a = Buffer.from([27, 97, 0]), u = Buffer.from([27, 33, 0]), E = Buffer.from([27, 51, 32]), S = Buffer.from([27, 82, 0]), h = Buffer.from([10, 10, 10, 10]), g = Buffer.from([29, 86, 1]), T = Buffer.from([29, 86, 0]), b = await import("fs"), P = await import("path"), A = await import("os"), R = P.join(A.tmpdir(), `print-${Date.now()}.txt`), U = Buffer.from(c, "ascii"), O = Buffer.concat([
+        p,
         // Initialize printer
-        escWakeUp,
+        l,
         // Wake up printer
-        escAlign,
+        a,
         // Set alignment
-        escFont,
+        u,
         // Set font
-        escLineSpacing,
+        E,
         // Set line spacing
-        escCharSet,
+        S,
         // Set character set
-        contentBuffer,
+        U,
         // Receipt content
-        feedLines,
+        h,
         // Feed paper
-        partialCut
+        g
         // Cut paper (partial cut is more reliable)
       ]);
-      fs2.writeFileSync(tempFile, finalBuffer);
-      if (isWindows) {
-        const escapedPrinter = printerName.replace(/'/g, "''").replace(/"/g, '""');
+      if (b.writeFileSync(R, O), n) {
+        const I = r.replace(/'/g, "''").replace(/"/g, '""');
         try {
-          let portName = "UNKNOWN";
+          let N = "UNKNOWN";
           try {
-            const { stdout: portInfo } = await execAsync(`powershell -Command "try { (Get-Printer -Name '${escapedPrinter}').PortName } catch { 'UNKNOWN' }"`);
-            portName = portInfo.trim();
-          } catch (e) {
+            const { stdout: y } = await s(`powershell -Command "try { (Get-Printer -Name '${I}').PortName } catch { 'UNKNOWN' }"`);
+            N = y.trim();
+          } catch {
             console.log("Could not get port name");
           }
-          console.log(`Windows printer: ${printerName}, Port: ${portName}`);
-          let printSuccess = false;
-          let lastError = "";
+          console.log(`Windows printer: ${r}, Port: ${N}`);
+          let L = !1, D = "";
           console.log("Trying Method 1: .NET RawPrinterHelper...");
           try {
-            const psScript1 = `
+            const y = `
 $ErrorActionPreference = 'Stop'
-$printerName = '${escapedPrinter}'
-$filePath = '${tempFile.replace(/\\/g, "\\\\")}'
+$printerName = '${I}'
+$filePath = '${R.replace(/\\/g, "\\\\")}'
 
 Add-Type -TypeDefinition @'
 using System;
@@ -2082,111 +1561,80 @@ if ($result -eq 0) {
 } else {
     Write-Output "ERROR:$result"
 }
-`;
-            const psFile1 = path2.join(os.tmpdir(), `print1-${Date.now()}.ps1`);
-            fs2.writeFileSync(psFile1, psScript1, "utf8");
-            const { stdout: result1 } = await execAsync(`powershell -ExecutionPolicy Bypass -File "${psFile1}"`, { timeout: 3e4 });
+`, $ = P.join(A.tmpdir(), `print1-${Date.now()}.ps1`);
+            b.writeFileSync($, y, "utf8");
+            const { stdout: H } = await s(`powershell -ExecutionPolicy Bypass -File "${$}"`, { timeout: 3e4 });
             setTimeout(() => {
               try {
-                fs2.unlinkSync(psFile1);
-              } catch (e) {
+                b.unlinkSync($);
+              } catch {
               }
-            }, 1e3);
-            if (result1.trim().includes("SUCCESS")) {
-              printSuccess = true;
-              console.log("✓ Method 1 succeeded");
-            } else {
-              lastError = result1.trim();
-              console.log(`Method 1 failed: ${lastError}`);
-            }
-          } catch (e) {
-            lastError = e.message;
-            console.log(`Method 1 exception: ${e.message}`);
+            }, 1e3), H.trim().includes("SUCCESS") ? (L = !0, console.log("✓ Method 1 succeeded")) : (D = H.trim(), console.log(`Method 1 failed: ${D}`));
+          } catch (y) {
+            D = y.message, console.log(`Method 1 exception: ${y.message}`);
           }
-          if (!printSuccess) {
+          if (!L) {
             console.log("Trying Method 2: Windows print command...");
             try {
-              await execAsync(`print /D:"${printerName}" "${tempFile}"`, { timeout: 15e3 });
-              printSuccess = true;
-              console.log("✓ Method 2 succeeded");
-            } catch (e) {
-              lastError = e.message;
-              console.log(`Method 2 failed: ${e.message}`);
+              await s(`print /D:"${r}" "${R}"`, { timeout: 15e3 }), L = !0, console.log("✓ Method 2 succeeded");
+            } catch (y) {
+              D = y.message, console.log(`Method 2 failed: ${y.message}`);
             }
           }
-          if (!printSuccess) {
+          if (!L) {
             console.log("Trying Method 3: Out-Printer...");
             try {
-              const textContent = content.replace(/'/g, "''");
-              await execAsync(`powershell -Command "'${textContent}' | Out-Printer -Name '${escapedPrinter}'"`, { timeout: 15e3 });
-              printSuccess = true;
-              console.log("✓ Method 3 succeeded");
-            } catch (e) {
-              lastError = e.message;
-              console.log(`Method 3 failed: ${e.message}`);
+              const y = c.replace(/'/g, "''");
+              await s(`powershell -Command "'${y}' | Out-Printer -Name '${I}'"`, { timeout: 15e3 }), L = !0, console.log("✓ Method 3 succeeded");
+            } catch (y) {
+              D = y.message, console.log(`Method 3 failed: ${y.message}`);
             }
           }
-          if (!printSuccess) {
+          if (!L) {
             console.log("Trying Method 4: Copy to printer...");
             try {
-              await execAsync(`copy /b "${tempFile}" "\\\\%COMPUTERNAME%\\${printerName}"`, { timeout: 15e3 });
-              printSuccess = true;
-              console.log("✓ Method 4 succeeded");
-            } catch (e) {
-              lastError = e.message;
-              console.log(`Method 4 failed: ${e.message}`);
+              await s(`copy /b "${R}" "\\\\%COMPUTERNAME%\\${r}"`, { timeout: 15e3 }), L = !0, console.log("✓ Method 4 succeeded");
+            } catch (y) {
+              D = y.message, console.log(`Method 4 failed: ${y.message}`);
             }
           }
-          if (!printSuccess) {
-            throw new Error(`All print methods failed. Last error: ${lastError}`);
-          }
+          if (!L)
+            throw new Error(`All print methods failed. Last error: ${D}`);
           console.log("✓ Successfully printed to Windows printer");
-        } catch (error) {
-          console.error("❌ Windows printing error:", error);
-          throw error;
+        } catch (N) {
+          throw console.error("❌ Windows printing error:", N), N;
         }
-      } else {
-        await execAsync(`lp -d "${printerName}" -o raw "${tempFile}"`);
-      }
-      setTimeout(() => {
+      } else
+        await s(`lp -d "${r}" -o raw "${R}"`);
+      return setTimeout(() => {
         try {
-          fs2.unlinkSync(tempFile);
-        } catch (e) {
+          b.unlinkSync(R);
+        } catch {
         }
-      }, 5e3);
-      return { success: true };
-    } catch (error) {
-      console.error("Print error:", error);
-      return { success: false, error: `Print failed: ${error}` };
+      }, 5e3), { success: !0 };
+    } catch (n) {
+      return console.error("Print error:", n), { success: !1, error: `Print failed: ${n}` };
     }
-  });
-  ipcMain.handle("printer:debugTest", async (_, printerName) => {
+  }), d.handle("printer:debugTest", async (e, r) => {
     try {
-      const isWindows = process.platform === "win32";
-      const fs2 = await import("fs");
-      const path2 = await import("path");
-      const os = await import("os");
-      const simpleText = `
+      const t = process.platform === "win32", n = await import("fs"), c = await import("path"), p = await import("os"), l = `
 PRINTER TEST
 ============
 Time: ${(/* @__PURE__ */ new Date()).toLocaleString()}
-Printer: ${printerName}
+Printer: ${r}
 ============
 If you see this, printing works!
 
 
-`;
-      const tempFile = path2.join(os.tmpdir(), `debug-${Date.now()}.txt`);
-      fs2.writeFileSync(tempFile, simpleText, "ascii");
-      console.log(`Debug test - Printer: ${printerName}, Platform: ${process.platform}`);
-      if (isWindows) {
-        const escapedPrinter = printerName.replace(/'/g, "''").replace(/"/g, '""');
+`, a = c.join(p.tmpdir(), `debug-${Date.now()}.txt`);
+      if (n.writeFileSync(a, l, "ascii"), console.log(`Debug test - Printer: ${r}, Platform: ${process.platform}`), t) {
+        const u = r.replace(/'/g, "''").replace(/"/g, '""');
         try {
           console.log("Trying Windows raw print...");
-          const psScript = `
+          const E = `
 $ErrorActionPreference = 'Stop'
-$printerName = '${escapedPrinter}'
-$filePath = '${tempFile.replace(/\\/g, "\\\\")}'
+$printerName = '${u}'
+$filePath = '${a.replace(/\\/g, "\\\\")}'
 
 Add-Type -TypeDefinition @'
 using System;
@@ -2269,361 +1717,270 @@ if ($result -eq 0) {
 } else {
     Write-Output "ERROR:$result"
 }
-`;
-          const psFile = path2.join(os.tmpdir(), `debugprint-${Date.now()}.ps1`);
-          fs2.writeFileSync(psFile, psScript, "utf8");
-          const { stdout: result } = await execAsync(`powershell -ExecutionPolicy Bypass -File "${psFile}"`, { timeout: 3e4 });
-          setTimeout(() => {
+`, S = c.join(p.tmpdir(), `debugprint-${Date.now()}.ps1`);
+          n.writeFileSync(S, E, "utf8");
+          const { stdout: h } = await s(`powershell -ExecutionPolicy Bypass -File "${S}"`, { timeout: 3e4 });
+          if (setTimeout(() => {
             try {
-              fs2.unlinkSync(psFile);
-            } catch (e) {
+              n.unlinkSync(S);
+            } catch {
             }
-          }, 1e3);
-          if (result.trim().includes("SUCCESS")) {
-            console.log("Windows raw print succeeded");
-            setTimeout(() => {
+          }, 1e3), h.trim().includes("SUCCESS"))
+            return console.log("Windows raw print succeeded"), setTimeout(() => {
               try {
-                fs2.unlinkSync(tempFile);
-              } catch (e) {
+                n.unlinkSync(a);
+              } catch {
               }
-            }, 2e3);
-            return { success: true, message: "Debug test sent successfully" };
-          } else {
-            console.log(`Windows raw print failed: ${result.trim()}`);
-          }
-        } catch (e) {
-          console.log(`Windows print exception: ${e.message}`);
+            }, 2e3), { success: !0, message: "Debug test sent successfully" };
+          console.log(`Windows raw print failed: ${h.trim()}`);
+        } catch (E) {
+          console.log(`Windows print exception: ${E.message}`);
         }
         console.log("Trying Out-Printer...");
         try {
-          const textContent = simpleText.replace(/'/g, "''");
-          await execAsync(`powershell -Command "'${textContent}' | Out-Printer -Name '${escapedPrinter}'"`, { timeout: 15e3 });
-          console.log("Out-Printer succeeded");
-          setTimeout(() => {
+          const E = l.replace(/'/g, "''");
+          return await s(`powershell -Command "'${E}' | Out-Printer -Name '${u}'"`, { timeout: 15e3 }), console.log("Out-Printer succeeded"), setTimeout(() => {
             try {
-              fs2.unlinkSync(tempFile);
-            } catch (e) {
+              n.unlinkSync(a);
+            } catch {
             }
-          }, 2e3);
-          return { success: true, message: "Debug test sent successfully" };
-        } catch (e) {
-          console.log(`Out-Printer failed: ${e.message}`);
+          }, 2e3), { success: !0, message: "Debug test sent successfully" };
+        } catch (E) {
+          console.log(`Out-Printer failed: ${E.message}`);
         }
-        setTimeout(() => {
+        return setTimeout(() => {
           try {
-            fs2.unlinkSync(tempFile);
-          } catch (e) {
+            n.unlinkSync(a);
+          } catch {
           }
-        }, 2e3);
-        return { success: false, error: "All Windows print methods failed" };
+        }, 2e3), { success: !1, error: "All Windows print methods failed" };
       } else {
         console.log("Trying Linux print methods...");
         try {
-          const { stdout: printerInfo } = await execAsync(`lpstat -p "${printerName}" 2>&1`);
-          console.log("Printer status:", printerInfo.trim());
-        } catch (e) {
+          const { stdout: u } = await s(`lpstat -p "${r}" 2>&1`);
+          console.log("Printer status:", u.trim());
+        } catch {
           console.log("Could not get printer status");
         }
         try {
-          await execAsync(`lp -d "${printerName}" -o raw "${tempFile}"`);
-          console.log("lp -o raw succeeded");
-          setTimeout(() => {
+          return await s(`lp -d "${r}" -o raw "${a}"`), console.log("lp -o raw succeeded"), setTimeout(() => {
             try {
-              fs2.unlinkSync(tempFile);
-            } catch (e) {
+              n.unlinkSync(a);
+            } catch {
             }
-          }, 2e3);
-          return { success: true, message: "Debug test sent via lp -o raw" };
-        } catch (e) {
-          console.log("lp -o raw failed:", e.message);
+          }, 2e3), { success: !0, message: "Debug test sent via lp -o raw" };
+        } catch (u) {
+          console.log("lp -o raw failed:", u.message);
         }
         try {
-          await execAsync(`lp -d "${printerName}" "${tempFile}"`);
-          console.log("lp succeeded");
-          setTimeout(() => {
+          return await s(`lp -d "${r}" "${a}"`), console.log("lp succeeded"), setTimeout(() => {
             try {
-              fs2.unlinkSync(tempFile);
-            } catch (e) {
+              n.unlinkSync(a);
+            } catch {
             }
-          }, 2e3);
-          return { success: true, message: "Debug test sent via lp" };
-        } catch (e) {
-          console.log("lp failed:", e.message);
+          }, 2e3), { success: !0, message: "Debug test sent via lp" };
+        } catch (u) {
+          console.log("lp failed:", u.message);
         }
         try {
-          await execAsync(`lpr -P "${printerName}" "${tempFile}"`);
-          console.log("lpr succeeded");
-          setTimeout(() => {
+          return await s(`lpr -P "${r}" "${a}"`), console.log("lpr succeeded"), setTimeout(() => {
             try {
-              fs2.unlinkSync(tempFile);
-            } catch (e) {
+              n.unlinkSync(a);
+            } catch {
             }
-          }, 2e3);
-          return { success: true, message: "Debug test sent via lpr" };
-        } catch (e) {
-          console.log("lpr failed:", e.message);
+          }, 2e3), { success: !0, message: "Debug test sent via lpr" };
+        } catch (u) {
+          console.log("lpr failed:", u.message);
         }
         try {
-          await execAsync(`echo "${simpleText}" | lp -d "${printerName}"`);
-          console.log("echo | lp succeeded");
-          setTimeout(() => {
+          return await s(`echo "${l}" | lp -d "${r}"`), console.log("echo | lp succeeded"), setTimeout(() => {
             try {
-              fs2.unlinkSync(tempFile);
-            } catch (e) {
+              n.unlinkSync(a);
+            } catch {
             }
-          }, 2e3);
-          return { success: true, message: "Debug test sent via echo | lp" };
-        } catch (e) {
-          console.log("echo | lp failed:", e.message);
+          }, 2e3), { success: !0, message: "Debug test sent via echo | lp" };
+        } catch (u) {
+          console.log("echo | lp failed:", u.message);
         }
-        setTimeout(() => {
+        return setTimeout(() => {
           try {
-            fs2.unlinkSync(tempFile);
-          } catch (e) {
+            n.unlinkSync(a);
+          } catch {
           }
-        }, 2e3);
-        return { success: false, error: "All Linux print methods failed. Check CUPS configuration and printer permissions." };
+        }, 2e3), { success: !1, error: "All Linux print methods failed. Check CUPS configuration and printer permissions." };
       }
-    } catch (error) {
-      console.error("Debug test error:", error);
-      return { success: false, error: `Debug test error: ${error}` };
+    } catch (t) {
+      return console.error("Debug test error:", t), { success: !1, error: `Debug test error: ${t}` };
     }
-  });
-  ipcMain.handle("printer:print", async (_, content, printerName, options) => {
+  }), d.handle("printer:print", async (e, r, t, n) => {
     try {
-      const { BrowserWindow: BrowserWindow2 } = await import("electron");
-      const printWindow = new BrowserWindow2({
-        show: false,
+      const { BrowserWindow: c } = await import("electron"), p = new c({
+        show: !1,
         webPreferences: {
-          nodeIntegration: false,
-          contextIsolation: true
+          nodeIntegration: !1,
+          contextIsolation: !0
         }
       });
-      await printWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(content)}`);
-      const printOptions = {
-        silent: true,
-        printBackground: true,
-        deviceName: printerName || void 0,
+      await p.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(r)}`);
+      const l = {
+        silent: !0,
+        printBackground: !0,
+        deviceName: t || void 0,
         margins: {
           marginType: "none"
         },
         pageSize: "A4"
-      };
-      const success = await printWindow.webContents.print(printOptions);
-      printWindow.close();
-      return { success: true };
-    } catch (error) {
-      console.error("Error printing:", error);
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : "Print failed"
+      }, a = await p.webContents.print(l);
+      return p.close(), { success: !0 };
+    } catch (c) {
+      return console.error("Error printing:", c), {
+        success: !1,
+        error: c instanceof Error ? c.message : "Print failed"
       };
     }
-  });
-  ipcMain.handle("logs:getActivity", async (_, limit, offset, entityType, dateFrom, dateTo) => {
+  }), d.handle("logs:getActivity", async (e, r, t, n, c, p) => {
     try {
-      return getActivityLogs(limit, offset, entityType, dateFrom, dateTo);
-    } catch (error) {
-      console.error("Error getting activity logs:", error);
-      throw error;
+      return et(r, t, n, c, p);
+    } catch (l) {
+      throw console.error("Error getting activity logs:", l), l;
     }
-  });
-  ipcMain.handle("logs:getCount", async (_, entityType, dateFrom, dateTo) => {
+  }), d.handle("logs:getCount", async (e, r, t, n) => {
     try {
-      return getLogsCount(entityType, dateFrom, dateTo);
-    } catch (error) {
-      console.error("Error getting logs count:", error);
-      throw error;
+      return rt(r, t, n);
+    } catch (c) {
+      throw console.error("Error getting logs count:", c), c;
     }
-  });
-  ipcMain.handle("logs:cleanup", async () => {
+  }), d.handle("logs:cleanup", async () => {
     try {
-      const deletedCount = cleanupOldLogs();
-      return { success: true, deletedCount };
-    } catch (error) {
-      console.error("Error cleaning up logs:", error);
-      throw error;
+      return { success: !0, deletedCount: ot() };
+    } catch (e) {
+      throw console.error("Error cleaning up logs:", e), e;
     }
-  });
-  ipcMain.handle("printer:getSettings", async () => {
+  }), d.handle("printer:getSettings", async () => {
     try {
-      const settings = getSettings();
+      const e = _();
       return {
-        selectedPrinter: settings.selectedPrinter || "",
-        paperWidth: settings.paperWidth || "80mm",
-        autoPrint: settings.autoPrint === "true",
-        printDensity: settings.printDensity || "medium",
-        cutPaper: settings.cutPaper === "true",
-        printSpeed: settings.printSpeed || "medium",
-        encoding: settings.encoding || "utf8"
+        selectedPrinter: e.selectedPrinter || "",
+        paperWidth: e.paperWidth || "80mm",
+        autoPrint: e.autoPrint === "true",
+        printDensity: e.printDensity || "medium",
+        cutPaper: e.cutPaper === "true",
+        printSpeed: e.printSpeed || "medium",
+        encoding: e.encoding || "utf8"
       };
-    } catch (error) {
-      console.error("Error getting printer settings:", error);
-      return {
+    } catch (e) {
+      return console.error("Error getting printer settings:", e), {
         selectedPrinter: "",
         paperWidth: "80mm",
-        autoPrint: false,
+        autoPrint: !1,
         printDensity: "medium",
-        cutPaper: true,
+        cutPaper: !0,
         printSpeed: "medium",
         encoding: "utf8"
       };
     }
-  });
-  ipcMain.handle("printer:setSettings", async (_, settings) => {
+  }), d.handle("printer:setSettings", async (e, r) => {
     try {
-      const settingsToUpdate = {};
-      if (settings.selectedPrinter !== void 0) settingsToUpdate.selectedPrinter = settings.selectedPrinter;
-      if (settings.paperWidth !== void 0) settingsToUpdate.paperWidth = settings.paperWidth;
-      if (settings.autoPrint !== void 0) settingsToUpdate.autoPrint = settings.autoPrint.toString();
-      if (settings.printDensity !== void 0) settingsToUpdate.printDensity = settings.printDensity;
-      if (settings.cutPaper !== void 0) settingsToUpdate.cutPaper = settings.cutPaper.toString();
-      if (settings.printSpeed !== void 0) settingsToUpdate.printSpeed = settings.printSpeed;
-      if (settings.encoding !== void 0) settingsToUpdate.encoding = settings.encoding;
-      updateAllSettings(settingsToUpdate);
-      return { success: true };
-    } catch (error) {
-      console.error("Error saving printer settings:", error);
-      return { success: false, error: `Failed to save printer settings: ${error}` };
+      const t = {};
+      return r.selectedPrinter !== void 0 && (t.selectedPrinter = r.selectedPrinter), r.paperWidth !== void 0 && (t.paperWidth = r.paperWidth), r.autoPrint !== void 0 && (t.autoPrint = r.autoPrint.toString()), r.printDensity !== void 0 && (t.printDensity = r.printDensity), r.cutPaper !== void 0 && (t.cutPaper = r.cutPaper.toString()), r.printSpeed !== void 0 && (t.printSpeed = r.printSpeed), r.encoding !== void 0 && (t.encoding = r.encoding), X(t), { success: !0 };
+    } catch (t) {
+      return console.error("Error saving printer settings:", t), { success: !1, error: `Failed to save printer settings: ${t}` };
     }
-  });
-  ipcMain.handle("printer:fastPrint", async (_, printerName, content) => {
+  }), d.handle("printer:fastPrint", async (e, r, t) => {
     try {
-      const isWindows = process.platform === "win32";
-      content = content.replace(/₹/g, "Rs.");
-      const fs2 = await import("fs");
-      const path2 = await import("path");
-      const os = await import("os");
-      const tempFile = path2.join(os.tmpdir(), `fastprint-${Date.now()}.txt`);
-      if (isWindows) {
-        const escapedPrinter = printerName.replace(/"/g, '""');
+      const n = process.platform === "win32";
+      t = t.replace(/₹/g, "Rs.");
+      const c = await import("fs"), p = await import("path"), l = await import("os"), a = p.join(l.tmpdir(), `fastprint-${Date.now()}.txt`);
+      if (n) {
+        const u = r.replace(/"/g, '""');
         try {
-          const { stdout: portInfo } = await execAsync(`powershell -Command "try { (Get-Printer -Name '${escapedPrinter}').PortName } catch { 'UNKNOWN' }"`);
-          const portName = portInfo.trim();
-          if (portName && (portName.includes("USB") || portName.includes("COM") || portName.includes("LPT"))) {
-            const escInit = Buffer.from([27, 64]);
-            const escAlign = Buffer.from([27, 97, 0]);
-            const contentBuffer = Buffer.from(content, "ascii");
-            const feedCut = Buffer.from([10, 10, 10, 10, 29, 86, 1]);
-            const finalBuffer = Buffer.concat([escInit, escAlign, contentBuffer, feedCut]);
-            fs2.writeFileSync(tempFile, finalBuffer);
-            await execAsync(`copy "${tempFile}" "${portName}" /B`, { timeout: 8e3 });
-            setTimeout(() => {
+          const { stdout: E } = await s(`powershell -Command "try { (Get-Printer -Name '${u}').PortName } catch { 'UNKNOWN' }"`), S = E.trim();
+          if (S && (S.includes("USB") || S.includes("COM") || S.includes("LPT"))) {
+            const h = Buffer.from([27, 64]), g = Buffer.from([27, 97, 0]), T = Buffer.from(t, "ascii"), b = Buffer.from([10, 10, 10, 10, 29, 86, 1]), P = Buffer.concat([h, g, T, b]);
+            return c.writeFileSync(a, P), await s(`copy "${a}" "${S}" /B`, { timeout: 8e3 }), setTimeout(() => {
               try {
-                fs2.unlinkSync(tempFile);
-              } catch (e) {
+                c.unlinkSync(a);
+              } catch {
               }
-            }, 1e3);
-            return { success: true };
+            }, 1e3), { success: !0 };
           }
-        } catch (portError) {
-          console.log("Port method failed:", portError.message);
+        } catch (E) {
+          console.log("Port method failed:", E.message);
         }
         try {
-          const escInit = Buffer.from([27, 64]);
-          const contentBuffer = Buffer.from(content, "ascii");
-          const feedCut = Buffer.from([10, 10, 10, 29, 86, 1]);
-          const finalBuffer = Buffer.concat([escInit, contentBuffer, feedCut]);
-          fs2.writeFileSync(tempFile, finalBuffer);
-          const psScript = `
-$printerName = "${escapedPrinter}"
-$filePath = "${tempFile.replace(/\\/g, "\\\\")}"
+          const E = Buffer.from([27, 64]), S = Buffer.from(t, "ascii"), h = Buffer.from([10, 10, 10, 29, 86, 1]), g = Buffer.concat([E, S, h]);
+          c.writeFileSync(a, g);
+          const T = `
+$printerName = "${u}"
+$filePath = "${a.replace(/\\/g, "\\\\")}"
 $bytes = [System.IO.File]::ReadAllBytes($filePath)
 $printer = New-Object -ComObject WScript.Network
 $printer.SetDefaultPrinter($printerName)
 $shell = New-Object -ComObject WScript.Shell
 $shell.Run("notepad /p \\"$filePath\\"", 0, $true)
-`;
-          const psFile = path2.join(os.tmpdir(), `fastprint-${Date.now()}.ps1`);
-          fs2.writeFileSync(psFile, psScript, "utf8");
-          await execAsync(`powershell -ExecutionPolicy Bypass -File "${psFile}"`, { timeout: 8e3 });
-          setTimeout(() => {
+`, b = p.join(l.tmpdir(), `fastprint-${Date.now()}.ps1`);
+          return c.writeFileSync(b, T, "utf8"), await s(`powershell -ExecutionPolicy Bypass -File "${b}"`, { timeout: 8e3 }), setTimeout(() => {
             try {
-              fs2.unlinkSync(tempFile);
-              fs2.unlinkSync(psFile);
-            } catch (e) {
+              c.unlinkSync(a), c.unlinkSync(b);
+            } catch {
             }
-          }, 2e3);
-          return { success: true };
-        } catch (psError) {
-          console.log("PowerShell method failed:", psError.message);
+          }, 2e3), { success: !0 };
+        } catch (E) {
+          console.log("PowerShell method failed:", E.message);
         }
         try {
-          fs2.writeFileSync(tempFile, content, "utf8");
-          await execAsync(`print "${tempFile}"`, { timeout: 8e3 });
-          setTimeout(() => {
+          return c.writeFileSync(a, t, "utf8"), await s(`print "${a}"`, { timeout: 8e3 }), setTimeout(() => {
             try {
-              fs2.unlinkSync(tempFile);
-            } catch (e) {
+              c.unlinkSync(a);
+            } catch {
             }
-          }, 1e3);
-          return { success: true };
-        } catch (printError) {
-          return { success: false, error: "All fast print methods failed" };
+          }, 1e3), { success: !0 };
+        } catch {
+          return { success: !1, error: "All fast print methods failed" };
         }
-      } else {
+      } else
         try {
-          const escInit = Buffer.from([27, 64]);
-          const contentBuffer = Buffer.from(content, "ascii");
-          const feedCut = Buffer.from([10, 10, 10, 29, 86, 1]);
-          const finalBuffer = Buffer.concat([escInit, contentBuffer, feedCut]);
-          fs2.writeFileSync(tempFile, finalBuffer);
-          await execAsync(`lp -d "${printerName}" -o raw "${tempFile}"`, { timeout: 8e3 });
-          setTimeout(() => {
+          const u = Buffer.from([27, 64]), E = Buffer.from(t, "ascii"), S = Buffer.from([10, 10, 10, 29, 86, 1]), h = Buffer.concat([u, E, S]);
+          return c.writeFileSync(a, h), await s(`lp -d "${r}" -o raw "${a}"`, { timeout: 8e3 }), setTimeout(() => {
             try {
-              fs2.unlinkSync(tempFile);
-            } catch (e) {
+              c.unlinkSync(a);
+            } catch {
             }
-          }, 1e3);
-          return { success: true };
-        } catch (error) {
-          return { success: false, error: "Fast print failed: " + error.message };
+          }, 1e3), { success: !0 };
+        } catch (u) {
+          return { success: !1, error: "Fast print failed: " + u.message };
         }
-      }
-    } catch (error) {
-      return { success: false, error: String(error) };
+    } catch (n) {
+      return { success: !1, error: String(n) };
     }
-  });
-  console.log("All IPC handlers set up successfully");
+  }), console.log("All IPC handlers set up successfully");
 }
-const __filename$1 = fileURLToPath(import.meta.url);
-const __dirname$1 = path.dirname(__filename$1);
-let win = null;
-function createWindow() {
-  win = new BrowserWindow({
+const Ft = j(import.meta.url), G = k.dirname(Ft);
+let v = null;
+function z() {
+  v = new Y({
     width: 1400,
     height: 900,
     minWidth: 1200,
     minHeight: 700,
     webPreferences: {
-      preload: path.join(__dirname$1, "preload.mjs"),
-      contextIsolation: true,
-      nodeIntegration: false
+      preload: k.join(G, "preload.mjs"),
+      contextIsolation: !0,
+      nodeIntegration: !1
     },
     titleBarStyle: "default",
     title: "Vogue Prism - Billing Software"
-  });
-  win.setMenuBarVisibility(false);
-  if (process.env["VITE_DEV_SERVER_URL"]) {
-    win.loadURL(process.env["VITE_DEV_SERVER_URL"]);
-  } else {
-    win.loadFile(path.join(__dirname$1, "../dist/index.html"));
-  }
+  }), v.setMenuBarVisibility(!1), process.env.VITE_DEV_SERVER_URL ? v.loadURL(process.env.VITE_DEV_SERVER_URL) : v.loadFile(k.join(G, "../dist/index.html"));
 }
-app.on("window-all-closed", () => {
-  if (process.platform !== "darwin") {
-    app.quit();
-    win = null;
-  }
+C.on("window-all-closed", () => {
+  process.platform !== "darwin" && (C.quit(), v = null);
 });
-app.on("activate", () => {
-  if (BrowserWindow.getAllWindows().length === 0) createWindow();
+C.on("activate", () => {
+  Y.getAllWindows().length === 0 && z();
 });
-app.whenReady().then(async () => {
-  await initDatabase();
-  setupIpcHandlers();
-  createWindow();
+C.whenReady().then(async () => {
+  await Z(), Bt(), z();
 });
-app.on("before-quit", async () => {
-  await closeDatabase();
+C.on("before-quit", async () => {
+  await tt();
 });
