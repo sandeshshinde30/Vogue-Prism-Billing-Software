@@ -10,6 +10,7 @@ import {
   Settings,
   FileEdit,
   Printer,
+  Trash2,
 } from 'lucide-react';
 import { getLogoPath } from '../../utils/assetPath';
 
@@ -21,6 +22,7 @@ const navItems = [
   { to: '/reports', icon: FileBarChart, label: 'Reports' },
   { to: '/logs', icon: Activity, label: 'Logs' },
   { to: '/bill-management', icon: FileEdit, label: 'Bill Management' },
+  { to: '/deleted-bills', icon: Trash2, label: 'Deleted Bills' },
   { to: '/printer-management', icon: Printer, label: 'Printer Management' },
   { to: '/backup', icon: Database, label: 'Backup' },
   { to: '/settings', icon: Settings, label: 'Settings' },

@@ -26,6 +26,10 @@ import {
   getTopSelling,
   updateBill,
   deleteBill,
+  getDeletedBills,
+  getDeletedBillById,
+  restoreDeletedBill,
+  permanentlyDeleteBill,
   BillData
 } from './DB/bills';
 import {
@@ -274,11 +278,47 @@ export function setupIpcHandlers() {
     }
   });
 
-  ipcMain.handle('bills:delete', async (_, billId: number) => {
+  ipcMain.handle('bills:delete', async (_, billId: number, reason?: string) => {
     try {
-      return deleteBill(billId);
+      return deleteBill(billId, reason);
     } catch (error) {
       console.error('Error deleting bill:', error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle('bills:getDeleted', async (_, limit?: number, offset?: number) => {
+    try {
+      return getDeletedBills(limit, offset);
+    } catch (error) {
+      console.error('Error getting deleted bills:', error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle('bills:getDeletedById', async (_, id: number) => {
+    try {
+      return getDeletedBillById(id);
+    } catch (error) {
+      console.error('Error getting deleted bill:', error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle('bills:restore', async (_, deletedBillId: number) => {
+    try {
+      return restoreDeletedBill(deletedBillId);
+    } catch (error) {
+      console.error('Error restoring bill:', error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle('bills:permanentlyDelete', async (_, deletedBillId: number) => {
+    try {
+      return permanentlyDeleteBill(deletedBillId);
+    } catch (error) {
+      console.error('Error permanently deleting bill:', error);
       throw error;
     }
   });
@@ -814,28 +854,15 @@ Payment:                                CASH
       fs.writeFileSync(tempFile, finalBuffer);
       
       if (isWindows) {
-        // Windows: Use multiple methods to send raw data to thermal printer
+        // Windows: Use optimized fast printing method
         const escapedPrinter = printerName.replace(/'/g, "''").replace(/"/g, '""');
         
         try {
-          // Get printer port info for logging
-          let portName = 'UNKNOWN';
-          try {
-            const { stdout: portInfo } = await execAsync(`powershell -Command "try { (Get-Printer -Name '${escapedPrinter}').PortName } catch { 'UNKNOWN' }"`);
-            portName = portInfo.trim();
-          } catch (e) {
-            console.log('Could not get port name');
-          }
+          console.log(`Printing to: ${printerName}`);
           
-          console.log(`Windows printer: ${printerName}, Port: ${portName}`);
-          
-          let printSuccess = false;
-          let lastError = '';
-          
-          // Method 1: Try using .NET PrintDocument with RAW data via PowerShell
-          console.log('Trying Method 1: .NET RawPrinterHelper...');
-          try {
-            const psScript1 = `
+          // OPTIMIZED: Use only the fastest method - .NET RawPrinterHelper
+          // This is the most reliable and fastest method for Windows thermal printers
+          const psScript = `
 $ErrorActionPreference = 'Stop'
 $printerName = '${escapedPrinter}'
 $filePath = '${tempFile.replace(/\\/g, '\\\\')}'
@@ -880,35 +907,17 @@ public class RawPrint {
         di.pDocName = "Receipt";
         di.pDataType = "RAW";
 
-        if (!OpenPrinter(printerName, out hPrinter, IntPtr.Zero)) {
-            return Marshal.GetLastWin32Error();
-        }
-
-        if (!StartDocPrinter(hPrinter, 1, ref di)) {
-            int err = Marshal.GetLastWin32Error();
-            ClosePrinter(hPrinter);
-            return err;
-        }
-
-        if (!StartPagePrinter(hPrinter)) {
-            int err = Marshal.GetLastWin32Error();
-            EndDocPrinter(hPrinter);
-            ClosePrinter(hPrinter);
-            return err;
-        }
-
+        if (!OpenPrinter(printerName, out hPrinter, IntPtr.Zero)) return Marshal.GetLastWin32Error();
+        if (!StartDocPrinter(hPrinter, 1, ref di)) { ClosePrinter(hPrinter); return Marshal.GetLastWin32Error(); }
+        if (!StartPagePrinter(hPrinter)) { EndDocPrinter(hPrinter); ClosePrinter(hPrinter); return Marshal.GetLastWin32Error(); }
+        
         int written = 0;
         if (!WritePrinter(hPrinter, data, data.Length, out written)) {
-            int err = Marshal.GetLastWin32Error();
-            EndPagePrinter(hPrinter);
-            EndDocPrinter(hPrinter);
-            ClosePrinter(hPrinter);
-            return err;
+            EndPagePrinter(hPrinter); EndDocPrinter(hPrinter); ClosePrinter(hPrinter);
+            return Marshal.GetLastWin32Error();
         }
-
-        EndPagePrinter(hPrinter);
-        EndDocPrinter(hPrinter);
-        ClosePrinter(hPrinter);
+        
+        EndPagePrinter(hPrinter); EndDocPrinter(hPrinter); ClosePrinter(hPrinter);
         return 0;
     }
 }
@@ -916,78 +925,22 @@ public class RawPrint {
 
 $bytes = [System.IO.File]::ReadAllBytes($filePath)
 $result = [RawPrint]::Print($printerName, $bytes)
-if ($result -eq 0) {
-    Write-Output "SUCCESS"
-} else {
-    Write-Output "ERROR:$result"
-}
+if ($result -eq 0) { Write-Output "SUCCESS" } else { Write-Output "ERROR:$result" }
 `;
-            const psFile1 = path.join(os.tmpdir(), `print1-${Date.now()}.ps1`);
-            fs.writeFileSync(psFile1, psScript1, 'utf8');
-            
-            const { stdout: result1 } = await execAsync(`powershell -ExecutionPolicy Bypass -File "${psFile1}"`, { timeout: 30000 });
-            setTimeout(() => { try { fs.unlinkSync(psFile1); } catch (e) {} }, 1000);
-            
-            if (result1.trim().includes('SUCCESS')) {
-              printSuccess = true;
-              console.log('✓ Method 1 succeeded');
-            } else {
-              lastError = result1.trim();
-              console.log(`Method 1 failed: ${lastError}`);
-            }
-          } catch (e: any) {
-            lastError = e.message;
-            console.log(`Method 1 exception: ${e.message}`);
+          const psFile = path.join(os.tmpdir(), `print-${Date.now()}.ps1`);
+          fs.writeFileSync(psFile, psScript, 'utf8');
+          
+          // Reduced timeout from 30s to 10s for faster response
+          const { stdout } = await execAsync(`powershell -ExecutionPolicy Bypass -File "${psFile}"`, { timeout: 10000 });
+          setTimeout(() => { try { fs.unlinkSync(psFile); } catch (e) {} }, 500);
+          
+          if (!stdout.trim().includes('SUCCESS')) {
+            throw new Error(`Print failed: ${stdout.trim()}`);
           }
           
-          // Method 2: Try using print command with /D: switch
-          if (!printSuccess) {
-            console.log('Trying Method 2: Windows print command...');
-            try {
-              await execAsync(`print /D:"${printerName}" "${tempFile}"`, { timeout: 15000 });
-              printSuccess = true;
-              console.log('✓ Method 2 succeeded');
-            } catch (e: any) {
-              lastError = e.message;
-              console.log(`Method 2 failed: ${e.message}`);
-            }
-          }
-          
-          // Method 3: Try using PowerShell Out-Printer (for text content)
-          if (!printSuccess) {
-            console.log('Trying Method 3: Out-Printer...');
-            try {
-              // Read content as text and send via Out-Printer
-              const textContent = content.replace(/'/g, "''");
-              await execAsync(`powershell -Command "'${textContent}' | Out-Printer -Name '${escapedPrinter}'"`, { timeout: 15000 });
-              printSuccess = true;
-              console.log('✓ Method 3 succeeded');
-            } catch (e: any) {
-              lastError = e.message;
-              console.log(`Method 3 failed: ${e.message}`);
-            }
-          }
-          
-          // Method 4: Try direct file copy to printer share name
-          if (!printSuccess) {
-            console.log('Trying Method 4: Copy to printer...');
-            try {
-              await execAsync(`copy /b "${tempFile}" "\\\\%COMPUTERNAME%\\${printerName}"`, { timeout: 15000 });
-              printSuccess = true;
-              console.log('✓ Method 4 succeeded');
-            } catch (e: any) {
-              lastError = e.message;
-              console.log(`Method 4 failed: ${e.message}`);
-            }
-          }
-          
-          if (!printSuccess) {
-            throw new Error(`All print methods failed. Last error: ${lastError}`);
-          }
-          
-          console.log('✓ Successfully printed to Windows printer');
+          console.log('✓ Print successful');
         } catch (error) {
-          console.error('❌ Windows printing error:', error);
+          console.error('❌ Printing error:', error);
           throw error;
         }
       } else {

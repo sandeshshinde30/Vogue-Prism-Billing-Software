@@ -194,12 +194,43 @@ export function updateProduct(id: number, data: Partial<ProductData>) {
   const stmt = db.prepare(`UPDATE products SET ${fields.join(', ')} WHERE id = ?`);
   const result = stmt.run(...values);
   
-  // Log the activity
+  // Log the activity with detailed changes
   if (result.changes > 0 && oldProduct) {
+    const changes: string[] = [];
+    
+    if (data.name !== undefined && data.name !== oldProduct.name) {
+      changes.push(`Name: "${oldProduct.name}" → "${data.name}"`);
+    }
+    if (data.category !== undefined && data.category !== oldProduct.category) {
+      changes.push(`Category: "${oldProduct.category}" → "${data.category}"`);
+    }
+    if (data.size !== undefined && data.size !== oldProduct.size) {
+      changes.push(`Size: "${oldProduct.size || 'None'}" → "${data.size || 'None'}"`);
+    }
+    if (data.barcode !== undefined && data.barcode !== oldProduct.barcode) {
+      changes.push(`Barcode: "${oldProduct.barcode || 'None'}" → "${data.barcode || 'None'}"`);
+    }
+    if (data.costPrice !== undefined && data.costPrice !== oldProduct.costPrice) {
+      changes.push(`Cost Price: ₹${oldProduct.costPrice} → ₹${data.costPrice}`);
+    }
+    if (data.price !== undefined && data.price !== oldProduct.price) {
+      changes.push(`Price: ₹${oldProduct.price} → ₹${data.price}`);
+    }
+    if (data.stock !== undefined && data.stock !== oldProduct.stock) {
+      changes.push(`Stock: ${oldProduct.stock} → ${data.stock}`);
+    }
+    if (data.lowStockThreshold !== undefined && data.lowStockThreshold !== oldProduct.lowStockThreshold) {
+      changes.push(`Low Stock Alert: ${oldProduct.lowStockThreshold} → ${data.lowStockThreshold}`);
+    }
+    
+    const detailsText = changes.length > 0 
+      ? `Updated ${oldProduct.name}: ${changes.join(', ')}`
+      : `Updated product: ${oldProduct.name}`;
+    
     addActivityLog(
       'update',
       'product',
-      `Updated product: ${oldProduct.name}`,
+      detailsText,
       id,
       JSON.stringify(oldProduct),
       JSON.stringify(data)
@@ -236,15 +267,17 @@ export function updateStock(id: number, quantity: number, changeType: 'sale' | '
   
   transaction();
   
-  // Log the activity
+  // Log the activity with detailed stock changes
   if (product) {
+    const oldStock = product.stock;
+    const newStock = oldStock + quantity;
     const action = changeType === 'sale' ? 'Stock reduced (sale)' : 
                    changeType === 'restock' ? 'Stock increased (restock)' : 
                    'Stock adjusted';
     addActivityLog(
       'update',
       'product',
-      `${action}: ${product.name} - Quantity: ${quantity > 0 ? '+' : ''}${quantity}`,
+      `${action}: ${product.name} - Stock: ${oldStock} → ${newStock} (${quantity > 0 ? '+' : ''}${quantity})`,
       id,
       undefined,
       JSON.stringify({ changeType, quantity, referenceId })

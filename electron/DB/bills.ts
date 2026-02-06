@@ -315,7 +315,16 @@ function generateBillNumber(): string {
     nextNumber = lastNumber + 1;
   }
   
-  return `${prefix}${nextNumber.toString().padStart(4, '0')}`;
+  // Check if the generated bill number already exists and increment until we find an available one
+  const checkStmt = db.prepare('SELECT COUNT(*) as count FROM bills WHERE billNumber = ?');
+  let billNumber = `${prefix}${nextNumber.toString().padStart(4, '0')}`;
+  
+  while (checkStmt.get(billNumber).count > 0) {
+    nextNumber++;
+    billNumber = `${prefix}${nextNumber.toString().padStart(4, '0')}`;
+  }
+  
+  return billNumber;
 }
 
 // UPDATE - Edit existing bill
@@ -424,8 +433,8 @@ export function updateBill(billId: number, data: Partial<BillData>) {
   return getBillById(billId);
 }
 
-// DELETE - Delete bill and restore stock
-export function deleteBill(billId: number) {
+// DELETE - Delete bill, save to deleted_bills, and restore stock
+export function deleteBill(billId: number, reason?: string) {
   const db = getDatabase();
   
   // Get the bill and items before deletion
@@ -435,6 +444,20 @@ export function deleteBill(billId: number) {
   }
   
   const transaction = db.transaction(() => {
+    // Save to deleted_bills table for potential restoration
+    const deletedBillStmt = db.prepare(`
+      INSERT INTO deleted_bills (originalBillId, billNumber, billData, itemsData, deletedAt, deletedBy, reason)
+      VALUES (?, ?, ?, ?, datetime('now', 'localtime'), ?, ?)
+    `);
+    deletedBillStmt.run(
+      billId,
+      billData.bill.billNumber,
+      JSON.stringify(billData.bill),
+      JSON.stringify(billData.items),
+      'system',
+      reason || 'Deleted by user'
+    );
+    
     // Restore stock for all items
     const itemsStmt = db.prepare('SELECT * FROM bill_items WHERE billId = ?');
     const items = itemsStmt.all(billId);
@@ -457,11 +480,124 @@ export function deleteBill(billId: number) {
   addActivityLog(
     'delete',
     'bill',
-    `Deleted bill: ${billData.bill.billNumber} - Total: ₹${billData.bill.total}`,
+    `Deleted bill: ${billData.bill.billNumber} - Total: ₹${billData.bill.total}${reason ? ` - Reason: ${reason}` : ''}`,
     billId,
     JSON.stringify(billData),
     undefined
   );
   
-  return { success: true, message: 'Bill deleted and stock restored' };
+  return { success: true, message: 'Bill deleted and saved to deleted bills' };
 }
+
+// READ - Get deleted bills
+export function getDeletedBills(limit: number = 100, offset: number = 0) {
+  const db = getDatabase();
+  const stmt = db.prepare(`
+    SELECT * FROM deleted_bills 
+    ORDER BY deletedAt DESC 
+    LIMIT ? OFFSET ?
+  `);
+  return stmt.all(limit, offset);
+}
+
+// READ - Get deleted bill by ID
+export function getDeletedBillById(id: number) {
+  const db = getDatabase();
+  const stmt = db.prepare('SELECT * FROM deleted_bills WHERE id = ?');
+  return stmt.get(id);
+}
+
+// RESTORE - Restore a deleted bill
+export function restoreDeletedBill(deletedBillId: number) {
+  const db = getDatabase();
+  
+  // Get the deleted bill data
+  const deletedBill: any = getDeletedBillById(deletedBillId);
+  if (!deletedBill) {
+    throw new Error('Deleted bill not found');
+  }
+  
+  const billData = JSON.parse(deletedBill.billData);
+  const itemsData = JSON.parse(deletedBill.itemsData);
+  
+  const transaction = db.transaction(() => {
+    // Restore the bill (without id to get new auto-increment id)
+    const billStmt = db.prepare(`
+      INSERT INTO bills (billNumber, subtotal, discountPercent, discountAmount, total, paymentMode, cashAmount, upiAmount, customerMobileNumber, status, createdAt)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    const billResult = billStmt.run(
+      billData.billNumber + '-RESTORED',
+      billData.subtotal,
+      billData.discountPercent,
+      billData.discountAmount,
+      billData.total,
+      billData.paymentMode,
+      billData.cashAmount || 0,
+      billData.upiAmount || 0,
+      billData.customerMobileNumber || null,
+      'completed',
+      billData.createdAt
+    );
+    
+    const newBillId = Number(billResult.lastInsertRowid);
+    
+    // Restore bill items
+    const itemStmt = db.prepare(`
+      INSERT INTO bill_items (billId, productId, productName, size, quantity, unitPrice, totalPrice)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `);
+    
+    for (const item of itemsData) {
+      itemStmt.run(
+        newBillId,
+        item.productId,
+        item.productName,
+        item.size || null,
+        item.quantity,
+        item.unitPrice,
+        item.totalPrice
+      );
+      
+      // Reduce stock again (since it was restored when deleted)
+      updateStock(item.productId, -item.quantity, 'sale', newBillId);
+    }
+    
+    // Remove from deleted_bills table
+    db.prepare('DELETE FROM deleted_bills WHERE id = ?').run(deletedBillId);
+  });
+  
+  transaction();
+  
+  // Log the activity
+  addActivityLog(
+    'create',
+    'bill',
+    `Restored deleted bill: ${billData.billNumber} as ${billData.billNumber}-RESTORED`,
+    deletedBillId
+  );
+  
+  return { success: true, message: 'Bill restored successfully', billNumber: billData.billNumber + '-RESTORED' };
+}
+
+// DELETE - Permanently delete a deleted bill record
+export function permanentlyDeleteBill(deletedBillId: number) {
+  const db = getDatabase();
+  const deletedBill: any = getDeletedBillById(deletedBillId);
+  
+  if (!deletedBill) {
+    throw new Error('Deleted bill not found');
+  }
+  
+  db.prepare('DELETE FROM deleted_bills WHERE id = ?').run(deletedBillId);
+  
+  addActivityLog(
+    'delete',
+    'bill',
+    `Permanently deleted bill record: ${deletedBill.billNumber}`,
+    deletedBillId
+  );
+  
+  return { success: true, message: 'Bill permanently deleted' };
+}
+

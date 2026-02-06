@@ -214,6 +214,20 @@ export async function initDatabase() {
     );
   `);
 
+  // Create deleted_bills table for tracking deleted bills with restore capability
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS deleted_bills (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      originalBillId INTEGER NOT NULL,
+      billNumber TEXT NOT NULL,
+      billData TEXT NOT NULL,
+      itemsData TEXT NOT NULL,
+      deletedAt TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+      deletedBy TEXT DEFAULT 'system',
+      reason TEXT
+    );
+  `);
+
   // Insert default settings if they don't exist
   const defaultSettings = [
     ['storeName', 'Vogue Prism'],

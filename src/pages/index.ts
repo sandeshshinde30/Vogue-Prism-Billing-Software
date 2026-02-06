@@ -7,4 +7,5 @@ export { Backup } from './Backup';
 export { Settings } from './Settings';
 export { Logs } from './Logs';
 export { BillManagement } from './BillManagement';
+export { DeletedBills } from './DeletedBills';
 export { PrinterManagement } from './PrinterManagement';

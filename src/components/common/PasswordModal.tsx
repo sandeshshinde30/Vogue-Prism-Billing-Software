@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Lock, Eye, EyeOff } from 'lucide-react';
 import { Modal } from './Modal';
 import { Button } from './Button';
@@ -23,9 +23,20 @@ export function PasswordModal({
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   // Default admin password - in production, this should be configurable
   const ADMIN_PASSWORD = 'sunil123';
+
+  // Auto-focus input when modal opens
+  useEffect(() => {
+    if (isOpen && inputRef.current) {
+      // Small delay to ensure modal is fully rendered
+      setTimeout(() => {
+        inputRef.current?.focus();
+      }, 100);
+    }
+  }, [isOpen]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -40,6 +51,8 @@ export function PasswordModal({
       handleClose();
     } else {
       setError('Incorrect password');
+      // Refocus on error
+      setTimeout(() => inputRef.current?.focus(), 100);
     }
     
     setLoading(false);
@@ -66,6 +79,7 @@ export function PasswordModal({
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="relative">
             <Input
+              ref={inputRef}
               type={showPassword ? 'text' : 'password'}
               value={password}
               onChange={(e) => setPassword(e.target.value)}

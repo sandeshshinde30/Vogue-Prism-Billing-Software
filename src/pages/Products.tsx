@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import {
   Plus,
   Edit2,
@@ -21,6 +21,7 @@ export function Products() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [loading, setLoading] = useState(true);
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
   const loadProducts = async () => {
     setLoading(true);
@@ -34,6 +35,15 @@ export function Products() {
     }
     setLoading(false);
   };
+
+  // Auto-focus search input on mount
+  useEffect(() => {
+    if (searchInputRef.current) {
+      setTimeout(() => {
+        searchInputRef.current?.focus();
+      }, 100);
+    }
+  }, []);
 
   useEffect(() => {
     loadProducts();
@@ -221,6 +231,7 @@ export function Products() {
         <div className="flex flex-col sm:flex-row gap-4">
           <div className="flex-1">
             <Input
+              ref={searchInputRef}
               placeholder="Search products..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
@@ -596,6 +607,7 @@ function ProductModal({ isOpen, onClose, product, onSave }: ProductModalProps) {
     stock: '',
     lowStockThreshold: '5',
   });
+  const nameInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (product) {
@@ -622,6 +634,15 @@ function ProductModal({ isOpen, onClose, product, onSave }: ProductModalProps) {
       });
     }
   }, [product, isOpen]);
+
+  // Auto-focus name input when modal opens
+  useEffect(() => {
+    if (isOpen && nameInputRef.current) {
+      setTimeout(() => {
+        nameInputRef.current?.focus();
+      }, 100);
+    }
+  }, [isOpen]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -653,6 +674,7 @@ function ProductModal({ isOpen, onClose, product, onSave }: ProductModalProps) {
         {/* Row 1: Name, Category, Size, Barcode + Generate */}
         <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1.5fr auto', gap: '12px', alignItems: 'end' }}>
           <Input
+            ref={nameInputRef}
             label="Product Name *"
             value={formData.name}
             onChange={(e) => setFormData({ ...formData, name: e.target.value })}

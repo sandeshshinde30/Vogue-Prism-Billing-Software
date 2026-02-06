@@ -33,6 +33,7 @@ export function exportData(dateFrom: string, dateTo: string) {
       bi.productName as product_name,
       bi.size,
       bi.quantity,
+      p.costPrice as cost_price,
       bi.unitPrice as unit_price,
       bi.totalPrice as total_price,
       b.subtotal,
@@ -44,6 +45,7 @@ export function exportData(dateFrom: string, dateTo: string) {
       b.upiAmount as upi_amount
     FROM bill_items bi
     JOIN bills b ON bi.billId = b.id
+    LEFT JOIN products p ON bi.productId = p.id
     WHERE date(b.createdAt) BETWEEN ? AND ?
     ORDER BY b.createdAt DESC, bi.id
   `);

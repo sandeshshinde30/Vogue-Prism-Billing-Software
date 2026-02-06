@@ -10,8 +10,9 @@ import {
   Monitor,
   ChevronLeft,
   ChevronRight,
+  Eye,
 } from 'lucide-react';
-import { Card, Button, Select } from '../components/common';
+import { Card, Button, Select, Modal } from '../components/common';
 import { formatDateTime } from '../utils/export';
 import toast from 'react-hot-toast';
 
@@ -32,6 +33,8 @@ export function Logs() {
   const [loading, setLoading] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
+  const [selectedLog, setSelectedLog] = useState<ActivityLog | null>(null);
+  const [showDetailsModal, setShowDetailsModal] = useState(false);
   const [filters, setFilters] = useState({
     entityType: '',
     dateFrom: '',
@@ -194,6 +197,9 @@ export function Logs() {
                   <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     User
                   </th>
+                  <th className="px-6 py-4 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Actions
+                  </th>
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-100">
@@ -216,7 +222,7 @@ export function Logs() {
                       </span>
                     </td>
                     <td className="px-6 py-4 text-sm text-gray-900">
-                      <div className="max-w-xs truncate" title={log.details}>
+                      <div className="max-w-md">
                         {log.details}
                       </div>
                       {log.entityId && (
@@ -227,6 +233,18 @@ export function Logs() {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
                       {log.userId || 'System'}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-right">
+                      <button
+                        onClick={() => {
+                          setSelectedLog(log);
+                          setShowDetailsModal(true);
+                        }}
+                        className="p-2 text-blue-500 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition-colors"
+                        title="View full details"
+                      >
+                        <Eye size={16} />
+                      </button>
                     </td>
                   </tr>
                 ))}
@@ -266,6 +284,89 @@ export function Logs() {
             </div>
           </div>
         </Card>
+      )}
+
+      {/* Log Details Modal */}
+      {selectedLog && (
+        <Modal
+          isOpen={showDetailsModal}
+          onClose={() => setShowDetailsModal(false)}
+          title="Activity Log Details"
+          size="lg"
+        >
+          <div className="space-y-4">
+            {/* Basic Info */}
+            <div className="grid grid-cols-2 gap-4 p-4 bg-gray-50 rounded-lg">
+              <div>
+                <p className="text-sm text-gray-600">Time</p>
+                <p className="font-medium">{formatDateTime(selectedLog.createdAt)}</p>
+              </div>
+              <div>
+                <p className="text-sm text-gray-600">Type</p>
+                <div className="flex items-center gap-2 mt-1">
+                  {getEntityIcon(selectedLog.entityType)}
+                  <span className="font-medium capitalize">{selectedLog.entityType}</span>
+                </div>
+              </div>
+              <div>
+                <p className="text-sm text-gray-600">Action</p>
+                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium mt-1 ${getActionColor(selectedLog.action)}`}>
+                  {selectedLog.action}
+                </span>
+              </div>
+              <div>
+                <p className="text-sm text-gray-600">User</p>
+                <p className="font-medium">{selectedLog.userId || 'System'}</p>
+              </div>
+              {selectedLog.entityId && (
+                <div>
+                  <p className="text-sm text-gray-600">Entity ID</p>
+                  <p className="font-medium">{selectedLog.entityId}</p>
+                </div>
+              )}
+            </div>
+
+            {/* Full Details */}
+            <div>
+              <h3 className="font-medium mb-2 text-gray-900">Full Details</h3>
+              <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                <p className="text-sm text-gray-900 whitespace-pre-wrap break-words">
+                  {selectedLog.details}
+                </p>
+              </div>
+            </div>
+
+            {/* Old Value */}
+            {selectedLog.oldValue && (
+              <div>
+                <h3 className="font-medium mb-2 text-gray-900">Previous Value</h3>
+                <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
+                  <pre className="text-xs text-gray-900 whitespace-pre-wrap break-words overflow-x-auto">
+                    {JSON.stringify(JSON.parse(selectedLog.oldValue), null, 2)}
+                  </pre>
+                </div>
+              </div>
+            )}
+
+            {/* New Value */}
+            {selectedLog.newValue && (
+              <div>
+                <h3 className="font-medium mb-2 text-gray-900">New Value</h3>
+                <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
+                  <pre className="text-xs text-gray-900 whitespace-pre-wrap break-words overflow-x-auto">
+                    {JSON.stringify(JSON.parse(selectedLog.newValue), null, 2)}
+                  </pre>
+                </div>
+              </div>
+            )}
+
+            <div className="flex justify-end pt-4">
+              <Button onClick={() => setShowDetailsModal(false)}>
+                Close
+              </Button>
+            </div>
+          </div>
+        </Modal>
       )}
     </div>
   );

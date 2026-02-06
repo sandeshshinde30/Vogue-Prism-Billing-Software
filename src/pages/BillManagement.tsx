@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import {
   Receipt,
   Edit,
@@ -58,6 +58,16 @@ export function BillManagement() {
   const [pendingAction, setPendingAction] = useState<{ type: 'edit' | 'delete'; bill: Bill } | null>(null);
   const [showBillModal, setShowBillModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
+  // Auto-focus search input on mount
+  useEffect(() => {
+    if (searchInputRef.current) {
+      setTimeout(() => {
+        searchInputRef.current?.focus();
+      }, 100);
+    }
+  }, []);
 
   // Debounce search query
   useEffect(() => {
@@ -220,6 +230,7 @@ export function BillManagement() {
             <div className="relative flex-1">
               <Search size={18} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
               <Input
+                ref={searchInputRef}
                 type="text"
                 placeholder="Search by bill number or mobile number..."
                 value={searchQuery}

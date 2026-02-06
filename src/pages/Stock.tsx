@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { Search, Package, AlertTriangle, Download, FileSpreadsheet } from 'lucide-react';
 import { Card, Input, Select, StatCard, Button } from '../components/common';
 import { Product } from '../types';
@@ -14,6 +14,7 @@ export function Stock() {
   const [sizeFilter, setSizeFilter] = useState('all');
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
   // Get unique categories and sizes from products
   const categories = [...new Set(products.map(p => p.category).filter(Boolean))].sort();
@@ -107,6 +108,15 @@ export function Stock() {
 
   useEffect(() => {
     loadProducts();
+  }, []);
+
+  // Auto-focus search input on mount
+  useEffect(() => {
+    if (searchInputRef.current) {
+      setTimeout(() => {
+        searchInputRef.current?.focus();
+      }, 100);
+    }
   }, []);
 
   useEffect(() => {
@@ -237,6 +247,7 @@ export function Stock() {
       <Card>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
           <Input
+            ref={searchInputRef}
             placeholder="Search by name or barcode..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}

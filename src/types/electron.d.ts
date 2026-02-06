@@ -32,7 +32,11 @@ export interface ElectronAPI {
   getTopSelling: (date?: string) => Promise<{ productName: string; size: string; totalQty: number }[]>;
   getRecentBills: (limit?: number) => Promise<Bill[]>;
   updateBill: (billId: number, billData: any) => Promise<{ bill: Bill; items: BillItem[] }>;
-  deleteBill: (billId: number) => Promise<{ success: boolean; message: string }>;
+  deleteBill: (billId: number, reason?: string) => Promise<{ success: boolean; message: string }>;
+  getDeletedBills: (limit?: number, offset?: number) => Promise<any[]>;
+  getDeletedBillById: (id: number) => Promise<any>;
+  restoreBill: (deletedBillId: number) => Promise<{ success: boolean; message: string; billNumber?: string }>;
+  permanentlyDeleteBill: (deletedBillId: number) => Promise<{ success: boolean; message: string }>;
 
   // Reports
   getSalesReport: (dateFrom: string, dateTo: string) => Promise<{

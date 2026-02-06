@@ -23,7 +23,11 @@ export interface ElectronAPI {
   getTopSelling: (date?: string) => Promise<any[]>;
   getRecentBills: (limit?: number) => Promise<any[]>;
   updateBill: (billId: number, billData: any) => Promise<any>;
-  deleteBill: (billId: number) => Promise<{ success: boolean; message: string }>;
+  deleteBill: (billId: number, reason?: string) => Promise<{ success: boolean; message: string }>;
+  getDeletedBills: (limit?: number, offset?: number) => Promise<any[]>;
+  getDeletedBillById: (id: number) => Promise<any>;
+  restoreBill: (deletedBillId: number) => Promise<{ success: boolean; message: string; billNumber?: string }>;
+  permanentlyDeleteBill: (deletedBillId: number) => Promise<{ success: boolean; message: string }>;
 
   // Reports
   getSalesReport: (dateFrom: string, dateTo: string) => Promise<any[]>;
@@ -88,7 +92,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getTopSelling: (date?: string) => ipcRenderer.invoke('bills:getTopSelling', date),
   getRecentBills: (limit?: number) => ipcRenderer.invoke('bills:getRecent', limit),
   updateBill: (billId: number, billData: any) => ipcRenderer.invoke('bills:update', billId, billData),
-  deleteBill: (billId: number) => ipcRenderer.invoke('bills:delete', billId),
+  deleteBill: (billId: number, reason?: string) => ipcRenderer.invoke('bills:delete', billId, reason),
+  getDeletedBills: (limit?: number, offset?: number) => ipcRenderer.invoke('bills:getDeleted', limit, offset),
+  getDeletedBillById: (id: number) => ipcRenderer.invoke('bills:getDeletedById', id),
+  restoreBill: (deletedBillId: number) => ipcRenderer.invoke('bills:restore', deletedBillId),
+  permanentlyDeleteBill: (deletedBillId: number) => ipcRenderer.invoke('bills:permanentlyDelete', deletedBillId),
 
   // Reports
   getSalesReport: (dateFrom: string, dateTo: string) => 
