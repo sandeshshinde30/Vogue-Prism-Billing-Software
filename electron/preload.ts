@@ -66,6 +66,9 @@ export interface ElectronAPI {
   getActivityLogs: (limit?: number, offset?: number, entityType?: string, dateFrom?: string, dateTo?: string) => Promise<any[]>;
   getLogsCount: (entityType?: string, dateFrom?: string, dateTo?: string) => Promise<{ count: number }>;
   cleanupLogs: () => Promise<{ success: boolean; deletedCount: number }>;
+
+  // Analytics
+  getAnalytics: (dateFrom: string, dateTo: string) => Promise<any>;
 }
 
 contextBridge.exposeInMainWorld('electronAPI', {
@@ -144,4 +147,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getLogsCount: (entityType?: string, dateFrom?: string, dateTo?: string) => 
     ipcRenderer.invoke('logs:getCount', entityType, dateFrom, dateTo),
   cleanupLogs: () => ipcRenderer.invoke('logs:cleanup'),
+
+  // Analytics
+  getAnalytics: (dateFrom: string, dateTo: string) => 
+    ipcRenderer.invoke('analytics:get', dateFrom, dateTo),
 } as ElectronAPI);

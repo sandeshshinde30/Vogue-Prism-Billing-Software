@@ -19,6 +19,7 @@ export interface CartItem {
   quantity: number;
   unitPrice: number;
   totalPrice: number;
+  discountLocked: boolean;
 }
 
 export interface Bill {

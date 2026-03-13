@@ -147,10 +147,22 @@ async function initDatabase() {
       quantity INTEGER NOT NULL,
       unitPrice REAL NOT NULL,
       totalPrice REAL NOT NULL,
+      discountLocked INTEGER NOT NULL DEFAULT 0,
       FOREIGN KEY (billId) REFERENCES bills (id),
       FOREIGN KEY (productId) REFERENCES products (id)
     );
   `);
+  try {
+    const billItemsTableInfo = db.prepare("PRAGMA table_info(bill_items)").all();
+    const hasDiscountLocked = billItemsTableInfo.some((column) => column.name === "discountLocked");
+    if (!hasDiscountLocked) {
+      console.log("Adding discountLocked column to bill_items table...");
+      db.exec("ALTER TABLE bill_items ADD COLUMN discountLocked INTEGER NOT NULL DEFAULT 0");
+      console.log("Migration completed: discountLocked column added");
+    }
+  } catch (error) {
+    console.error("Bill items migration error:", error);
+  }
   db.exec(`
     CREATE TABLE IF NOT EXISTS stock_logs (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -612,8 +624,8 @@ function createBill(data) {
     );
     const billId2 = billResult.lastInsertRowid;
     const itemStmt = db2.prepare(`
-      INSERT INTO bill_items (billId, productId, productName, size, quantity, unitPrice, totalPrice)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO bill_items (billId, productId, productName, size, quantity, unitPrice, totalPrice, discountLocked)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `);
     for (const item of data.items) {
       const totalPrice = item.product.price * item.quantity;
@@ -624,7 +636,8 @@ function createBill(data) {
         item.product.size || null,
         item.quantity,
         item.product.price,
-        totalPrice
+        totalPrice,
+        item.discountLocked ? 1 : 0
       );
       updateStock(item.product.id, -item.quantity, "sale", billId2);
     }
@@ -837,8 +850,8 @@ function updateBill(billId, data) {
       }
       db2.prepare("DELETE FROM bill_items WHERE billId = ?").run(billId);
       const itemStmt = db2.prepare(`
-        INSERT INTO bill_items (billId, productId, productName, size, quantity, unitPrice, totalPrice)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO bill_items (billId, productId, productName, size, quantity, unitPrice, totalPrice, discountLocked)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
       `);
       for (const item of data.items) {
         const totalPrice = item.product.price * item.quantity;
@@ -849,7 +862,8 @@ function updateBill(billId, data) {
           item.product.size || null,
           item.quantity,
           item.product.price,
-          totalPrice
+          totalPrice,
+          item.discountLocked ? 1 : 0
         );
         updateStock(item.product.id, -item.quantity, "sale", billId);
       }
@@ -983,8 +997,8 @@ function restoreDeletedBill(deletedBillId) {
     );
     const newBillId = Number(billResult.lastInsertRowid);
     const itemStmt = db2.prepare(`
-      INSERT INTO bill_items (billId, productId, productName, size, quantity, unitPrice, totalPrice)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO bill_items (billId, productId, productName, size, quantity, unitPrice, totalPrice, discountLocked)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `);
     for (const item of itemsData) {
       itemStmt.run(
@@ -994,7 +1008,8 @@ function restoreDeletedBill(deletedBillId) {
         item.size || null,
         item.quantity,
         item.unitPrice,
-        item.totalPrice
+        item.totalPrice,
+        item.discountLocked || 0
       );
       updateStock(item.productId, -item.quantity, "sale", newBillId);
     }

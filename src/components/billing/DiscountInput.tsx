@@ -3,16 +3,24 @@ import { useStore } from '../../store/useStore';
 
 export function DiscountInput() {
   const {
+    cart,
     discountPercent,
     discountAmount,
     setDiscountPercent,
     setDiscountAmount,
-    getSubtotal,
     settings,
   } = useStore();
 
-  const subtotal = getSubtotal();
   const maxDiscount = settings?.maxDiscountPercent || 30;
+  
+  // Calculate discountable and locked subtotals
+  const discountableSubtotal = cart
+    .filter(item => !item.discountLocked)
+    .reduce((sum, item) => sum + item.product.price * item.quantity, 0);
+  const lockedSubtotal = cart
+    .filter(item => item.discountLocked)
+    .reduce((sum, item) => sum + item.product.price * item.quantity, 0);
+  const hasLockedItems = lockedSubtotal > 0;
 
   const handlePercentChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = Math.min(Math.max(0, parseFloat(e.target.value) || 0), maxDiscount);
@@ -20,7 +28,7 @@ export function DiscountInput() {
   };
 
   const handleAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = Math.min(Math.max(0, parseFloat(e.target.value) || 0), subtotal);
+    const value = Math.min(Math.max(0, parseFloat(e.target.value) || 0), discountableSubtotal);
     setDiscountAmount(value);
   };
 
@@ -32,6 +40,33 @@ export function DiscountInput() {
       >
         Discount (max {maxDiscount}%)
       </p>
+      {hasLockedItems && (
+        <div 
+          className="mb-2 p-2 bg-amber-50 border border-amber-200 rounded-lg text-xs"
+          style={{ 
+            marginBottom: '8px', 
+            padding: '8px', 
+            backgroundColor: '#fffbeb', 
+            border: '1px solid #fde68a',
+            borderRadius: '8px',
+            fontSize: '11px',
+            color: '#92400e'
+          }}
+        >
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2px' }}>
+            <span>Discountable:</span>
+            <span style={{ fontFamily: 'JetBrains Mono, monospace', fontWeight: '500' }}>
+              ₹{discountableSubtotal.toLocaleString()}
+            </span>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+            <span>Locked (no discount):</span>
+            <span style={{ fontFamily: 'JetBrains Mono, monospace', fontWeight: '500' }}>
+              ₹{lockedSubtotal.toLocaleString()}
+            </span>
+          </div>
+        </div>
+      )}
       <div 
         className="flex items-center gap-2"
         style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
@@ -115,7 +150,7 @@ export function DiscountInput() {
             onChange={handleAmountChange}
             placeholder="0"
             min="0"
-            max={subtotal}
+            max={discountableSubtotal}
             step="1"
             className="w-full h-9 pl-8 pr-3 text-sm font-mono bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:border-green-500 focus:ring-1 focus:ring-green-500 transition-colors"
             style={{

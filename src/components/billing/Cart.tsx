@@ -1,9 +1,9 @@
-import { Minus, Plus, Trash2, ShoppingCart } from 'lucide-react';
+import { Minus, Plus, Trash2, ShoppingCart, Lock, Unlock } from 'lucide-react';
 import { useStore } from '../../store/useStore';
 import toast from 'react-hot-toast';
 
 export function Cart() {
-  const { cart, updateCartQuantity, removeFromCart } = useStore();
+  const { cart, updateCartQuantity, removeFromCart, toggleDiscountLock } = useStore();
 
   const handleQuantityChange = (productId: number, newQuantity: number, maxStock: number) => {
     if (newQuantity < 1) {
@@ -129,6 +129,26 @@ export function Cart() {
                       {item.product.size}
                     </span>
                   )}
+                  {item.discountLocked && (
+                    <span 
+                      className="flex-shrink-0 px-1.5 py-0.5 text-[10px] font-medium bg-amber-100 text-amber-700 rounded flex items-center gap-1"
+                      style={{
+                        flexShrink: '0',
+                        padding: '2px 6px',
+                        fontSize: '10px',
+                        fontWeight: '500',
+                        backgroundColor: '#fef3c7',
+                        color: '#b45309',
+                        borderRadius: '4px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '2px'
+                      }}
+                    >
+                      <Lock size={10} />
+                      No Discount
+                    </span>
+                  )}
                 </div>
                 <p 
                   className="text-xs text-slate-400 font-mono mt-0.5"
@@ -147,29 +167,66 @@ export function Cart() {
                   ) : null}
                 </p>
               </div>
-              <button
-                onClick={() => removeFromCart(item.product.id)}
-                className="p-1 text-slate-400 hover:text-red-500 transition-colors"
-                style={{
-                  padding: '4px',
-                  backgroundColor: 'transparent',
-                  border: 'none',
-                  borderRadius: '4px',
-                  cursor: 'pointer',
-                  color: '#94a3b8',
-                  transition: 'all 0.2s ease'
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.color = '#ef4444';
-                  e.currentTarget.style.backgroundColor = '#fef2f2';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.color = '#94a3b8';
-                  e.currentTarget.style.backgroundColor = 'transparent';
-                }}
-              >
-                <Trash2 size={14} />
-              </button>
+              <div style={{ display: 'flex', gap: '4px' }}>
+                <button
+                  onClick={() => {
+                    toggleDiscountLock(item.product.id);
+                    toast.success(item.discountLocked ? 'Discount unlocked' : 'Discount locked');
+                  }}
+                  className="p-1 transition-colors"
+                  title={item.discountLocked ? 'Unlock discount' : 'Lock discount'}
+                  style={{
+                    padding: '4px',
+                    backgroundColor: item.discountLocked ? '#fef3c7' : 'transparent',
+                    border: 'none',
+                    borderRadius: '4px',
+                    cursor: 'pointer',
+                    color: item.discountLocked ? '#b45309' : '#94a3b8',
+                    transition: 'all 0.2s ease'
+                  }}
+                  onMouseEnter={(e) => {
+                    if (item.discountLocked) {
+                      e.currentTarget.style.backgroundColor = '#fde68a';
+                    } else {
+                      e.currentTarget.style.color = '#f59e0b';
+                      e.currentTarget.style.backgroundColor = '#fffbeb';
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    if (item.discountLocked) {
+                      e.currentTarget.style.backgroundColor = '#fef3c7';
+                    } else {
+                      e.currentTarget.style.color = '#94a3b8';
+                      e.currentTarget.style.backgroundColor = 'transparent';
+                    }
+                  }}
+                >
+                  {item.discountLocked ? <Lock size={14} /> : <Unlock size={14} />}
+                </button>
+                <button
+                  onClick={() => removeFromCart(item.product.id)}
+                  className="p-1 text-slate-400 hover:text-red-500 transition-colors"
+                  style={{
+                    padding: '4px',
+                    backgroundColor: 'transparent',
+                    border: 'none',
+                    borderRadius: '4px',
+                    cursor: 'pointer',
+                    color: '#94a3b8',
+                    transition: 'all 0.2s ease'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.color = '#ef4444';
+                    e.currentTarget.style.backgroundColor = '#fef2f2';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.color = '#94a3b8';
+                    e.currentTarget.style.backgroundColor = 'transparent';
+                  }}
+                >
+                  <Trash2 size={14} />
+                </button>
+              </div>
             </div>
 
             <div 

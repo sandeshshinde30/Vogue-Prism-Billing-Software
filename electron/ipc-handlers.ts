@@ -50,6 +50,21 @@ import {
   getProductPerformance
 } from './DB/reports';
 import {
+  getAnalytics
+} from './DB/analytics';
+import {
+  exportBackup,
+  importBackup,
+  getDatabaseStats
+} from './DB/backup';
+import {
+  addActivityLog,
+  getActivityLogs,
+  getLogsCount,
+  cleanupOldLogs
+} from './DB/logs';
+} from './DB/reports';
+import {
   exportBackup,
   importBackup,
   getDatabaseStats
@@ -1404,6 +1419,17 @@ $shell.Run("notepad /p \\"$filePath\\"", 0, $true)
       }
     } catch (error) {
       return { success: false, error: String(error) };
+    }
+  });
+
+  // ===== ANALYTICS HANDLERS =====
+  
+  ipcMain.handle('analytics:get', async (_, dateFrom: string, dateTo: string) => {
+    try {
+      return getAnalytics(dateFrom, dateTo);
+    } catch (error) {
+      console.error('Error getting analytics:', error);
+      throw error;
     }
   });
 

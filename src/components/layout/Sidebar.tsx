@@ -11,6 +11,7 @@ import {
   FileEdit,
   Printer,
   Trash2,
+  BarChart3,
 } from 'lucide-react';
 import { getLogoPath } from '../../utils/assetPath';
 
@@ -20,6 +21,7 @@ const navItems = [
   { to: '/products', icon: Package, label: 'Products' },
   { to: '/stock', icon: Boxes, label: 'Stock' },
   { to: '/reports', icon: FileBarChart, label: 'Reports' },
+  { to: '/analytics', icon: BarChart3, label: 'Analytics' },
   { to: '/logs', icon: Activity, label: 'Logs' },
   { to: '/bill-management', icon: FileEdit, label: 'Bill Management' },
   { to: '/deleted-bills', icon: Trash2, label: 'Deleted Bills' },

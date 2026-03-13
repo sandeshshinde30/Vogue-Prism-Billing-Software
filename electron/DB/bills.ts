@@ -11,6 +11,7 @@ export interface BillData {
       price: number;
     };
     quantity: number;
+    discountLocked?: boolean;
   }>;
   subtotal: number;
   discountPercent: number;
@@ -53,8 +54,8 @@ export function createBill(data: BillData) {
     
     // Insert bill items and update stock
     const itemStmt = db.prepare(`
-      INSERT INTO bill_items (billId, productId, productName, size, quantity, unitPrice, totalPrice)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO bill_items (billId, productId, productName, size, quantity, unitPrice, totalPrice, discountLocked)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `);
     
     for (const item of data.items) {
@@ -68,7 +69,8 @@ export function createBill(data: BillData) {
         item.product.size || null,
         item.quantity,
         item.product.price,
-        totalPrice
+        totalPrice,
+        item.discountLocked ? 1 : 0
       );
       
       // Update product stock (negative quantity for sale)
@@ -354,8 +356,8 @@ export function updateBill(billId: number, data: Partial<BillData>) {
       
       // Insert new items and update stock
       const itemStmt = db.prepare(`
-        INSERT INTO bill_items (billId, productId, productName, size, quantity, unitPrice, totalPrice)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO bill_items (billId, productId, productName, size, quantity, unitPrice, totalPrice, discountLocked)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
       `);
       
       for (const item of data.items) {
@@ -368,7 +370,8 @@ export function updateBill(billId: number, data: Partial<BillData>) {
           item.product.size || null,
           item.quantity,
           item.product.price,
-          totalPrice
+          totalPrice,
+          item.discountLocked ? 1 : 0
         );
         
         // Update product stock (negative quantity for sale)
@@ -544,8 +547,8 @@ export function restoreDeletedBill(deletedBillId: number) {
     
     // Restore bill items
     const itemStmt = db.prepare(`
-      INSERT INTO bill_items (billId, productId, productName, size, quantity, unitPrice, totalPrice)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO bill_items (billId, productId, productName, size, quantity, unitPrice, totalPrice, discountLocked)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `);
     
     for (const item of itemsData) {
@@ -556,7 +559,8 @@ export function restoreDeletedBill(deletedBillId: number) {
         item.size || null,
         item.quantity,
         item.unitPrice,
-        item.totalPrice
+        item.totalPrice,
+        item.discountLocked || 0
       );
       
       // Reduce stock again (since it was restored when deleted)

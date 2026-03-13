@@ -187,10 +187,25 @@ export async function initDatabase() {
       quantity INTEGER NOT NULL,
       unitPrice REAL NOT NULL,
       totalPrice REAL NOT NULL,
+      discountLocked INTEGER NOT NULL DEFAULT 0,
       FOREIGN KEY (billId) REFERENCES bills (id),
       FOREIGN KEY (productId) REFERENCES products (id)
     );
   `);
+
+  // Migration: Add discountLocked column to bill_items if it doesn't exist
+  try {
+    const billItemsTableInfo = db.prepare("PRAGMA table_info(bill_items)").all();
+    const hasDiscountLocked = billItemsTableInfo.some((column: any) => column.name === 'discountLocked');
+    
+    if (!hasDiscountLocked) {
+      console.log('Adding discountLocked column to bill_items table...');
+      db.exec('ALTER TABLE bill_items ADD COLUMN discountLocked INTEGER NOT NULL DEFAULT 0');
+      console.log('Migration completed: discountLocked column added');
+    }
+  } catch (error) {
+    console.error('Bill items migration error:', error);
+  }
 
   // Create stock_logs table for tracking stock changes
   db.exec(`

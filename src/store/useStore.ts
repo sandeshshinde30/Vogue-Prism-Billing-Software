@@ -14,6 +14,7 @@ interface AppState {
   addToCart: (product: Product) => boolean; // Returns true if added successfully
   removeFromCart: (productId: number) => void;
   updateCartQuantity: (productId: number, quantity: number) => void;
+  toggleDiscountLock: (productId: number) => void;
   clearCart: () => void;
   getCartQuantity: (productId: number) => number; // Helper to get current cart quantity
   canAddToCart: (product: Product) => boolean; // Check if product can be added
@@ -121,7 +122,8 @@ export const useStore = create<AppState>((set, get) => ({
           quantity: 1,
           productName: product.name,
           unitPrice: product.price,
-          totalPrice: product.price
+          totalPrice: product.price,
+          discountLocked: false
         }]
       });
     }
@@ -143,19 +145,49 @@ export const useStore = create<AppState>((set, get) => ({
           : item
       ),
     })),
+  toggleDiscountLock: (productId) => {
+    const state = get();
+    const currentDiscountPercent = state.discountPercent;
+    
+    // Toggle the lock status
+    const newCart = state.cart.map((item) =>
+      item.product.id === productId
+        ? { ...item, discountLocked: !item.discountLocked }
+        : item
+    );
+    
+    set({ cart: newCart });
+    
+    // Recalculate discount amount based on new discountable subtotal
+    if (currentDiscountPercent > 0) {
+      const discountableSubtotal = newCart
+        .filter(item => !item.discountLocked)
+        .reduce((sum, item) => sum + item.product.price * item.quantity, 0);
+      const newDiscountAmount = (discountableSubtotal * currentDiscountPercent) / 100;
+      set({ discountAmount: Math.round(newDiscountAmount * 100) / 100 });
+    }
+  },
   clearCart: () => set({ cart: [], discountPercent: 0, discountAmount: 0, manualTotal: null, cashAmount: 0, upiAmount: 0, customerMobileNumber: '' }),
 
   // Discount
   discountPercent: 0,
   discountAmount: 0,
   setDiscountPercent: (percent) => {
-    const subtotal = get().getSubtotal();
-    const amount = (subtotal * percent) / 100;
+    const { cart } = get();
+    // Calculate subtotal only for unlocked items
+    const discountableSubtotal = cart
+      .filter(item => !item.discountLocked)
+      .reduce((sum, item) => sum + item.product.price * item.quantity, 0);
+    const amount = (discountableSubtotal * percent) / 100;
     set({ discountPercent: percent, discountAmount: Math.round(amount * 100) / 100 });
   },
   setDiscountAmount: (amount) => {
-    const subtotal = get().getSubtotal();
-    const percent = subtotal > 0 ? (amount / subtotal) * 100 : 0;
+    const { cart } = get();
+    // Calculate subtotal only for unlocked items
+    const discountableSubtotal = cart
+      .filter(item => !item.discountLocked)
+      .reduce((sum, item) => sum + item.product.price * item.quantity, 0);
+    const percent = discountableSubtotal > 0 ? (amount / discountableSubtotal) * 100 : 0;
     set({ discountAmount: amount, discountPercent: Math.round(percent * 100) / 100 });
   },
 

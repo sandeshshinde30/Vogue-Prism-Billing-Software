@@ -9,3 +9,4 @@ export { Logs } from './Logs';
 export { BillManagement } from './BillManagement';
 export { DeletedBills } from './DeletedBills';
 export { PrinterManagement } from './PrinterManagement';
+export { Analytics } from './Analytics';
