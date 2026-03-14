@@ -61,5 +61,10 @@ electron.contextBridge.exposeInMainWorld("electronAPI", {
   getLogsCount: (entityType, dateFrom, dateTo) => electron.ipcRenderer.invoke("logs:getCount", entityType, dateFrom, dateTo),
   cleanupLogs: () => electron.ipcRenderer.invoke("logs:cleanup"),
   // Analytics
-  getAnalytics: (dateFrom, dateTo) => electron.ipcRenderer.invoke("analytics:get", dateFrom, dateTo)
+  getAnalytics: (dateFrom, dateTo) => electron.ipcRenderer.invoke("analytics:get", dateFrom, dateTo),
+  // Combos
+  getCombos: () => electron.ipcRenderer.invoke("combos:getAll"),
+  createCombo: (data) => electron.ipcRenderer.invoke("combos:create", data),
+  updateCombo: (id, data) => electron.ipcRenderer.invoke("combos:update", id, data),
+  deleteCombo: (id) => electron.ipcRenderer.invoke("combos:delete", id)
 });

@@ -69,6 +69,12 @@ export interface ElectronAPI {
 
   // Analytics
   getAnalytics: (dateFrom: string, dateTo: string) => Promise<any>;
+
+  // Combos
+  getCombos: () => Promise<any[]>;
+  createCombo: (data: any) => Promise<number>;
+  updateCombo: (id: number, data: any) => Promise<{ success: boolean }>;
+  deleteCombo: (id: number) => Promise<{ success: boolean }>;
 }
 
 contextBridge.exposeInMainWorld('electronAPI', {
@@ -151,4 +157,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Analytics
   getAnalytics: (dateFrom: string, dateTo: string) => 
     ipcRenderer.invoke('analytics:get', dateFrom, dateTo),
+
+  // Combos
+  getCombos: () => ipcRenderer.invoke('combos:getAll'),
+  createCombo: (data: any) => ipcRenderer.invoke('combos:create', data),
+  updateCombo: (id: number, data: any) => ipcRenderer.invoke('combos:update', id, data),
+  deleteCombo: (id: number) => ipcRenderer.invoke('combos:delete', id),
 } as ElectronAPI);

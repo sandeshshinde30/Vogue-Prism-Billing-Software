@@ -12,20 +12,22 @@ import {
   Printer,
   Trash2,
   BarChart3,
+  Layers,
 } from 'lucide-react';
 import { getLogoPath } from '../../utils/assetPath';
 
 const navItems = [
   { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
   { to: '/billing', icon: ShoppingCart, label: 'Billing' },
+  { to: '/combos', icon: Layers, label: 'Combos' },
   { to: '/products', icon: Package, label: 'Products' },
   { to: '/stock', icon: Boxes, label: 'Stock' },
+  { to: '/bill-management', icon: FileEdit, label: 'Bill Management' },
   { to: '/reports', icon: FileBarChart, label: 'Reports' },
   { to: '/analytics', icon: BarChart3, label: 'Analytics' },
-  { to: '/logs', icon: Activity, label: 'Logs' },
-  { to: '/bill-management', icon: FileEdit, label: 'Bill Management' },
   { to: '/deleted-bills', icon: Trash2, label: 'Deleted Bills' },
-  { to: '/printer-management', icon: Printer, label: 'Printer Management' },
+  { to: '/logs', icon: Activity, label: 'Logs' },
+  { to: '/printer-management', icon: Printer, label: 'Printer' },
   { to: '/backup', icon: Database, label: 'Backup' },
   { to: '/settings', icon: Settings, label: 'Settings' },
 ];

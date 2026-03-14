@@ -274,6 +274,26 @@ export async function initDatabase() {
     CREATE INDEX IF NOT EXISTS idx_stock_logs_product ON stock_logs(productId);
   `);
 
+  // Combos tables
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS combos (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      description TEXT,
+      isActive INTEGER NOT NULL DEFAULT 1,
+      createdAt TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+      updatedAt TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+    );
+    CREATE TABLE IF NOT EXISTS combo_items (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      comboId INTEGER NOT NULL,
+      productId INTEGER NOT NULL,
+      quantity INTEGER NOT NULL DEFAULT 1,
+      FOREIGN KEY (comboId) REFERENCES combos(id) ON DELETE CASCADE,
+      FOREIGN KEY (productId) REFERENCES products(id)
+    );
+  `);
+
   console.log('Database initialized at', dbPath);
 }
 

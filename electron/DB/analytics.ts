@@ -339,7 +339,7 @@ export function getAnalytics(dateFrom: string, dateTo: string): AnalyticsData {
       p.name,
       COALESCE(SUM(bi.quantity), 0) as quantitySold,
       COALESCE(SUM(bi.totalPrice), 0) as revenue,
-      COALESCE(JULIANDAY('now') - JULIANDAY(MAX(b.createdAt)), 999) as daysSinceLastSale
+      COALESCE(MAX(CAST((JULIANDAY('now', 'localtime') - JULIANDAY(b.createdAt)) AS INTEGER)), 999) as daysSinceLastSale
     FROM products p
     LEFT JOIN bill_items bi ON p.id = bi.productId
     LEFT JOIN bills b ON bi.billId = b.id AND date(b.createdAt) BETWEEN ? AND ?

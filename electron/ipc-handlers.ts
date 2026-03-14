@@ -53,6 +53,13 @@ import {
   getAnalytics
 } from './DB/analytics';
 import {
+  getCombos,
+  createCombo,
+  updateCombo,
+  deleteCombo,
+  ComboData
+} from './DB/combos';
+import {
   exportBackup,
   importBackup,
   getDatabaseStats
@@ -1419,6 +1426,20 @@ $shell.Run("notepad /p \\"$filePath\\"", 0, $true)
       console.error('Error getting analytics:', error);
       throw error;
     }
+  });
+
+  // Combos
+  ipcMain.handle('combos:getAll', async () => {
+    try { return getCombos(); } catch (e) { console.error(e); throw e; }
+  });
+  ipcMain.handle('combos:create', async (_, data: ComboData) => {
+    try { return createCombo(data); } catch (e) { console.error(e); throw e; }
+  });
+  ipcMain.handle('combos:update', async (_, id: number, data: ComboData) => {
+    try { updateCombo(id, data); return { success: true }; } catch (e) { console.error(e); throw e; }
+  });
+  ipcMain.handle('combos:delete', async (_, id: number) => {
+    try { deleteCombo(id); return { success: true }; } catch (e) { console.error(e); throw e; }
   });
 
   console.log('All IPC handlers set up successfully');

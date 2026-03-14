@@ -86,6 +86,15 @@ export function Analytics() {
   const [productSort, setProductSort] = useState<SortConfig>({ key: '', direction: null });
   const [dailySort, setDailySort] = useState<SortConfig>({ key: '', direction: null });
 
+  // Growth comparison independent state
+  const [growthRange, setGrowthRange] = useState<'day' | 'week' | 'month' | 'year' | 'custom'>('week');
+  const [growthCurrentFrom, setGrowthCurrentFrom] = useState('');
+  const [growthCurrentTo, setGrowthCurrentTo] = useState('');
+  const [growthPrevFrom, setGrowthPrevFrom] = useState('');
+  const [growthPrevTo, setGrowthPrevTo] = useState('');
+  const [growthData, setGrowthData] = useState<AnalyticsData['salesGrowth'] | null>(null);
+  const [growthLoading, setGrowthLoading] = useState(false);
+
   const loadAnalytics = async () => {
     setLoading(true);
     try {
@@ -123,6 +132,79 @@ export function Analytics() {
   useEffect(() => {
     loadAnalytics();
   }, [dateRange, dateFrom, dateTo]);
+
+  const loadGrowthData = async (
+    range: typeof growthRange,
+    curFrom: string,
+    curTo: string,
+    prevFrom: string,
+    prevTo: string
+  ) => {
+    setGrowthLoading(true);
+    try {
+      const today = new Date();
+      let currentFrom = new Date();
+      let currentTo = new Date(today);
+      let previousFrom = new Date();
+      let previousTo = new Date();
+
+      if (range !== 'custom') {
+        switch (range) {
+          case 'day':
+            currentFrom = new Date(today);
+            previousFrom = new Date(today);
+            previousFrom.setDate(today.getDate() - 1);
+            previousTo = new Date(previousFrom);
+            break;
+          case 'week':
+            currentFrom.setDate(today.getDate() - 7);
+            previousFrom.setDate(today.getDate() - 14);
+            previousTo.setDate(today.getDate() - 7);
+            break;
+          case 'month':
+            currentFrom.setMonth(today.getMonth() - 1);
+            previousFrom.setMonth(today.getMonth() - 2);
+            previousTo.setMonth(today.getMonth() - 1);
+            break;
+          case 'year':
+            currentFrom.setFullYear(today.getFullYear() - 1);
+            previousFrom.setFullYear(today.getFullYear() - 2);
+            previousTo.setFullYear(today.getFullYear() - 1);
+            break;
+        }
+        curFrom = currentFrom.toISOString().split('T')[0];
+        curTo = currentTo.toISOString().split('T')[0];
+        prevFrom = previousFrom.toISOString().split('T')[0];
+        prevTo = previousTo.toISOString().split('T')[0];
+      }
+
+      const [currentData, previousData] = await Promise.all([
+        (window.electronAPI as any).getAnalytics(curFrom, curTo),
+        (window.electronAPI as any).getAnalytics(prevFrom, prevTo),
+      ]);
+
+      const currentRevenue = currentData.summary.totalRevenue;
+      const previousRevenue = previousData.summary.totalRevenue;
+      const growthPercentage = previousRevenue > 0
+        ? ((currentRevenue - previousRevenue) / previousRevenue) * 100
+        : 100;
+
+      setGrowthData({
+        currentRevenue,
+        previousRevenue,
+        growthPercentage,
+        currentPeriodData: currentData.dailyStats.map((d: any) => ({ date: d.date, sales: d.sales })),
+        previousPeriodData: previousData.dailyStats.map((d: any) => ({ date: d.date, sales: d.sales })),
+      });
+    } catch (error) {
+      console.error('Error loading growth data:', error);
+    }
+    setGrowthLoading(false);
+  };
+
+  useEffect(() => {
+    loadGrowthData(growthRange, growthCurrentFrom, growthCurrentTo, growthPrevFrom, growthPrevTo);
+  }, [growthRange, growthCurrentFrom, growthCurrentTo, growthPrevFrom, growthPrevTo]);
 
   const handleSort = (key: string, type: 'product' | 'daily') => {
     const sortConfig = type === 'product' ? productSort : dailySort;
@@ -316,7 +398,7 @@ export function Analytics() {
       </div>
 
       {/* Charts Row 1 */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(450px, 1fr))', gap: '24px', marginBottom: '24px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '24px', marginBottom: '24px' }}>
         {/* Sales & Profit Trend */}
         <div style={{ backgroundColor: 'white', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', border: '1px solid #e5e7eb', padding: '24px' }}>
           <h3 style={{ fontSize: '18px', fontWeight: '600', color: '#111827', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -375,7 +457,7 @@ export function Analytics() {
       </div>
 
       {/* Charts Row 2 */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(450px, 1fr))', gap: '24px', marginBottom: '24px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '24px', marginBottom: '24px' }}>
         {/* Category Performance */}
         <div style={{ backgroundColor: 'white', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', border: '1px solid #e5e7eb', padding: '24px' }}>
           <h3 style={{ fontSize: '18px', fontWeight: '600', color: '#111827', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -414,73 +496,8 @@ export function Analytics() {
         </div>
       </div>
 
-      {/* Top Products Table */}
-      <div style={{ backgroundColor: 'white', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', border: '1px solid #e5e7eb', padding: '24px', marginBottom: '24px' }}>
-        <h3 style={{ fontSize: '18px', fontWeight: '600', color: '#111827', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <Package style={{ color: '#22c55e' }} size={20} />
-          Top Performing Products
-        </h3>
-        <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead>
-              <tr style={{ borderBottom: '2px solid #e5e7eb' }}>
-                <th onClick={() => handleSort('name', 'product')} style={{ textAlign: 'left', padding: '12px 16px', fontSize: '14px', fontWeight: '600', color: '#374151', cursor: 'pointer', userSelect: 'none' }}>
-                  Product {productSort.key === 'name' && (productSort.direction === 'asc' ? '↑' : productSort.direction === 'desc' ? '↓' : '')}
-                </th>
-                <th onClick={() => handleSort('quantity', 'product')} style={{ textAlign: 'right', padding: '12px 16px', fontSize: '14px', fontWeight: '600', color: '#374151', cursor: 'pointer', userSelect: 'none' }}>
-                  Quantity {productSort.key === 'quantity' && (productSort.direction === 'asc' ? '↑' : productSort.direction === 'desc' ? '↓' : '')}
-                </th>
-                <th onClick={() => handleSort('revenue', 'product')} style={{ textAlign: 'right', padding: '12px 16px', fontSize: '14px', fontWeight: '600', color: '#374151', cursor: 'pointer', userSelect: 'none' }}>
-                  Revenue {productSort.key === 'revenue' && (productSort.direction === 'asc' ? '↑' : productSort.direction === 'desc' ? '↓' : '')}
-                </th>
-                <th onClick={() => handleSort('profit', 'product')} style={{ textAlign: 'right', padding: '12px 16px', fontSize: '14px', fontWeight: '600', color: '#374151', cursor: 'pointer', userSelect: 'none' }}>
-                  Profit {productSort.key === 'profit' && (productSort.direction === 'asc' ? '↑' : productSort.direction === 'desc' ? '↓' : '')}
-                </th>
-                <th onClick={() => handleSort('margin', 'product')} style={{ textAlign: 'right', padding: '12px 16px', fontSize: '14px', fontWeight: '600', color: '#374151', cursor: 'pointer', userSelect: 'none' }}>
-                  Margin {productSort.key === 'margin' && (productSort.direction === 'asc' ? '↑' : productSort.direction === 'desc' ? '↓' : '')}
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {getSortedData(
-                data.topProducts.map(p => ({ ...p, margin: p.revenue > 0 ? (p.profit / p.revenue) * 100 : 0 })), 
-                productSort
-              ).map((product, index) => {
-                const margin = product.margin;
-                return (
-                  <tr key={index} style={{ borderBottom: '1px solid #f3f4f6' }}>
-                    <td style={{ padding: '12px 16px', fontSize: '14px', color: '#111827' }}>{product.name}</td>
-                    <td style={{ padding: '12px 16px', fontSize: '14px', color: '#374151', textAlign: 'right' }}>{product.quantity}</td>
-                    <td style={{ padding: '12px 16px', fontSize: '14px', color: '#111827', textAlign: 'right', fontWeight: '500' }}>
-                      ₹{product.revenue.toLocaleString()}
-                    </td>
-                    <td style={{ padding: '12px 16px', fontSize: '14px', textAlign: 'right' }}>
-                      <span style={{ color: product.profit >= 0 ? '#22c55e' : '#ef4444', fontWeight: '500' }}>
-                        ₹{product.profit.toLocaleString()}
-                      </span>
-                    </td>
-                    <td style={{ padding: '12px 16px', fontSize: '14px', textAlign: 'right' }}>
-                      <span style={{
-                        padding: '4px 8px',
-                        borderRadius: '9999px',
-                        fontSize: '12px',
-                        fontWeight: '500',
-                        backgroundColor: margin >= 30 ? '#dcfce7' : margin >= 15 ? '#fef3c7' : '#fee2e2',
-                        color: margin >= 30 ? '#166534' : margin >= 15 ? '#92400e' : '#991b1b'
-                      }}>
-                        {margin.toFixed(1)}%
-                      </span>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
       {/* Daily Performance Table */}
-      <div style={{ backgroundColor: 'white', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', border: '1px solid #e5e7eb', padding: '24px' }}>
+      <div style={{ backgroundColor: 'white', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', border: '1px solid #e5e7eb', padding: '24px', marginBottom: '24px' }}>
         <h3 style={{ fontSize: '18px', fontWeight: '600', color: '#111827', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
           <Calendar style={{ color: '#3b82f6' }} size={20} />
           Daily Performance
@@ -554,48 +571,131 @@ export function Analytics() {
       
       {/* 1. Sales Growth Trend */}
       <div style={{ backgroundColor: 'white', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', border: '1px solid #e5e7eb', padding: '24px', marginBottom: '24px' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px', flexWrap: 'wrap', gap: '12px' }}>
           <h3 style={{ fontSize: '18px', fontWeight: '600', color: '#111827', display: 'flex', alignItems: 'center', gap: '8px' }}>
             <TrendingUp style={{ color: '#22c55e' }} size={20} />
             Sales Growth Comparison
           </h3>
-          <div style={{ textAlign: 'right' }}>
-            <div style={{ fontSize: '24px', fontWeight: '700', color: data.salesGrowth.growthPercentage >= 0 ? '#22c55e' : '#ef4444', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              {data.salesGrowth.growthPercentage >= 0 ? <TrendingUp size={24} /> : <TrendingDown size={24} />}
-              {data.salesGrowth.growthPercentage.toFixed(1)}%
+          {growthData && (
+            <div style={{ textAlign: 'right' }}>
+              <div style={{ fontSize: '24px', fontWeight: '700', color: growthData.growthPercentage >= 0 ? '#22c55e' : '#ef4444', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                {growthData.growthPercentage >= 0 ? <TrendingUp size={24} /> : <TrendingDown size={24} />}
+                {growthData.growthPercentage.toFixed(1)}%
+              </div>
+              <p style={{ fontSize: '12px', color: '#6b7280' }}>vs Previous Period</p>
             </div>
-            <p style={{ fontSize: '12px', color: '#6b7280' }}>vs Previous Period</p>
+          )}
+        </div>
+
+        {/* Period selector */}
+        <div style={{ backgroundColor: '#f9fafb', borderRadius: '8px', padding: '12px 16px', marginBottom: '16px', display: 'flex', flexWrap: 'wrap', gap: '12px', alignItems: 'flex-end' }}>
+          {/* Quick range buttons */}
+          <div>
+            <p style={{ fontSize: '12px', color: '#6b7280', marginBottom: '6px' }}>Quick Range</p>
+            <div style={{ display: 'flex', gap: '6px' }}>
+              {(['day', 'week', 'month', 'year'] as const).map((r) => (
+                <button
+                  key={r}
+                  onClick={() => {
+                    setGrowthRange(r);
+                    setGrowthCurrentFrom('');
+                    setGrowthCurrentTo('');
+                    setGrowthPrevFrom('');
+                    setGrowthPrevTo('');
+                  }}
+                  style={{
+                    padding: '6px 14px',
+                    borderRadius: '6px',
+                    fontSize: '13px',
+                    fontWeight: '500',
+                    border: 'none',
+                    cursor: 'pointer',
+                    backgroundColor: growthRange === r && !growthCurrentFrom ? '#22c55e' : '#e5e7eb',
+                    color: growthRange === r && !growthCurrentFrom ? 'white' : '#374151',
+                  }}
+                >
+                  {r.charAt(0).toUpperCase() + r.slice(1)}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Current period */}
+          <div>
+            <p style={{ fontSize: '12px', color: '#6b7280', marginBottom: '6px' }}>Current Period</p>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <input
+                type="date"
+                value={growthCurrentFrom}
+                onChange={(e) => { setGrowthCurrentFrom(e.target.value); setGrowthRange('custom'); }}
+                style={{ padding: '6px 10px', border: '1px solid #d1d5db', borderRadius: '6px', fontSize: '13px' }}
+              />
+              <span style={{ color: '#6b7280', fontSize: '12px' }}>to</span>
+              <input
+                type="date"
+                value={growthCurrentTo}
+                onChange={(e) => { setGrowthCurrentTo(e.target.value); setGrowthRange('custom'); }}
+                style={{ padding: '6px 10px', border: '1px solid #d1d5db', borderRadius: '6px', fontSize: '13px' }}
+              />
+            </div>
+          </div>
+
+          {/* Previous period */}
+          <div>
+            <p style={{ fontSize: '12px', color: '#6b7280', marginBottom: '6px' }}>Previous Period</p>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <input
+                type="date"
+                value={growthPrevFrom}
+                onChange={(e) => { setGrowthPrevFrom(e.target.value); setGrowthRange('custom'); }}
+                style={{ padding: '6px 10px', border: '1px solid #d1d5db', borderRadius: '6px', fontSize: '13px' }}
+              />
+              <span style={{ color: '#6b7280', fontSize: '12px' }}>to</span>
+              <input
+                type="date"
+                value={growthPrevTo}
+                onChange={(e) => { setGrowthPrevTo(e.target.value); setGrowthRange('custom'); }}
+                style={{ padding: '6px 10px', border: '1px solid #d1d5db', borderRadius: '6px', fontSize: '13px' }}
+              />
+            </div>
           </div>
         </div>
-        <ResponsiveContainer width="100%" height={300}>
-          <AreaChart data={data.salesGrowth.currentPeriodData.map((curr, idx) => ({
-            date: curr.date,
-            current: curr.sales,
-            previous: data.salesGrowth.previousPeriodData[idx]?.sales || 0
-          }))}>
-            <defs>
-              <linearGradient id="colorCurrent" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor="#22c55e" stopOpacity={0.8}/>
-                <stop offset="95%" stopColor="#22c55e" stopOpacity={0}/>
-              </linearGradient>
-              <linearGradient id="colorPrevious" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor="#6b7280" stopOpacity={0.8}/>
-                <stop offset="95%" stopColor="#6b7280" stopOpacity={0}/>
-              </linearGradient>
-            </defs>
-            <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-            <XAxis dataKey="date" stroke="#6b7280" style={{ fontSize: '12px' }} />
-            <YAxis stroke="#6b7280" style={{ fontSize: '12px' }} />
-            <Tooltip contentStyle={{ backgroundColor: '#fff', border: '1px solid #e5e7eb', borderRadius: '8px' }} />
-            <Legend />
-            <Area type="monotone" dataKey="current" stroke="#22c55e" fillOpacity={1} fill="url(#colorCurrent)" name="Current Period (₹)" />
-            <Area type="monotone" dataKey="previous" stroke="#6b7280" fillOpacity={1} fill="url(#colorPrevious)" name="Previous Period (₹)" />
-          </AreaChart>
-        </ResponsiveContainer>
+
+        {growthLoading ? (
+          <div style={{ height: '300px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <RefreshCw className="animate-spin" style={{ color: '#22c55e' }} size={24} />
+          </div>
+        ) : growthData ? (
+          <ResponsiveContainer width="100%" height={300}>
+            <AreaChart data={growthData.currentPeriodData.map((curr, idx) => ({
+              date: curr.date,
+              current: curr.sales,
+              previous: growthData.previousPeriodData[idx]?.sales || 0
+            }))}>
+              <defs>
+                <linearGradient id="colorCurrent" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#22c55e" stopOpacity={0.8}/>
+                  <stop offset="95%" stopColor="#22c55e" stopOpacity={0}/>
+                </linearGradient>
+                <linearGradient id="colorPrevious" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#6b7280" stopOpacity={0.8}/>
+                  <stop offset="95%" stopColor="#6b7280" stopOpacity={0}/>
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+              <XAxis dataKey="date" stroke="#6b7280" style={{ fontSize: '12px' }} />
+              <YAxis stroke="#6b7280" style={{ fontSize: '12px' }} />
+              <Tooltip contentStyle={{ backgroundColor: '#fff', border: '1px solid #e5e7eb', borderRadius: '8px' }} />
+              <Legend />
+              <Area type="monotone" dataKey="current" stroke="#22c55e" fillOpacity={1} fill="url(#colorCurrent)" name="Current Period (₹)" />
+              <Area type="monotone" dataKey="previous" stroke="#6b7280" fillOpacity={1} fill="url(#colorPrevious)" name="Previous Period (₹)" />
+            </AreaChart>
+          </ResponsiveContainer>
+        ) : null}
       </div>
 
       {/* Row with 2 charts */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(350px, 1fr))', gap: '24px', marginBottom: '24px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '24px', marginBottom: '24px' }}>
         
         {/* Customer Retention */}
         <div style={{ backgroundColor: 'white', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', border: '1px solid #e5e7eb', padding: '24px' }}>
@@ -628,36 +728,88 @@ export function Analytics() {
             Repeat Rate: <span style={{ fontWeight: '600', color: '#22c55e' }}>{data.customerRetention.repeatPercentage.toFixed(1)}%</span>
           </p>
         </div>
-          </p>
-        </div>
 
         {/* 10. Sales Target Progress */}
-        <div style={{ backgroundColor: 'white', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', border: '1px solid #e5e7eb', padding: '24px' }}>
-          <h3 style={{ fontSize: '18px', fontWeight: '600', color: '#111827', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <BarChart3 style={{ color: '#14b8a6' }} size={20} />
-            Monthly Sales Target
-          </h3>
-          <div style={{ marginBottom: '16px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-              <span style={{ fontSize: '14px', color: '#6b7280' }}>Target: ₹{data.salesTarget.target.toLocaleString()}</span>
-              <span style={{ fontSize: '14px', fontWeight: '600', color: '#111827' }}>₹{data.salesTarget.achieved.toLocaleString()}</span>
+        {(() => {
+          const pct = Math.min(data.salesTarget.percentage, 100);
+          const r = 44;
+          const circ = 2 * Math.PI * r;
+          const dash = (pct / 100) * circ;
+          const color = pct >= 100 ? '#22c55e' : pct >= 75 ? '#3b82f6' : pct >= 40 ? '#f59e0b' : '#ef4444';
+          const remaining = data.salesTarget.target - data.salesTarget.achieved;
+          return (
+            <div style={{
+              backgroundColor: 'white',
+              borderRadius: '12px',
+              border: '1px solid #e5e7eb',
+              boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+              padding: '20px',
+              display: 'flex',
+              flexDirection: 'column',
+              justifyContent: 'space-between',
+            }}>
+              {/* Header */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <BarChart3 style={{ color: '#14b8a6' }} size={18} />
+                  <span style={{ fontSize: '15px', fontWeight: '600', color: '#111827' }}>Monthly Sales Target</span>
+                </div>
+                <span style={{
+                  fontSize: '12px', fontWeight: '600', padding: '3px 10px',
+                  borderRadius: '9999px',
+                  backgroundColor: pct >= 100 ? '#dcfce7' : pct >= 75 ? '#dbeafe' : pct >= 40 ? '#fef3c7' : '#fee2e2',
+                  color: pct >= 100 ? '#166534' : pct >= 75 ? '#1d4ed8' : pct >= 40 ? '#92400e' : '#991b1b',
+                }}>
+                  {pct >= 100 ? '🎉 Achieved' : `${data.salesTarget.percentage.toFixed(1)}%`}
+                </span>
+              </div>
+
+              {/* Ring + stats */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '20px', flex: 1 }}>
+                <div style={{ position: 'relative', flexShrink: 0 }}>
+                  <svg width="108" height="108" style={{ transform: 'rotate(-90deg)' }}>
+                    <circle cx="54" cy="54" r={r} fill="none" stroke="#f3f4f6" strokeWidth="9" />
+                    <circle cx="54" cy="54" r={r} fill="none" stroke={color} strokeWidth="9"
+                      strokeDasharray={`${dash} ${circ}`} strokeLinecap="round" />
+                  </svg>
+                  <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+                    <span style={{ fontSize: '18px', fontWeight: '800', color, lineHeight: 1 }}>{data.salesTarget.percentage.toFixed(0)}%</span>
+                    <span style={{ fontSize: '9px', color: '#9ca3af', marginTop: '2px' }}>of target</span>
+                  </div>
+                </div>
+
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '7px' }}>
+                  {[
+                    { label: 'Target', value: `₹${data.salesTarget.target.toLocaleString()}`, highlight: false },
+                    { label: 'Achieved', value: `₹${data.salesTarget.achieved.toLocaleString()}`, highlight: true },
+                    { label: pct >= 100 ? 'Status' : 'Remaining', value: pct >= 100 ? 'Done 🎉' : `₹${remaining.toLocaleString()}`, highlight: false },
+                  ].map(({ label, value, highlight }) => (
+                    <div key={label} style={{
+                      display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                      padding: '7px 11px', borderRadius: '7px',
+                      backgroundColor: highlight ? `${color}10` : '#f9fafb',
+                      border: `1px solid ${highlight ? `${color}30` : '#e5e7eb'}`
+                    }}>
+                      <span style={{ fontSize: '12px', color: '#6b7280' }}>{label}</span>
+                      <span style={{ fontSize: '13px', fontWeight: '700', color: highlight ? color : '#111827' }}>{value}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Progress bar */}
+              <div style={{ marginTop: '16px' }}>
+                <div style={{ height: '5px', backgroundColor: '#f3f4f6', borderRadius: '3px', overflow: 'hidden' }}>
+                  <div style={{ height: '100%', width: `${pct}%`, background: `linear-gradient(90deg, ${color}70, ${color})`, borderRadius: '3px' }} />
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '3px' }}>
+                  <span style={{ fontSize: '10px', color: '#9ca3af' }}>0%</span>
+                  <span style={{ fontSize: '10px', color: '#9ca3af' }}>100%</span>
+                </div>
+              </div>
             </div>
-            <div style={{ width: '100%', height: '24px', backgroundColor: '#f3f4f6', borderRadius: '12px', overflow: 'hidden' }}>
-              <div style={{ 
-                width: `${Math.min(data.salesTarget.percentage, 100)}%`, 
-                height: '100%', 
-                backgroundColor: data.salesTarget.percentage >= 100 ? '#22c55e' : data.salesTarget.percentage >= 75 ? '#3b82f6' : '#f59e0b',
-                transition: 'width 0.3s ease'
-              }} />
-            </div>
-            <p style={{ textAlign: 'center', fontSize: '24px', fontWeight: '700', color: '#111827', marginTop: '16px' }}>
-              {data.salesTarget.percentage.toFixed(1)}%
-            </p>
-            <p style={{ textAlign: 'center', fontSize: '12px', color: '#6b7280' }}>
-              {data.salesTarget.percentage >= 100 ? 'Target Achieved! 🎉' : `₹${(data.salesTarget.target - data.salesTarget.achieved).toLocaleString()} remaining`}
-            </p>
-          </div>
-        </div>
+          );
+        })()}
       </div>
 
       {/* 6. Peak Sales Day */}
@@ -685,7 +837,7 @@ export function Analytics() {
       </div>
 
       {/* 4. Product Profitability & 9. Discount Effectiveness */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(450px, 1fr))', gap: '24px', marginBottom: '24px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '24px', marginBottom: '24px' }}>
         
         {/* 4. Product Profitability */}
         <div style={{ backgroundColor: 'white', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', border: '1px solid #e5e7eb', padding: '24px' }}>
@@ -728,8 +880,68 @@ export function Analytics() {
         </div>
       </div>
 
+      {/* Top Performing Products (all-time from current filter) */}
+      <div style={{ backgroundColor: 'white', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', border: '1px solid #e5e7eb', padding: '24px', marginBottom: '24px' }}>
+        <h3 style={{ fontSize: '18px', fontWeight: '600', color: '#111827', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <Package style={{ color: '#22c55e' }} size={20} />
+          Top Performing Products
+        </h3>
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead>
+              <tr style={{ backgroundColor: '#f9fafb', borderBottom: '2px solid #e5e7eb' }}>
+                <th onClick={() => handleSort('name', 'product')} style={{ textAlign: 'left', padding: '12px 16px', fontSize: '13px', fontWeight: '600', color: '#374151', cursor: 'pointer', userSelect: 'none' }}>
+                  Product {productSort.key === 'name' ? (productSort.direction === 'asc' ? '↑' : '↓') : ''}
+                </th>
+                <th onClick={() => handleSort('quantity', 'product')} style={{ textAlign: 'right', padding: '12px 16px', fontSize: '13px', fontWeight: '600', color: '#374151', cursor: 'pointer', userSelect: 'none' }}>
+                  Qty {productSort.key === 'quantity' ? (productSort.direction === 'asc' ? '↑' : '↓') : ''}
+                </th>
+                <th onClick={() => handleSort('revenue', 'product')} style={{ textAlign: 'right', padding: '12px 16px', fontSize: '13px', fontWeight: '600', color: '#374151', cursor: 'pointer', userSelect: 'none' }}>
+                  Revenue {productSort.key === 'revenue' ? (productSort.direction === 'asc' ? '↑' : '↓') : ''}
+                </th>
+                <th onClick={() => handleSort('profit', 'product')} style={{ textAlign: 'right', padding: '12px 16px', fontSize: '13px', fontWeight: '600', color: '#374151', cursor: 'pointer', userSelect: 'none' }}>
+                  Profit {productSort.key === 'profit' ? (productSort.direction === 'asc' ? '↑' : '↓') : ''}
+                </th>
+                <th onClick={() => handleSort('margin', 'product')} style={{ textAlign: 'right', padding: '12px 16px', fontSize: '13px', fontWeight: '600', color: '#374151', cursor: 'pointer', userSelect: 'none' }}>
+                  Margin {productSort.key === 'margin' ? (productSort.direction === 'asc' ? '↑' : '↓') : ''}
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {getSortedData(
+                data.topProducts.map(p => ({ ...p, margin: p.revenue > 0 ? (p.profit / p.revenue) * 100 : 0 })),
+                productSort
+              ).map((product, index) => {
+                const margin = product.margin;
+                return (
+                  <tr key={index} style={{ borderBottom: '1px solid #f3f4f6', backgroundColor: index % 2 === 0 ? 'white' : '#fafafa' }}>
+                    <td style={{ padding: '11px 16px', fontSize: '14px', color: '#111827' }}>{product.name}</td>
+                    <td style={{ padding: '11px 16px', fontSize: '14px', color: '#374151', textAlign: 'right' }}>{product.quantity}</td>
+                    <td style={{ padding: '11px 16px', fontSize: '14px', color: '#111827', textAlign: 'right', fontWeight: '500' }}>₹{product.revenue.toLocaleString()}</td>
+                    <td style={{ padding: '11px 16px', fontSize: '14px', textAlign: 'right' }}>
+                      <span style={{ color: product.profit >= 0 ? '#22c55e' : '#ef4444', fontWeight: '500' }}>
+                        ₹{product.profit.toLocaleString()}
+                      </span>
+                    </td>
+                    <td style={{ padding: '11px 16px', fontSize: '14px', textAlign: 'right' }}>
+                      <span style={{
+                        padding: '3px 10px', borderRadius: '9999px', fontSize: '12px', fontWeight: '500',
+                        backgroundColor: margin >= 30 ? '#dcfce7' : margin >= 15 ? '#fef3c7' : '#fee2e2',
+                        color: margin >= 30 ? '#166534' : margin >= 15 ? '#92400e' : '#991b1b'
+                      }}>
+                        {margin.toFixed(1)}%
+                      </span>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
       {/* Tables Row */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(450px, 1fr))', gap: '24px', marginBottom: '24px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '24px', marginBottom: '24px' }}>
         
         {/* 5. Low Performing Products */}
         <div style={{ backgroundColor: 'white', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', border: '1px solid #e5e7eb', padding: '24px' }}>

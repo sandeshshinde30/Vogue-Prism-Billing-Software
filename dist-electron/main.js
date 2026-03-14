@@ -219,6 +219,24 @@ async function initDatabase() {
     CREATE INDEX IF NOT EXISTS idx_bill_items_bill ON bill_items(billId);
     CREATE INDEX IF NOT EXISTS idx_stock_logs_product ON stock_logs(productId);
   `);
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS combos (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      description TEXT,
+      isActive INTEGER NOT NULL DEFAULT 1,
+      createdAt TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+      updatedAt TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+    );
+    CREATE TABLE IF NOT EXISTS combo_items (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      comboId INTEGER NOT NULL,
+      productId INTEGER NOT NULL,
+      quantity INTEGER NOT NULL DEFAULT 1,
+      FOREIGN KEY (comboId) REFERENCES combos(id) ON DELETE CASCADE,
+      FOREIGN KEY (productId) REFERENCES products(id)
+    );
+  `);
   console.log("Database initialized at", dbPath);
 }
 function getDatabase() {
@@ -1351,11 +1369,10 @@ function getAnalytics(dateFrom, dateTo) {
       CAST(strftime('%H', createdAt) AS INTEGER) as hour,
       COALESCE(SUM(total), 0) as sales
     FROM bills
-    WHERE date(createdAt) BETWEEN ? AND ?
     GROUP BY hour
     ORDER BY hour
   `);
-  const hourlyData = hourlyStmt.all(dateFrom, dateTo);
+  const hourlyData = hourlyStmt.all();
   const hourlyStats = Array.from({ length: 24 }, (_, i) => {
     const hourData = hourlyData.find((h) => h.hour === i);
     return {
@@ -1415,7 +1432,7 @@ function getAnalytics(dateFrom, dateTo) {
   const totalCost = (costData == null ? void 0 : costData.totalCost) || 0;
   const totalProfit = summaryData.totalRevenue - totalCost;
   const profitMargin = summaryData.totalRevenue > 0 ? totalProfit / summaryData.totalRevenue * 100 : 0;
-  const daysDiff = Math.ceil((new Date(dateTo).getTime() - new Date(dateFrom).getTime()) / (1e3 * 60 * 60 * 24));
+  const daysDiff = Math.ceil((new Date(dateTo).getTime() - new Date(dateFrom).getTime()) / (1e3 * 60 * 60 * 24)) + 1;
   const prevDateFrom = new Date(new Date(dateFrom).getTime() - daysDiff * 24 * 60 * 60 * 1e3).toISOString().split("T")[0];
   const prevDateTo = new Date(new Date(dateFrom).getTime() - 1 * 24 * 60 * 60 * 1e3).toISOString().split("T")[0];
   const currentPeriodStmt = db2.prepare(`
@@ -1429,24 +1446,14 @@ function getAnalytics(dateFrom, dateTo) {
     FROM bills WHERE date(createdAt) BETWEEN ? AND ?
     GROUP BY date(createdAt) ORDER BY date(createdAt)
   `);
-  const previousPeriodData = previousPeriodStmt.all(prevDateFrom, prevDateTo);
+  const previousPeriodDataRaw = previousPeriodStmt.all(prevDateFrom, prevDateTo);
+  const previousPeriodData = previousPeriodDataRaw.map((item, idx) => ({
+    date: `Day ${idx + 1}`,
+    sales: item.sales
+  }));
   const currentRevenue = currentPeriodData.reduce((sum, d) => sum + d.sales, 0);
-  const previousRevenue = previousPeriodData.reduce((sum, d) => sum + d.sales, 0);
+  const previousRevenue = previousPeriodDataRaw.reduce((sum, d) => sum + d.sales, 0);
   const growthPercentage = previousRevenue > 0 ? (currentRevenue - previousRevenue) / previousRevenue * 100 : 0;
-  const sizesStmt = db2.prepare(`
-    SELECT 
-      COALESCE(p.size, 'N/A') as size,
-      SUM(bi.quantity) as quantity,
-      SUM(bi.totalPrice) as revenue
-    FROM bill_items bi
-    JOIN bills b ON bi.billId = b.id
-    LEFT JOIN products p ON bi.productId = p.id
-    WHERE date(b.createdAt) BETWEEN ? AND ?
-    GROUP BY p.size
-    ORDER BY quantity DESC
-    LIMIT 10
-  `);
-  const bestSellingSizes = sizesStmt.all(dateFrom, dateTo);
   const customerStmt = db2.prepare(`
     SELECT customerMobileNumber, COUNT(*) as purchaseCount
     FROM bills
@@ -1483,7 +1490,7 @@ function getAnalytics(dateFrom, dateTo) {
       p.name,
       COALESCE(SUM(bi.quantity), 0) as quantitySold,
       COALESCE(SUM(bi.totalPrice), 0) as revenue,
-      COALESCE(JULIANDAY('now') - JULIANDAY(MAX(b.createdAt)), 999) as daysSinceLastSale
+      COALESCE(MAX(CAST((JULIANDAY('now', 'localtime') - JULIANDAY(b.createdAt)) AS INTEGER)), 999) as daysSinceLastSale
     FROM products p
     LEFT JOIN bill_items bi ON p.id = bi.productId
     LEFT JOIN bills b ON bi.billId = b.id AND date(b.createdAt) BETWEEN ? AND ?
@@ -1559,7 +1566,9 @@ function getAnalytics(dateFrom, dateTo) {
     avgBillWithDiscount: discountData.avgBillWithDiscount || 0,
     avgBillWithoutDiscount: discountData.avgBillWithoutDiscount || 0
   };
-  const monthlyTarget = 1e5;
+  const targetSettingStmt = db2.prepare(`SELECT value FROM settings WHERE key = 'monthlyTarget'`);
+  const targetSetting = targetSettingStmt.get();
+  const monthlyTarget = targetSetting ? parseFloat(targetSetting.value) : 1e5;
   const targetStmt = db2.prepare(`
     SELECT COALESCE(SUM(total), 0) as achieved
     FROM bills
@@ -1592,7 +1601,6 @@ function getAnalytics(dateFrom, dateTo) {
       currentPeriodData,
       previousPeriodData
     },
-    bestSellingSizes,
     customerRetention: {
       repeatCustomers,
       newCustomers,
@@ -1606,6 +1614,84 @@ function getAnalytics(dateFrom, dateTo) {
     discountEffectiveness,
     salesTarget
   };
+}
+function getCombos() {
+  const db2 = getDatabase();
+  const combos = db2.prepare(`SELECT * FROM combos WHERE isActive = 1 ORDER BY createdAt DESC`).all();
+  const itemsStmt = db2.prepare(`
+    SELECT ci.*, p.name as productName, p.price, p.stock, p.size, p.category, p.costPrice
+    FROM combo_items ci
+    JOIN products p ON p.id = ci.productId
+    WHERE ci.comboId = ?
+  `);
+  return combos.map((combo) => ({
+    ...combo,
+    items: itemsStmt.all(combo.id)
+  }));
+}
+function createCombo(data) {
+  const db2 = getDatabase();
+  const tx = db2.transaction(() => {
+    const result = db2.prepare(
+      `INSERT INTO combos (name, description) VALUES (?, ?)`
+    ).run(data.name, data.description || null);
+    const comboId2 = result.lastInsertRowid;
+    const itemStmt = db2.prepare(
+      `INSERT INTO combo_items (comboId, productId, quantity) VALUES (?, ?, ?)`
+    );
+    for (const item of data.items) {
+      itemStmt.run(comboId2, item.productId, item.quantity);
+    }
+    return comboId2;
+  });
+  const comboId = tx();
+  addActivityLog(
+    "create",
+    "system",
+    `Created combo: "${data.name}" with ${data.items.length} item(s)`,
+    comboId,
+    void 0,
+    JSON.stringify(data)
+  );
+  return comboId;
+}
+function updateCombo(id, data) {
+  const db2 = getDatabase();
+  const old = db2.prepare(`SELECT * FROM combos WHERE id = ?`).get(id);
+  const tx = db2.transaction(() => {
+    db2.prepare(
+      `UPDATE combos SET name = ?, description = ?, updatedAt = datetime('now','localtime') WHERE id = ?`
+    ).run(data.name, data.description || null, id);
+    db2.prepare(`DELETE FROM combo_items WHERE comboId = ?`).run(id);
+    const itemStmt = db2.prepare(
+      `INSERT INTO combo_items (comboId, productId, quantity) VALUES (?, ?, ?)`
+    );
+    for (const item of data.items) {
+      itemStmt.run(id, item.productId, item.quantity);
+    }
+  });
+  tx();
+  addActivityLog(
+    "update",
+    "system",
+    `Updated combo: "${data.name}"`,
+    id,
+    old ? JSON.stringify({ name: old.name, description: old.description }) : void 0,
+    JSON.stringify(data)
+  );
+}
+function deleteCombo(id) {
+  const db2 = getDatabase();
+  const combo = db2.prepare(`SELECT * FROM combos WHERE id = ?`).get(id);
+  db2.prepare(`UPDATE combos SET isActive = 0 WHERE id = ?`).run(id);
+  addActivityLog(
+    "delete",
+    "system",
+    `Deleted combo: "${(combo == null ? void 0 : combo.name) || id}"`,
+    id,
+    JSON.stringify(combo),
+    void 0
+  );
 }
 async function exportBackup() {
   try {
@@ -3042,6 +3128,40 @@ $shell.Run("notepad /p \\"$filePath\\"", 0, $true)
     } catch (error) {
       console.error("Error getting analytics:", error);
       throw error;
+    }
+  });
+  ipcMain.handle("combos:getAll", async () => {
+    try {
+      return getCombos();
+    } catch (e) {
+      console.error(e);
+      throw e;
+    }
+  });
+  ipcMain.handle("combos:create", async (_, data) => {
+    try {
+      return createCombo(data);
+    } catch (e) {
+      console.error(e);
+      throw e;
+    }
+  });
+  ipcMain.handle("combos:update", async (_, id, data) => {
+    try {
+      updateCombo(id, data);
+      return { success: true };
+    } catch (e) {
+      console.error(e);
+      throw e;
+    }
+  });
+  ipcMain.handle("combos:delete", async (_, id) => {
+    try {
+      deleteCombo(id);
+      return { success: true };
+    } catch (e) {
+      console.error(e);
+      throw e;
     }
   });
   console.log("All IPC handlers set up successfully");
