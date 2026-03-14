@@ -63,18 +63,6 @@ import {
   getLogsCount,
   cleanupOldLogs
 } from './DB/logs';
-} from './DB/reports';
-import {
-  exportBackup,
-  importBackup,
-  getDatabaseStats
-} from './DB/backup';
-import {
-  addActivityLog,
-  getActivityLogs,
-  getLogsCount,
-  cleanupOldLogs
-} from './DB/logs';
 
 export function setupIpcHandlers() {
   

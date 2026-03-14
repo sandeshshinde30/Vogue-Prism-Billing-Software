@@ -59,5 +59,7 @@ electron.contextBridge.exposeInMainWorld("electronAPI", {
   // Logs
   getActivityLogs: (limit, offset, entityType, dateFrom, dateTo) => electron.ipcRenderer.invoke("logs:getActivity", limit, offset, entityType, dateFrom, dateTo),
   getLogsCount: (entityType, dateFrom, dateTo) => electron.ipcRenderer.invoke("logs:getCount", entityType, dateFrom, dateTo),
-  cleanupLogs: () => electron.ipcRenderer.invoke("logs:cleanup")
+  cleanupLogs: () => electron.ipcRenderer.invoke("logs:cleanup"),
+  // Analytics
+  getAnalytics: (dateFrom, dateTo) => electron.ipcRenderer.invoke("analytics:get", dateFrom, dateTo)
 });

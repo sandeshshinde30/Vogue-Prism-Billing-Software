@@ -79,6 +79,52 @@ interface ElectronAPI {
   getActivityLogs: (limit?: number, offset?: number, entityType?: string, dateFrom?: string, dateTo?: string) => Promise<any[]>;
   getLogsCount: (entityType?: string, dateFrom?: string, dateTo?: string) => Promise<{ count: number }>;
   cleanupLogs: () => Promise<{ success: boolean; deletedCount: number }>;
+
+  // Analytics
+  getAnalytics: (dateFrom: string, dateTo: string) => Promise<{
+    dailyStats: Array<{ date: string; sales: number; profit: number; cost: number; bills: number }>;
+    categoryBreakdown: Array<{ category: string; value: number; profit: number }>;
+    paymentModeStats: Array<{ mode: string; value: number; percentage: number }>;
+    hourlyStats: Array<{ hour: string; sales: number }>;
+    topProducts: Array<{ name: string; quantity: number; revenue: number; profit: number }>;
+    summary: {
+      totalRevenue: number;
+      totalProfit: number;
+      totalCost: number;
+      totalBills: number;
+      avgBillValue: number;
+      profitMargin: number;
+    };
+    salesGrowth: {
+      currentRevenue: number;
+      previousRevenue: number;
+      growthPercentage: number;
+      currentPeriodData: Array<{ date: string; sales: number }>;
+      previousPeriodData: Array<{ date: string; sales: number }>;
+    };
+    bestSellingSizes: Array<{ size: string; quantity: number; revenue: number }>;
+    customerRetention: {
+      repeatCustomers: number;
+      newCustomers: number;
+      repeatPercentage: number;
+    };
+    profitableProducts: Array<{ name: string; revenue: number; cost: number; profit: number; profitMargin: number }>;
+    lowPerformingProducts: Array<{ name: string; quantitySold: number; revenue: number; daysSinceLastSale: number }>;
+    peakSalesDay: Array<{ weekday: string; revenue: number; bills: number }>;
+    productBundles: Array<{ productA: string; productB: string; timesBoughtTogether: number }>;
+    inventoryRisk: Array<{ product: string; stock: number; avgDailySales: number; daysLeft: number }>;
+    discountEffectiveness: {
+      revenueWithDiscount: number;
+      revenueWithoutDiscount: number;
+      avgBillWithDiscount: number;
+      avgBillWithoutDiscount: number;
+    };
+    salesTarget: {
+      target: number;
+      achieved: number;
+      percentage: number;
+    };
+  }>;
 }
 
 declare global {

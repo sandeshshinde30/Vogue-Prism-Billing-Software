@@ -1267,6 +1267,346 @@ function getProductPerformance(dateFrom, dateTo, limit = 10) {
   `);
   return stmt.all(dateFrom, dateTo, limit);
 }
+function getAnalytics(dateFrom, dateTo) {
+  const db2 = getDatabase();
+  console.log("Analytics query - dateFrom:", dateFrom, "dateTo:", dateTo);
+  const dailyStatsStmt = db2.prepare(`
+    SELECT 
+      date(b.createdAt) as date,
+      COALESCE(SUM(b.total), 0) as sales,
+      COUNT(*) as bills
+    FROM bills b
+    WHERE date(b.createdAt) BETWEEN ? AND ?
+    GROUP BY date(b.createdAt)
+    ORDER BY date(b.createdAt) DESC
+  `);
+  const dailyStatsRaw = dailyStatsStmt.all(dateFrom, dateTo);
+  const dailyStats = dailyStatsRaw.map((day) => {
+    const costStmt2 = db2.prepare(`
+      SELECT 
+        COALESCE(SUM(bi.quantity * COALESCE(p.costPrice, 0)), 0) as cost
+      FROM bill_items bi
+      JOIN bills b ON bi.billId = b.id
+      LEFT JOIN products p ON bi.productId = p.id
+      WHERE date(b.createdAt) = ?
+    `);
+    const costData2 = costStmt2.get(day.date);
+    const cost = (costData2 == null ? void 0 : costData2.cost) || 0;
+    const profit = day.sales - cost;
+    return {
+      date: day.date,
+      sales: day.sales,
+      profit,
+      cost,
+      bills: day.bills
+    };
+  });
+  const categoryStmt = db2.prepare(`
+    SELECT 
+      COALESCE(p.category, 'Unknown') as category,
+      COALESCE(SUM(bi.totalPrice), 0) as value
+    FROM bill_items bi
+    JOIN bills b ON bi.billId = b.id
+    LEFT JOIN products p ON bi.productId = p.id
+    WHERE date(b.createdAt) BETWEEN ? AND ?
+    GROUP BY p.category
+    ORDER BY value DESC
+    LIMIT 10
+  `);
+  const categoryBreakdownRaw = categoryStmt.all(dateFrom, dateTo);
+  const categoryBreakdown = categoryBreakdownRaw.map((cat) => {
+    const profitStmt = db2.prepare(`
+      SELECT 
+        COALESCE(SUM(bi.quantity * (bi.unitPrice - COALESCE(p.costPrice, 0))), 0) as profit
+      FROM bill_items bi
+      JOIN bills b ON bi.billId = b.id
+      LEFT JOIN products p ON bi.productId = p.id
+      WHERE COALESCE(p.category, 'Unknown') = ?
+        AND date(b.createdAt) BETWEEN ? AND ?
+    `);
+    const profitData = profitStmt.get(cat.category, dateFrom, dateTo);
+    return {
+      category: cat.category,
+      value: cat.value,
+      profit: (profitData == null ? void 0 : profitData.profit) || 0
+    };
+  });
+  const paymentStmt = db2.prepare(`
+    SELECT 
+      paymentMode as mode,
+      COALESCE(SUM(total), 0) as value
+    FROM bills
+    WHERE date(createdAt) BETWEEN ? AND ?
+    GROUP BY paymentMode
+  `);
+  const paymentModeData = paymentStmt.all(dateFrom, dateTo);
+  const totalPayments = paymentModeData.reduce((sum, item) => sum + item.value, 0);
+  const paymentModeStats = paymentModeData.map((item) => ({
+    mode: item.mode.charAt(0).toUpperCase() + item.mode.slice(1),
+    value: item.value,
+    percentage: totalPayments > 0 ? item.value / totalPayments * 100 : 0
+  }));
+  const hourlyStmt = db2.prepare(`
+    SELECT 
+      CAST(strftime('%H', createdAt) AS INTEGER) as hour,
+      COALESCE(SUM(total), 0) as sales
+    FROM bills
+    WHERE date(createdAt) BETWEEN ? AND ?
+    GROUP BY hour
+    ORDER BY hour
+  `);
+  const hourlyData = hourlyStmt.all(dateFrom, dateTo);
+  const hourlyStats = Array.from({ length: 24 }, (_, i) => {
+    const hourData = hourlyData.find((h) => h.hour === i);
+    return {
+      hour: `${i.toString().padStart(2, "0")}:00`,
+      sales: hourData ? hourData.sales : 0
+    };
+  });
+  const topProductsStmt = db2.prepare(`
+    SELECT 
+      bi.productName as name,
+      SUM(bi.quantity) as quantity,
+      SUM(bi.totalPrice) as revenue
+    FROM bill_items bi
+    JOIN bills b ON bi.billId = b.id
+    WHERE date(b.createdAt) BETWEEN ? AND ?
+    GROUP BY bi.productName
+    ORDER BY revenue DESC
+    LIMIT 10
+  `);
+  const topProductsRaw = topProductsStmt.all(dateFrom, dateTo);
+  const topProducts = topProductsRaw.map((prod) => {
+    const profitStmt = db2.prepare(`
+      SELECT 
+        COALESCE(SUM(bi.quantity * (bi.unitPrice - COALESCE(p.costPrice, 0))), 0) as profit
+      FROM bill_items bi
+      JOIN bills b ON bi.billId = b.id
+      LEFT JOIN products p ON bi.productId = p.id
+      WHERE bi.productName = ?
+        AND date(b.createdAt) BETWEEN ? AND ?
+    `);
+    const profitData = profitStmt.get(prod.name, dateFrom, dateTo);
+    return {
+      name: prod.name,
+      quantity: prod.quantity,
+      revenue: prod.revenue,
+      profit: (profitData == null ? void 0 : profitData.profit) || 0
+    };
+  });
+  const summaryStmt = db2.prepare(`
+    SELECT 
+      COALESCE(SUM(b.total), 0) as totalRevenue,
+      COUNT(*) as totalBills,
+      COALESCE(AVG(b.total), 0) as avgBillValue
+    FROM bills b
+    WHERE date(b.createdAt) BETWEEN ? AND ?
+  `);
+  const summaryData = summaryStmt.get(dateFrom, dateTo);
+  const costStmt = db2.prepare(`
+    SELECT 
+      COALESCE(SUM(bi.quantity * COALESCE(p.costPrice, 0)), 0) as totalCost
+    FROM bill_items bi
+    JOIN bills b ON bi.billId = b.id
+    LEFT JOIN products p ON bi.productId = p.id
+    WHERE date(b.createdAt) BETWEEN ? AND ?
+  `);
+  const costData = costStmt.get(dateFrom, dateTo);
+  const totalCost = (costData == null ? void 0 : costData.totalCost) || 0;
+  const totalProfit = summaryData.totalRevenue - totalCost;
+  const profitMargin = summaryData.totalRevenue > 0 ? totalProfit / summaryData.totalRevenue * 100 : 0;
+  const daysDiff = Math.ceil((new Date(dateTo).getTime() - new Date(dateFrom).getTime()) / (1e3 * 60 * 60 * 24));
+  const prevDateFrom = new Date(new Date(dateFrom).getTime() - daysDiff * 24 * 60 * 60 * 1e3).toISOString().split("T")[0];
+  const prevDateTo = new Date(new Date(dateFrom).getTime() - 1 * 24 * 60 * 60 * 1e3).toISOString().split("T")[0];
+  const currentPeriodStmt = db2.prepare(`
+    SELECT date(createdAt) as date, COALESCE(SUM(total), 0) as sales
+    FROM bills WHERE date(createdAt) BETWEEN ? AND ?
+    GROUP BY date(createdAt) ORDER BY date(createdAt)
+  `);
+  const currentPeriodData = currentPeriodStmt.all(dateFrom, dateTo);
+  const previousPeriodStmt = db2.prepare(`
+    SELECT date(createdAt) as date, COALESCE(SUM(total), 0) as sales
+    FROM bills WHERE date(createdAt) BETWEEN ? AND ?
+    GROUP BY date(createdAt) ORDER BY date(createdAt)
+  `);
+  const previousPeriodData = previousPeriodStmt.all(prevDateFrom, prevDateTo);
+  const currentRevenue = currentPeriodData.reduce((sum, d) => sum + d.sales, 0);
+  const previousRevenue = previousPeriodData.reduce((sum, d) => sum + d.sales, 0);
+  const growthPercentage = previousRevenue > 0 ? (currentRevenue - previousRevenue) / previousRevenue * 100 : 0;
+  const sizesStmt = db2.prepare(`
+    SELECT 
+      COALESCE(p.size, 'N/A') as size,
+      SUM(bi.quantity) as quantity,
+      SUM(bi.totalPrice) as revenue
+    FROM bill_items bi
+    JOIN bills b ON bi.billId = b.id
+    LEFT JOIN products p ON bi.productId = p.id
+    WHERE date(b.createdAt) BETWEEN ? AND ?
+    GROUP BY p.size
+    ORDER BY quantity DESC
+    LIMIT 10
+  `);
+  const bestSellingSizes = sizesStmt.all(dateFrom, dateTo);
+  const customerStmt = db2.prepare(`
+    SELECT customerMobileNumber, COUNT(*) as purchaseCount
+    FROM bills
+    WHERE customerMobileNumber IS NOT NULL AND customerMobileNumber != ''
+      AND date(createdAt) BETWEEN ? AND ?
+    GROUP BY customerMobileNumber
+  `);
+  const customers = customerStmt.all(dateFrom, dateTo);
+  const repeatCustomers = customers.filter((c) => c.purchaseCount > 1).length;
+  const newCustomers = customers.filter((c) => c.purchaseCount === 1).length;
+  const totalCustomers = customers.length;
+  const repeatPercentage = totalCustomers > 0 ? repeatCustomers / totalCustomers * 100 : 0;
+  const profitableStmt = db2.prepare(`
+    SELECT 
+      bi.productName as name,
+      SUM(bi.totalPrice) as revenue,
+      SUM(bi.quantity * COALESCE(p.costPrice, 0)) as cost,
+      SUM(bi.quantity * (bi.unitPrice - COALESCE(p.costPrice, 0))) as profit
+    FROM bill_items bi
+    JOIN bills b ON bi.billId = b.id
+    LEFT JOIN products p ON bi.productId = p.id
+    WHERE date(b.createdAt) BETWEEN ? AND ?
+    GROUP BY bi.productName
+    ORDER BY profit DESC
+    LIMIT 10
+  `);
+  const profitableProductsRaw = profitableStmt.all(dateFrom, dateTo);
+  const profitableProducts = profitableProductsRaw.map((p) => ({
+    ...p,
+    profitMargin: p.revenue > 0 ? p.profit / p.revenue * 100 : 0
+  }));
+  const lowPerformingStmt = db2.prepare(`
+    SELECT 
+      p.name,
+      COALESCE(SUM(bi.quantity), 0) as quantitySold,
+      COALESCE(SUM(bi.totalPrice), 0) as revenue,
+      COALESCE(JULIANDAY('now') - JULIANDAY(MAX(b.createdAt)), 999) as daysSinceLastSale
+    FROM products p
+    LEFT JOIN bill_items bi ON p.id = bi.productId
+    LEFT JOIN bills b ON bi.billId = b.id AND date(b.createdAt) BETWEEN ? AND ?
+    WHERE p.isActive = 1
+    GROUP BY p.id, p.name
+    ORDER BY quantitySold ASC, revenue ASC
+    LIMIT 10
+  `);
+  const lowPerformingProducts = lowPerformingStmt.all(dateFrom, dateTo);
+  const peakDayStmt = db2.prepare(`
+    SELECT 
+      CASE CAST(strftime('%w', createdAt) AS INTEGER)
+        WHEN 0 THEN 'Sunday'
+        WHEN 1 THEN 'Monday'
+        WHEN 2 THEN 'Tuesday'
+        WHEN 3 THEN 'Wednesday'
+        WHEN 4 THEN 'Thursday'
+        WHEN 5 THEN 'Friday'
+        WHEN 6 THEN 'Saturday'
+      END as weekday,
+      SUM(total) as revenue,
+      COUNT(*) as bills
+    FROM bills
+    WHERE date(createdAt) BETWEEN ? AND ?
+    GROUP BY strftime('%w', createdAt)
+    ORDER BY revenue DESC
+  `);
+  const peakSalesDay = peakDayStmt.all(dateFrom, dateTo);
+  const bundleStmt = db2.prepare(`
+    SELECT 
+      bi1.productName as productA,
+      bi2.productName as productB,
+      COUNT(*) as timesBoughtTogether
+    FROM bill_items bi1
+    JOIN bill_items bi2 ON bi1.billId = bi2.billId AND bi1.productId < bi2.productId
+    JOIN bills b ON bi1.billId = b.id
+    WHERE date(b.createdAt) BETWEEN ? AND ?
+    GROUP BY bi1.productName, bi2.productName
+    HAVING timesBoughtTogether > 1
+    ORDER BY timesBoughtTogether DESC
+    LIMIT 10
+  `);
+  const productBundles = bundleStmt.all(dateFrom, dateTo);
+  const inventoryStmt = db2.prepare(`
+    SELECT 
+      p.name as product,
+      p.stock,
+      COALESCE(SUM(bi.quantity) / NULLIF(?, 1), 0) as avgDailySales
+    FROM products p
+    LEFT JOIN bill_items bi ON p.id = bi.productId
+    LEFT JOIN bills b ON bi.billId = b.id AND date(b.createdAt) BETWEEN ? AND ?
+    WHERE p.isActive = 1 AND p.stock > 0
+    GROUP BY p.id, p.name, p.stock
+  `);
+  const inventoryRaw = inventoryStmt.all(daysDiff || 1, dateFrom, dateTo);
+  const inventoryRisk = inventoryRaw.map((i) => ({
+    ...i,
+    daysLeft: i.avgDailySales > 0 ? Math.floor(i.stock / i.avgDailySales) : 999
+  })).filter((i) => i.daysLeft < 30).sort((a, b) => a.daysLeft - b.daysLeft).slice(0, 10);
+  const discountStmt = db2.prepare(`
+    SELECT 
+      SUM(CASE WHEN discountAmount > 0 THEN total ELSE 0 END) as revenueWithDiscount,
+      SUM(CASE WHEN discountAmount = 0 THEN total ELSE 0 END) as revenueWithoutDiscount,
+      AVG(CASE WHEN discountAmount > 0 THEN total ELSE NULL END) as avgBillWithDiscount,
+      AVG(CASE WHEN discountAmount = 0 THEN total ELSE NULL END) as avgBillWithoutDiscount
+    FROM bills
+    WHERE date(createdAt) BETWEEN ? AND ?
+  `);
+  const discountData = discountStmt.get(dateFrom, dateTo);
+  const discountEffectiveness = {
+    revenueWithDiscount: discountData.revenueWithDiscount || 0,
+    revenueWithoutDiscount: discountData.revenueWithoutDiscount || 0,
+    avgBillWithDiscount: discountData.avgBillWithDiscount || 0,
+    avgBillWithoutDiscount: discountData.avgBillWithoutDiscount || 0
+  };
+  const monthlyTarget = 1e5;
+  const targetStmt = db2.prepare(`
+    SELECT COALESCE(SUM(total), 0) as achieved
+    FROM bills
+    WHERE strftime('%Y-%m', createdAt) = strftime('%Y-%m', 'now')
+  `);
+  const targetData = targetStmt.get();
+  const salesTarget = {
+    target: monthlyTarget,
+    achieved: targetData.achieved || 0,
+    percentage: targetData.achieved / monthlyTarget * 100
+  };
+  return {
+    dailyStats,
+    categoryBreakdown,
+    paymentModeStats,
+    hourlyStats,
+    topProducts,
+    summary: {
+      totalRevenue: summaryData.totalRevenue,
+      totalProfit,
+      totalCost,
+      totalBills: summaryData.totalBills,
+      avgBillValue: Math.round(summaryData.avgBillValue * 100) / 100,
+      profitMargin: Math.round(profitMargin * 100) / 100
+    },
+    salesGrowth: {
+      currentRevenue,
+      previousRevenue,
+      growthPercentage: Math.round(growthPercentage * 100) / 100,
+      currentPeriodData,
+      previousPeriodData
+    },
+    bestSellingSizes,
+    customerRetention: {
+      repeatCustomers,
+      newCustomers,
+      repeatPercentage: Math.round(repeatPercentage * 100) / 100
+    },
+    profitableProducts,
+    lowPerformingProducts,
+    peakSalesDay,
+    productBundles,
+    inventoryRisk,
+    discountEffectiveness,
+    salesTarget
+  };
+}
 async function exportBackup() {
   try {
     const db2 = getDatabase();
@@ -2694,6 +3034,14 @@ $shell.Run("notepad /p \\"$filePath\\"", 0, $true)
       }
     } catch (error) {
       return { success: false, error: String(error) };
+    }
+  });
+  ipcMain.handle("analytics:get", async (_, dateFrom, dateTo) => {
+    try {
+      return getAnalytics(dateFrom, dateTo);
+    } catch (error) {
+      console.error("Error getting analytics:", error);
+      throw error;
     }
   });
   console.log("All IPC handlers set up successfully");

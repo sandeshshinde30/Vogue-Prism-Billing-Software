@@ -161,6 +161,14 @@ export function Settings() {
               placeholder="1"
               min="1"
             />
+            <Input
+              label="Monthly Sales Target (₹)"
+              type="number"
+              value={formData.monthlyTarget || '100000'}
+              onChange={(e) => handleChange('monthlyTarget', e.target.value)}
+              placeholder="100000"
+              min="0"
+            />
           </div>
           <div className="space-y-4">
             <Input
