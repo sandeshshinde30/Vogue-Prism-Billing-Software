@@ -53,6 +53,9 @@ import {
   getAnalytics
 } from './DB/analytics';
 import {
+  getForecast
+} from './DB/forecast';
+import {
   getCombos,
   createCombo,
   updateCombo,
@@ -1426,6 +1429,21 @@ $shell.Run("notepad /p \\"$filePath\\"", 0, $true)
       console.error('Error getting analytics:', error);
       throw error;
     }
+  });
+
+  // ===== FORECAST HANDLERS =====
+
+  ipcMain.handle('forecast:get', () => {
+    return new Promise((resolve, reject) => {
+      setImmediate(() => {
+        try {
+          resolve(getForecast());
+        } catch (error) {
+          console.error('Error getting forecast:', error);
+          reject(error);
+        }
+      });
+    });
   });
 
   // Combos

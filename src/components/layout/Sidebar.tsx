@@ -13,6 +13,7 @@ import {
   Trash2,
   BarChart3,
   Layers,
+  TrendingUp,
 } from 'lucide-react';
 import { getLogoPath } from '../../utils/assetPath';
 
@@ -25,6 +26,7 @@ const navItems = [
   { to: '/bill-management', icon: FileEdit, label: 'Bill Management' },
   { to: '/reports', icon: FileBarChart, label: 'Reports' },
   { to: '/analytics', icon: BarChart3, label: 'Analytics' },
+  { to: '/forecast', icon: TrendingUp, label: 'Forecast' },
   { to: '/deleted-bills', icon: Trash2, label: 'Deleted Bills' },
   { to: '/logs', icon: Activity, label: 'Logs' },
   { to: '/printer-management', icon: Printer, label: 'Printer' },

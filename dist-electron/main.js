@@ -1615,6 +1615,55 @@ function getAnalytics(dateFrom, dateTo) {
     salesTarget
   };
 }
+function getForecast() {
+  const db2 = getDatabase();
+  const now = /* @__PURE__ */ new Date();
+  `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+  const d60 = new Date(now);
+  d60.setDate(d60.getDate() - 60);
+  const day60ago = `${d60.getFullYear()}-${String(d60.getMonth() + 1).padStart(2, "0")}-${String(d60.getDate()).padStart(2, "0")}`;
+  const dailyRevenue = db2.prepare(`
+    SELECT date(createdAt, 'localtime') as date,
+           SUM(total) as revenue,
+           COUNT(*) as bills
+    FROM bills
+    WHERE date(createdAt, 'localtime') >= ?
+    GROUP BY date
+    ORDER BY date ASC
+  `).all(day60ago);
+  const products = db2.prepare(`
+    SELECT p.name, p.category, COALESCE(p.size,'') as size,
+           p.stock, p.price,
+           bi.quantity,
+           date(b.createdAt, 'localtime') as date
+    FROM bill_items bi
+    JOIN bills b ON bi.billId = b.id
+    JOIN products p ON bi.productId = p.id
+    WHERE date(b.createdAt, 'localtime') >= ?
+      AND p.isActive = 1
+    ORDER BY b.createdAt DESC
+    LIMIT 500
+  `).all(day60ago);
+  const payments = db2.prepare(`
+    SELECT date(createdAt, 'localtime') as date,
+           paymentMode as mode,
+           total
+    FROM bills
+    WHERE date(createdAt, 'localtime') >= ?
+    ORDER BY date ASC
+  `).all(day60ago);
+  const discounts = db2.prepare(`
+    SELECT discountPercent, total
+    FROM bills
+    WHERE date(createdAt, 'localtime') >= ?
+  `).all(day60ago);
+  return {
+    dailyRevenue,
+    products,
+    payments,
+    discounts
+  };
+}
 function getCombos() {
   const db2 = getDatabase();
   const combos = db2.prepare(`SELECT * FROM combos WHERE isActive = 1 ORDER BY createdAt DESC`).all();
@@ -3129,6 +3178,18 @@ $shell.Run("notepad /p \\"$filePath\\"", 0, $true)
       console.error("Error getting analytics:", error);
       throw error;
     }
+  });
+  ipcMain.handle("forecast:get", () => {
+    return new Promise((resolve, reject) => {
+      setImmediate(() => {
+        try {
+          resolve(getForecast());
+        } catch (error) {
+          console.error("Error getting forecast:", error);
+          reject(error);
+        }
+      });
+    });
   });
   ipcMain.handle("combos:getAll", async () => {
     try {

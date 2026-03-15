@@ -70,6 +70,9 @@ export interface ElectronAPI {
   // Analytics
   getAnalytics: (dateFrom: string, dateTo: string) => Promise<any>;
 
+  // Forecast
+  getForecast: () => Promise<any>;
+
   // Combos
   getCombos: () => Promise<any[]>;
   createCombo: (data: any) => Promise<number>;
@@ -157,6 +160,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Analytics
   getAnalytics: (dateFrom: string, dateTo: string) => 
     ipcRenderer.invoke('analytics:get', dateFrom, dateTo),
+
+  // Forecast
+  getForecast: () => ipcRenderer.invoke('forecast:get'),
 
   // Combos
   getCombos: () => ipcRenderer.invoke('combos:getAll'),

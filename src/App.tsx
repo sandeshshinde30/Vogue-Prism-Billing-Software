@@ -16,6 +16,7 @@ import {
   DeletedBills,
   Analytics,
   Combos,
+  Forecast,
 } from './pages';
 import { useStore } from './store/useStore';
 import { Settings as SettingsType } from './types';
@@ -69,6 +70,7 @@ function App() {
           <Route path="stock" element={<Stock />} />
           <Route path="reports" element={<Reports />} />
           <Route path="analytics" element={<Analytics />} />
+          <Route path="forecast" element={<Forecast />} />
           <Route path="combos" element={<Combos />} />
           <Route path="logs" element={<Logs />} />
           <Route path="bill-management" element={<BillManagement />} />
