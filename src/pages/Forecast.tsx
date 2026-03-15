@@ -1,331 +1,309 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState } from 'react';
 import {
-  AreaChart, Area, BarChart, Bar, LineChart, Line,
-  XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+  TrendingUp,
+  TrendingDown,
+  Calendar,
+  RefreshCw,
+  BarChart3,
+  Activity,
+  AlertCircle,
+  Target,
+} from 'lucide-react';
+import {
+  LineChart,
+  Line,
+  AreaChart,
+  Area,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
 } from 'recharts';
-import { TrendingUp, TrendingDown, Minus, RefreshCw, AlertTriangle } from 'lucide-react';
+import toast from 'react-hot-toast';
 
-// Simple data structure from backend
 interface ForecastData {
-  dailyRevenue: { date: string; revenue: number; bills: number }[];
-  products: { name: string; category: string; size: string; stock: number; price: number; quantity: number; date: string }[];
-  payments: { date: string; mode: string; total: number }[];
-  discounts: { discountPercent: number; total: number }[];
+  historicalDaily: Array<{ date: string; sales: number }>;
+  forecast30Days: Array<{ date: string; predicted: number; lower: number; upper: number }>;
+  forecast90Days: Array<{ date: string; predicted: number }>;
+  categoryTrends: Array<{ category: string; trend: number; forecast: number }>;
+  seasonalPattern: Array<{ month: string; avgSales: number }>;
+  summary: {
+    avgDailySales: number;
+    trend: number;
+    volatility: number;
+    forecast30DaysTotal: number;
+    forecast90DaysTotal: number;
+  };
+  insights: string[];
 }
 
-const fmt = (n: number) => `₹${Math.round(n).toLocaleString('en-IN')}`;
-const fmtS = (n: number) => n >= 100000 ? `₹${(n/100000).toFixed(1)}L` : n >= 1000 ? `₹${(n/1000).toFixed(1)}K` : `₹${Math.round(n)}`;
-
-function TrendBadge({ trend, pct }: { trend: 'up'|'down'|'stable'; pct?: number }) {
-  if (trend === 'up') return (
-    <span style={{ display:'inline-flex', alignItems:'center', gap:3, background:'#dcfce7', color:'#16a34a', borderRadius:6, padding:'2px 8px', fontSize:11, fontWeight:600 }}>
-      <TrendingUp size={11} /> {pct ? `+${Math.abs(pct)}%` : 'Up'}
-    </span>
-  );
-  if (trend === 'down') return (
-    <span style={{ display:'inline-flex', alignItems:'center', gap:3, background:'#fee2e2', color:'#dc2626', borderRadius:6, padding:'2px 8px', fontSize:11, fontWeight:600 }}>
-      <TrendingDown size={11} /> {pct ? `-${Math.abs(pct)}%` : 'Down'}
-    </span>
-  );
-  return (
-    <span style={{ display:'inline-flex', alignItems:'center', gap:3, background:'#f3f4f6', color:'#6b7280', borderRadius:6, padding:'2px 8px', fontSize:11, fontWeight:600 }}>
-      <Minus size={11} /> Stable
-    </span>
-  );
-}
-
-// Helper functions for calculations
-function addDays(dateStr: string, n: number): string {
-  const d = new Date(dateStr + 'T00:00:00');
-  d.setDate(d.getDate() + n);
-  return d.toISOString().split('T')[0];
-}
-
-function todayLocal(): string {
-  const now = new Date();
-  return `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
-}
-
-function wma(values: number[], window = 14): number {
-  const s = values.slice(-window);
-  if (!s.length) return 0;
-  let ws = 0, tot = 0;
-  s.forEach((v, i) => { const w = i + 1; tot += v * w; ws += w; });
-  return tot / ws;
-}
-
-function linReg(values: number[]): { slope: number } {
-  const n = values.length;
-  if (n < 2) return { slope: 0 };
-  const xm = (n - 1) / 2;
-  const ym = values.reduce((a, b) => a + b, 0) / n;
-  let num = 0, den = 0;
-  values.forEach((y, x) => { num += (x - xm) * (y - ym); den += (x - xm) ** 2; });
-  return { slope: den ? num / den : 0 };
-}
-
-function fillGaps(data: { date: string; revenue: number; bills: number }[], startDate: string, endDate: string) {
-  const map = new Map(data.map(d => [d.date, d]));
-  const filled = [];
-  let cur = startDate;
-  while (cur <= endDate) {
-    filled.push(map.get(cur) || { date: cur, revenue: 0, bills: 0 });
-    cur = addDays(cur, 1);
-  }
-  return filled;
-}
+const ACCENT = '#22c55e';
 
 export function Forecast() {
   const [data, setData] = useState<ForecastData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  const [period, setPeriod] = useState<'30' | '90'>('30');
 
-  const load = useCallback(async () => {
-    setLoading(true); setError('');
-    try {
-      const result = await window.electronAPI.getForecast();
-      setData(result);
-    } catch (e: any) {
-      setError(e?.message ?? 'Failed to load forecast');
-    } finally {
-      setLoading(false);
-    }
+  useEffect(() => {
+    loadForecast();
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  const loadForecast = async () => {
+    setLoading(true);
+    try {
+      const forecast = await (window.electronAPI as any).getForecast();
+      setData(forecast as ForecastData);
+    } catch (error) {
+      console.error('Error loading forecast:', error);
+      toast.error('Failed to load forecast data');
+    }
+    setLoading(false);
+  };
 
-  if (loading) return (
-    <div style={{ display:'flex', alignItems:'center', justifyContent:'center', height:'100%', color:'#6b7280', fontSize:14 }}>
-      Loading forecast data...
-    </div>
-  );
-
-  if (error) return (
-    <div style={{ display:'flex', alignItems:'center', justifyContent:'center', height:'100%', flexDirection:'column', gap:8 }}>
-      <AlertTriangle size={32} color="#ef4444" />
-      <p style={{ color:'#ef4444', fontSize:14 }}>{error}</p>
-      <button onClick={load} style={{ padding:'6px 16px', background:'#22c55e', color:'#fff', border:'none', borderRadius:6, cursor:'pointer', fontSize:13 }}>Retry</button>
-    </div>
-  );
+  if (loading) {
+    return (
+      <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div style={{ textAlign: 'center' }}>
+          <RefreshCw className="animate-spin" style={{ color: ACCENT, margin: '0 auto 16px' }} size={32} />
+          <p style={{ color: '#6b7280' }}>Analyzing historical data and generating forecast...</p>
+        </div>
+      </div>
+    );
+  }
 
   if (!data) return null;
 
-  // Process data in frontend
-  const today = todayLocal();
-  const d60 = addDays(today, -60);
-  
-  // Fill gaps in daily revenue
-  const dailyFilled = fillGaps(data.dailyRevenue, d60, today);
-  const revenues = dailyFilled.map(d => d.revenue);
-  const dataPoints = revenues.filter(v => v > 0).length;
-  
-  // Calculate averages
-  const avgDaily = revenues.reduce((a,b) => a+b, 0) / (revenues.length || 1);
-  
-  // Trend calculation
-  const last30 = revenues.slice(-30);
-  const { slope } = linReg(last30);
-  const trendPct = avgDaily > 0 ? (slope / avgDaily) * 100 : 0;
-  const trend: 'up'|'down'|'stable' = trendPct > 2 ? 'up' : trendPct < -2 ? 'down' : 'stable';
-  
-  // Simple forecast - next 7 days
-  const revWma = wma(revenues, 21);
-  const next7 = Array.from({length: 7}, (_, i) => Math.max(0, Math.round(revWma + slope * (i+1)))).reduce((a,b) => a+b, 0);
-  const next30 = Array.from({length: 30}, (_, i) => Math.max(0, Math.round(revWma + slope * (i+1)))).reduce((a,b) => a+b, 0);
-  
-  const confidenceScore = Math.min(100, Math.round((dataPoints / 60) * 100));
-
-  // Product analysis
-  const productMap = new Map<string, { total: number; stock: number; price: number; category: string; size: string }>();
-  data.products.forEach(p => {
-    const key = p.name;
-    if (!productMap.has(key)) {
-      productMap.set(key, { total: 0, stock: p.stock, price: p.price, category: p.category, size: p.size });
-    }
-    productMap.get(key)!.total += p.quantity;
-  });
-  
-  const topProducts = Array.from(productMap.entries())
-    .map(([name, info]) => ({ name, ...info, avgDaily: info.total / 60, daysLeft: info.total > 0 ? Math.floor(info.stock / (info.total / 60)) : 999 }))
-    .sort((a, b) => b.total - a.total)
-    .slice(0, 10);
-
-  // Payment mode analysis
-  const paymentTotals = { cash: 0, upi: 0, mixed: 0, total: 0 };
-  data.payments.forEach(p => {
-    paymentTotals[p.mode as keyof typeof paymentTotals] += p.total;
-    paymentTotals.total += p.total;
-  });
-  
-  const paymentPct = {
-    cash: Math.round((paymentTotals.cash / paymentTotals.total) * 100) || 0,
-    upi: Math.round((paymentTotals.upi / paymentTotals.total) * 100) || 0,
-    mixed: Math.round((paymentTotals.mixed / paymentTotals.total) * 100) || 0,
-  };
-
-  // Discount analysis
-  const noDiscount = data.discounts.filter(d => d.discountPercent === 0);
-  const withDiscount = data.discounts.filter(d => d.discountPercent > 0);
-  const avgNoDiscount = noDiscount.length ? noDiscount.reduce((s, d) => s + d.total, 0) / noDiscount.length : 0;
-  const avgWithDiscount = withDiscount.length ? withDiscount.reduce((s, d) => s + d.total, 0) / withDiscount.length : 0;
-
-  const card = (style?: React.CSSProperties) => ({
-    background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, padding: '16px 20px', ...style,
-  });
+  const forecastData = period === '30' ? data.forecast30Days : data.forecast90Days;
+  const forecastTotal = period === '30' ? data.summary.forecast30DaysTotal : data.summary.forecast90DaysTotal;
 
   return (
-    <div style={{ padding: '20px 24px', overflowY: 'auto', height: '100%', background: '#f9fafb' }}>
+    <div style={{ padding: '24px', maxWidth: '100%', overflowX: 'hidden' }}>
       {/* Header */}
-      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:20 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', flexWrap: 'wrap', gap: '16px' }}>
         <div>
-          <h2 style={{ fontSize:18, fontWeight:700, color:'#111827', margin:0 }}>Forecast Dashboard</h2>
-          <p style={{ fontSize:12, color:'#6b7280', margin:'2px 0 0' }}>Revenue predictions and business insights</p>
+          <h1 style={{ fontSize: '28px', fontWeight: '700', color: '#111827', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <TrendingUp style={{ color: ACCENT }} size={28} />
+            Sales Forecast
+          </h1>
+          <p style={{ fontSize: '14px', color: '#6b7280', marginTop: '4px' }}>
+            AI-powered predictions based on historical data
+          </p>
         </div>
-        <button onClick={load} style={{ display:'flex', alignItems:'center', gap:6, padding:'7px 14px', background:'#fff', border:'1px solid #e5e7eb', borderRadius:8, cursor:'pointer', fontSize:13, color:'#374151' }}>
-          <RefreshCw size={14} /> Refresh
+        <button
+          onClick={loadForecast}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            padding: '10px 20px',
+            backgroundColor: ACCENT,
+            color: 'white',
+            borderRadius: '8px',
+            border: 'none',
+            cursor: 'pointer',
+            fontSize: '14px',
+            fontWeight: '500'
+          }}
+        >
+          <RefreshCw size={16} />
+          Refresh
         </button>
       </div>
 
       {/* Summary Cards */}
-      <div style={{ display:'grid', gridTemplateColumns:'repeat(4, 1fr)', gap:14, marginBottom:20 }}>
-        {[
-          { label:'Next 7 Days', value: fmtS(next7), sub:'Projected revenue', color:'#22c55e' },
-          { label:'Next 30 Days', value: fmtS(next30), sub:'Projected revenue', color:'#6366f1' },
-          { label:'Avg Daily', value: fmtS(avgDaily), sub:`${dataPoints} data points`, color:'#f59e0b' },
-          { label:'Confidence', value:`${confidenceScore}%`, sub:'Based on data density', color: confidenceScore >= 70 ? '#22c55e' : confidenceScore >= 40 ? '#f59e0b' : '#ef4444' },
-        ].map(c => (
-          <div key={c.label} style={card()}>
-            <p style={{ fontSize:11, color:'#6b7280', margin:'0 0 6px', textTransform:'uppercase', letterSpacing:'0.05em' }}>{c.label}</p>
-            <p style={{ fontSize:22, fontWeight:700, color:c.color, margin:'0 0 4px' }}>{c.value}</p>
-            <p style={{ fontSize:11, color:'#9ca3af', margin:0 }}>{c.sub}</p>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px', marginBottom: '24px' }}>
+        <div style={{ background: 'linear-gradient(135deg, #22c55e 0%, #16a34a 100%)', borderRadius: '12px', padding: '20px', color: 'white', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)' }}>
+          <p style={{ fontSize: '12px', opacity: 0.9, marginBottom: '4px' }}>Avg Daily Sales</p>
+          <p style={{ fontSize: '24px', fontWeight: '700' }}>₹{data.summary.avgDailySales.toLocaleString()}</p>
+        </div>
+
+        <div style={{ background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)', borderRadius: '12px', padding: '20px', color: 'white', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)' }}>
+          <p style={{ fontSize: '12px', opacity: 0.9, marginBottom: '4px' }}>Sales Trend</p>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            {data.summary.trend >= 0 ? <TrendingUp size={20} /> : <TrendingDown size={20} />}
+            <p style={{ fontSize: '24px', fontWeight: '700' }}>{data.summary.trend > 0 ? '+' : ''}{data.summary.trend.toFixed(1)}%</p>
           </div>
+        </div>
+
+        <div style={{ background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)', borderRadius: '12px', padding: '20px', color: 'white', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)' }}>
+          <p style={{ fontSize: '12px', opacity: 0.9, marginBottom: '4px' }}>Volatility</p>
+          <p style={{ fontSize: '24px', fontWeight: '700' }}>{data.summary.volatility.toFixed(1)}%</p>
+        </div>
+
+        <div style={{ background: 'linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%)', borderRadius: '12px', padding: '20px', color: 'white', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)' }}>
+          <p style={{ fontSize: '12px', opacity: 0.9, marginBottom: '4px' }}>{period}-Day Forecast</p>
+          <p style={{ fontSize: '24px', fontWeight: '700' }}>₹{forecastTotal.toLocaleString()}</p>
+        </div>
+      </div>
+
+      {/* Period Selector */}
+      <div style={{ backgroundColor: 'white', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', border: '1px solid #e5e7eb', padding: '16px', marginBottom: '24px', display: 'flex', gap: '12px', alignItems: 'center' }}>
+        <span style={{ fontSize: '14px', fontWeight: '500', color: '#374151' }}>Forecast Period:</span>
+        {(['30', '90'] as const).map((p) => (
+          <button
+            key={p}
+            onClick={() => setPeriod(p)}
+            style={{
+              padding: '8px 16px',
+              borderRadius: '8px',
+              fontSize: '14px',
+              fontWeight: '500',
+              border: 'none',
+              cursor: 'pointer',
+              backgroundColor: period === p ? ACCENT : '#f3f4f6',
+              color: period === p ? 'white' : '#374151',
+              transition: 'all 0.2s'
+            }}
+          >
+            {p} Days
+          </button>
         ))}
       </div>
 
-      {/* Trend */}
-      <div style={card({ marginBottom:20, display:'flex', alignItems:'center', gap:16 })}>
-        <div>
-          <p style={{ fontSize:11, color:'#6b7280', margin:'0 0 6px', textTransform:'uppercase' }}>Revenue Trend</p>
-          <TrendBadge trend={trend} pct={Math.abs(trendPct)} />
-        </div>
-        <div style={{ width:1, height:36, background:'#e5e7eb' }} />
-        <div>
-          <p style={{ fontSize:11, color:'#6b7280', margin:'0 0 4px' }}>Data Quality</p>
-          <p style={{ fontSize:12, color:'#374151', margin:0 }}>
-            Using <strong>{dataPoints}</strong> active sales days. 
-            {confidenceScore < 50 ? ' Need more data for better accuracy.' : ' Good data coverage.'}
-          </p>
-        </div>
+      {/* Main Forecast Chart */}
+      <div style={{ backgroundColor: 'white', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', border: '1px solid #e5e7eb', padding: '24px', marginBottom: '24px' }}>
+        <h3 style={{ fontSize: '18px', fontWeight: '600', color: '#111827', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <Activity style={{ color: ACCENT }} size={20} />
+          {period}-Day Sales Forecast
+        </h3>
+        <ResponsiveContainer width="100%" height={350}>
+          <AreaChart data={forecastData}>
+            <defs>
+              <linearGradient id="colorPredicted" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%" stopColor={ACCENT} stopOpacity={0.8}/>
+                <stop offset="95%" stopColor={ACCENT} stopOpacity={0}/>
+              </linearGradient>
+            </defs>
+            <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+            <XAxis dataKey="date" stroke="#6b7280" style={{ fontSize: '12px' }} />
+            <YAxis stroke="#6b7280" style={{ fontSize: '12px' }} />
+            <Tooltip 
+              contentStyle={{ backgroundColor: '#fff', border: '1px solid #e5e7eb', borderRadius: '8px' }}
+              formatter={(value: any) => `₹${Number(value).toLocaleString()}`}
+            />
+            <Legend />
+            <Area type="monotone" dataKey="predicted" stroke={ACCENT} fillOpacity={1} fill="url(#colorPredicted)" name="Predicted Sales" />
+            {period === '30' && (
+              <>
+                <Area type="monotone" dataKey="upper" stroke="#d1d5db" strokeDasharray="5 5" fill="none" name="Upper Bound" />
+                <Area type="monotone" dataKey="lower" stroke="#d1d5db" strokeDasharray="5 5" fill="none" name="Lower Bound" />
+              </>
+            )}
+          </AreaChart>
+        </ResponsiveContainer>
       </div>
 
-      {/* Charts Row */}
-      <div style={{ display:'grid', gridTemplateColumns:'repeat(2, 1fr)', gap:14, marginBottom:20 }}>
-        {/* Revenue Chart */}
-        <div style={card()}>
-          <p style={{ fontSize:13, fontWeight:600, color:'#374151', margin:'0 0 14px' }}>Daily Revenue (Last 30 Days)</p>
-          <ResponsiveContainer width="100%" height={200}>
-            <AreaChart data={dailyFilled.slice(-30)} margin={{ top:4, right:8, left:0, bottom:0 }}>
-              <defs>
-                <linearGradient id="revGrad" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#22c55e" stopOpacity={0.18} />
-                  <stop offset="95%" stopColor="#22c55e" stopOpacity={0} />
-                </linearGradient>
-              </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" />
-              <XAxis dataKey="date" tick={{ fontSize:9, fill:'#9ca3af' }} tickFormatter={d => d.slice(5)} interval={4} />
-              <YAxis tickFormatter={fmtS} tick={{ fontSize:9, fill:'#9ca3af' }} width={50} />
-              <Tooltip formatter={(v: any) => [fmt(v), 'Revenue']} contentStyle={{ fontSize:11, borderRadius:8 }} />
-              <Area type="monotone" dataKey="revenue" stroke="#22c55e" strokeWidth={2} fill="url(#revGrad)" />
-            </AreaChart>
+      {/* Historical vs Forecast Comparison */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', gap: '24px', marginBottom: '24px' }}>
+        {/* Historical Data */}
+        <div style={{ backgroundColor: 'white', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', border: '1px solid #e5e7eb', padding: '24px' }}>
+          <h3 style={{ fontSize: '18px', fontWeight: '600', color: '#111827', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <Calendar style={{ color: '#3b82f6' }} size={20} />
+            Historical Data (Last 90 Days)
+          </h3>
+          <ResponsiveContainer width="100%" height={300}>
+            <LineChart data={data.historicalDaily.slice(-90)}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+              <XAxis dataKey="date" stroke="#6b7280" style={{ fontSize: '12px' }} />
+              <YAxis stroke="#6b7280" style={{ fontSize: '12px' }} />
+              <Tooltip 
+                contentStyle={{ backgroundColor: '#fff', border: '1px solid #e5e7eb', borderRadius: '8px' }}
+                formatter={(value: any) => `₹${Number(value).toLocaleString()}`}
+              />
+              <Legend />
+              <Line type="monotone" dataKey="sales" stroke="#3b82f6" strokeWidth={2} dot={false} name="Daily Sales" />
+            </LineChart>
           </ResponsiveContainer>
         </div>
 
-        {/* Top Products */}
-        <div style={card()}>
-          <p style={{ fontSize:13, fontWeight:600, color:'#374151', margin:'0 0 14px' }}>Top Products (60 days)</p>
-          <ResponsiveContainer width="100%" height={200}>
-            <BarChart data={topProducts.slice(0, 6)} layout="vertical" margin={{ top:0, right:16, left:0, bottom:0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" horizontal={false} />
-              <XAxis type="number" tick={{ fontSize:9, fill:'#9ca3af' }} />
-              <YAxis type="category" dataKey="name" tick={{ fontSize:9, fill:'#374151' }} width={80} />
-              <Tooltip formatter={(v: any) => [v, 'Total Sold']} contentStyle={{ fontSize:11, borderRadius:8 }} />
-              <Bar dataKey="total" fill="#6366f1" radius={[0,4,4,0]} />
+        {/* Seasonal Pattern */}
+        <div style={{ backgroundColor: 'white', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', border: '1px solid #e5e7eb', padding: '24px' }}>
+          <h3 style={{ fontSize: '18px', fontWeight: '600', color: '#111827', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <BarChart3 style={{ color: '#f59e0b' }} size={20} />
+            Seasonal Pattern
+          </h3>
+          <ResponsiveContainer width="100%" height={300}>
+            <BarChart data={data.seasonalPattern}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+              <XAxis dataKey="month" stroke="#6b7280" style={{ fontSize: '12px' }} />
+              <YAxis stroke="#6b7280" style={{ fontSize: '12px' }} />
+              <Tooltip 
+                contentStyle={{ backgroundColor: '#fff', border: '1px solid #e5e7eb', borderRadius: '8px' }}
+                formatter={(value: any) => `₹${Number(value).toLocaleString()}`}
+              />
+              <Legend />
+              <Bar dataKey="avgSales" fill="#f59e0b" name="Avg Monthly Sales" radius={[8, 8, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </div>
       </div>
 
-      {/* Payment & Discount Row */}
-      <div style={{ display:'grid', gridTemplateColumns:'repeat(2, 1fr)', gap:14, marginBottom:20 }}>
-        {/* Payment Modes */}
-        <div style={card()}>
-          <p style={{ fontSize:13, fontWeight:600, color:'#374151', margin:'0 0 14px' }}>Payment Mode Distribution</p>
-          <div style={{ display:'grid', gridTemplateColumns:'repeat(3, 1fr)', gap:10 }}>
-            {[
-              { label:'Cash', val:`${paymentPct.cash}%`, color:'#22c55e' },
-              { label:'UPI', val:`${paymentPct.upi}%`, color:'#6366f1' },
-              { label:'Mixed', val:`${paymentPct.mixed}%`, color:'#f59e0b' },
-            ].map(p => (
-              <div key={p.label} style={{ textAlign:'center', padding:'12px 8px', border:'1px solid #e5e7eb', borderRadius:8 }}>
-                <p style={{ fontSize:11, color:'#6b7280', margin:'0 0 4px', textTransform:'uppercase' }}>{p.label}</p>
-                <p style={{ fontSize:20, fontWeight:700, color:p.color, margin:0 }}>{p.val}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Discount Impact */}
-        <div style={card()}>
-          <p style={{ fontSize:13, fontWeight:600, color:'#374151', margin:'0 0 14px' }}>Discount Impact</p>
-          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
-            <div style={{ padding:'12px', border:'1px solid #e5e7eb', borderRadius:8 }}>
-              <p style={{ fontSize:11, color:'#6b7280', margin:'0 0 4px', textTransform:'uppercase' }}>No Discount</p>
-              <p style={{ fontSize:18, fontWeight:700, color:'#6b7280', margin:0 }}>{fmt(avgNoDiscount)}</p>
-              <p style={{ fontSize:10, color:'#9ca3af', margin:'2px 0 0' }}>Avg bill value</p>
-            </div>
-            <div style={{ padding:'12px', border:'1px solid #e5e7eb', borderRadius:8 }}>
-              <p style={{ fontSize:11, color:'#6b7280', margin:'0 0 4px', textTransform:'uppercase' }}>With Discount</p>
-              <p style={{ fontSize:18, fontWeight:700, color:'#22c55e', margin:0 }}>{fmt(avgWithDiscount)}</p>
-              <p style={{ fontSize:10, color:'#9ca3af', margin:'2px 0 0' }}>Avg bill value</p>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Stock Alert */}
-      <div style={card()}>
-        <p style={{ fontSize:13, fontWeight:600, color:'#374151', margin:'0 0 14px' }}>Stock Alert - Products Running Low</p>
-        <div style={{ overflowX:'auto' }}>
-          <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12 }}>
+      {/* Category Trends */}
+      <div style={{ backgroundColor: 'white', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', border: '1px solid #e5e7eb', padding: '24px', marginBottom: '24px' }}>
+        <h3 style={{ fontSize: '18px', fontWeight: '600', color: '#111827', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <Target style={{ color: '#8b5cf6' }} size={20} />
+          Category Trends & Forecasts
+        </h3>
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
-              <tr style={{ borderBottom:'1px solid #e5e7eb' }}>
-                {['Product','Category','Current Stock','Avg Daily Sales','Days Left'].map(h => (
-                  <th key={h} style={{ padding:'8px 12px', textAlign:'left', fontSize:11, color:'#6b7280', fontWeight:600, textTransform:'uppercase' }}>{h}</th>
-                ))}
+              <tr style={{ borderBottom: '2px solid #e5e7eb' }}>
+                <th style={{ textAlign: 'left', padding: '12px 16px', fontSize: '14px', fontWeight: '600', color: '#374151' }}>Category</th>
+                <th style={{ textAlign: 'right', padding: '12px 16px', fontSize: '14px', fontWeight: '600', color: '#374151' }}>Current Trend</th>
+                <th style={{ textAlign: 'right', padding: '12px 16px', fontSize: '14px', fontWeight: '600', color: '#374151' }}>Forecast</th>
+                <th style={{ textAlign: 'right', padding: '12px 16px', fontSize: '14px', fontWeight: '600', color: '#374151' }}>Change</th>
               </tr>
             </thead>
             <tbody>
-              {topProducts.filter(p => p.daysLeft < 30).slice(0, 8).map((p, i) => (
-                <tr key={i} style={{ borderBottom:'1px solid #f3f4f6', background: p.daysLeft <= 7 ? '#fff5f5' : p.daysLeft <= 14 ? '#fffbeb' : '#fff' }}>
-                  <td style={{ padding:'9px 12px', color:'#111827', fontWeight:500 }}>{p.name}</td>
-                  <td style={{ padding:'9px 12px', color:'#6b7280' }}>{p.category}</td>
-                  <td style={{ padding:'9px 12px', color:'#374151', fontWeight:600 }}>{p.stock}</td>
-                  <td style={{ padding:'9px 12px', color:'#374151' }}>{p.avgDaily.toFixed(1)}</td>
-                  <td style={{ padding:'9px 12px' }}>
-                    <span style={{ 
-                      background: p.daysLeft <= 7 ? '#fee2e2' : p.daysLeft <= 14 ? '#fef9c3' : '#dcfce7',
-                      color: p.daysLeft <= 7 ? '#dc2626' : p.daysLeft <= 14 ? '#ca8a04' : '#16a34a',
-                      borderRadius:6, padding:'2px 8px', fontSize:11, fontWeight:600 
-                    }}>
-                      {p.daysLeft >= 999 ? '∞' : `${p.daysLeft}d`}
-                    </span>
-                  </td>
-                </tr>
-              ))}
+              {data.categoryTrends.map((cat, idx) => {
+                const change = cat.forecast - cat.trend;
+                const changePct = cat.trend !== 0 ? (change / cat.trend) * 100 : 0;
+                return (
+                  <tr key={idx} style={{ borderBottom: '1px solid #f3f4f6' }}>
+                    <td style={{ padding: '12px 16px', fontSize: '14px', color: '#111827', fontWeight: '500' }}>{cat.category}</td>
+                    <td style={{ padding: '12px 16px', fontSize: '14px', color: '#374151', textAlign: 'right' }}>₹{cat.trend.toLocaleString()}</td>
+                    <td style={{ padding: '12px 16px', fontSize: '14px', color: '#111827', textAlign: 'right', fontWeight: '600' }}>₹{cat.forecast.toLocaleString()}</td>
+                    <td style={{ padding: '12px 16px', fontSize: '14px', textAlign: 'right' }}>
+                      <span style={{
+                        padding: '4px 8px',
+                        borderRadius: '9999px',
+                        fontSize: '12px',
+                        fontWeight: '600',
+                        backgroundColor: change >= 0 ? '#dcfce7' : '#fee2e2',
+                        color: change >= 0 ? '#166534' : '#991b1b'
+                      }}>
+                        {change >= 0 ? '+' : ''}{changePct.toFixed(1)}%
+                      </span>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
       </div>
+
+      {/* Insights */}
+      {data.insights.length > 0 && (
+        <div style={{ backgroundColor: 'white', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', border: '1px solid #e5e7eb', padding: '24px' }}>
+          <h3 style={{ fontSize: '18px', fontWeight: '600', color: '#111827', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <AlertCircle style={{ color: '#f59e0b' }} size={20} />
+            Key Insights
+          </h3>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            {data.insights.map((insight, idx) => (
+              <div key={idx} style={{ padding: '12px 16px', backgroundColor: '#fffbeb', borderRadius: '8px', border: '1px solid #fde68a', display: 'flex', gap: '12px' }}>
+                <div style={{ width: '4px', backgroundColor: '#f59e0b', borderRadius: '2px', flexShrink: 0 }} />
+                <p style={{ fontSize: '14px', color: '#92400e', margin: 0 }}>{insight}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

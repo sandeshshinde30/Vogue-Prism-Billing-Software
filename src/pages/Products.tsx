@@ -6,6 +6,7 @@ import {
   Package,
   AlertTriangle,
   CheckCircle,
+  Lock,
 } from 'lucide-react';
 import { Card, Button, Input, Select, Modal, CategorySizeSelect } from '../components/common';
 import { Product, CATEGORIES } from '../types';
@@ -152,6 +153,7 @@ export function Products() {
         if (productData.price !== undefined) updateData.price = productData.price;
         if (productData.stock !== undefined) updateData.stock = productData.stock;
         if (productData.lowStockThreshold !== undefined) updateData.lowStockThreshold = productData.lowStockThreshold;
+        if (productData.isDiscountLocked !== undefined) updateData.isDiscountLocked = productData.isDiscountLocked;
         
         const updated = await window.electronAPI.updateProduct(updateData);
         setProducts(
@@ -169,6 +171,7 @@ export function Products() {
           price: productData.price!,
           stock: productData.stock!,
           lowStockThreshold: productData.lowStockThreshold!,
+          isDiscountLocked: productData.isDiscountLocked,
         });
         setProducts([...products, created as Product]);
         toast.success('Product created successfully!');
@@ -452,6 +455,11 @@ export function Products() {
                               Inactive
                             </span>
                           )}
+                          {product.isDiscountLocked && (
+                            <span className="ml-2 px-2 py-0.5 text-xs bg-amber-100 text-amber-700 rounded inline-flex items-center gap-1">
+                              <Lock size={10} /> Locked
+                            </span>
+                          )}
                         </div>
                         {product.barcode && (
                           <div 
@@ -606,6 +614,7 @@ function ProductModal({ isOpen, onClose, product, onSave }: ProductModalProps) {
     price: '',
     stock: '',
     lowStockThreshold: '5',
+    isDiscountLocked: false,
   });
   const nameInputRef = useRef<HTMLInputElement>(null);
 
@@ -620,6 +629,7 @@ function ProductModal({ isOpen, onClose, product, onSave }: ProductModalProps) {
         price: String(product.price),
         stock: String(product.stock),
         lowStockThreshold: String(product.lowStockThreshold),
+        isDiscountLocked: product.isDiscountLocked ?? false,
       });
     } else {
       setFormData({
@@ -631,6 +641,7 @@ function ProductModal({ isOpen, onClose, product, onSave }: ProductModalProps) {
         price: '',
         stock: '0',
         lowStockThreshold: '5',
+        isDiscountLocked: false,
       });
     }
   }, [product, isOpen]);
@@ -655,6 +666,7 @@ function ProductModal({ isOpen, onClose, product, onSave }: ProductModalProps) {
       price: parseFloat(formData.price),
       stock: parseInt(formData.stock),
       lowStockThreshold: parseInt(formData.lowStockThreshold),
+      isDiscountLocked: formData.isDiscountLocked,
     });
   };
 
@@ -743,6 +755,54 @@ function ProductModal({ isOpen, onClose, product, onSave }: ProductModalProps) {
             }
             min="0"
           />
+        </div>
+
+        {/* Row 3: Discount Lock */}
+        <div
+          onClick={() => setFormData({ ...formData, isDiscountLocked: !formData.isDiscountLocked })}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '12px',
+            padding: '12px 16px',
+            borderRadius: '8px',
+            border: `2px solid ${formData.isDiscountLocked ? '#f59e0b' : '#e5e7eb'}`,
+            backgroundColor: formData.isDiscountLocked ? '#fffbeb' : '#f9fafb',
+            cursor: 'pointer',
+            userSelect: 'none',
+            transition: 'all 0.15s',
+          }}
+        >
+          <Lock size={18} style={{ color: formData.isDiscountLocked ? '#f59e0b' : '#9ca3af', flexShrink: 0 }} />
+          <div style={{ flex: 1 }}>
+            <p style={{ fontSize: '14px', fontWeight: '500', color: '#111827', margin: 0 }}>
+              Lock Discount
+            </p>
+            <p style={{ fontSize: '12px', color: '#6b7280', margin: 0 }}>
+              When added to cart, this item will be locked — no discount applied
+            </p>
+          </div>
+          <div style={{
+            width: '40px',
+            height: '22px',
+            borderRadius: '11px',
+            backgroundColor: formData.isDiscountLocked ? '#f59e0b' : '#d1d5db',
+            position: 'relative',
+            transition: 'background-color 0.15s',
+            flexShrink: 0,
+          }}>
+            <div style={{
+              position: 'absolute',
+              top: '3px',
+              left: formData.isDiscountLocked ? '21px' : '3px',
+              width: '16px',
+              height: '16px',
+              borderRadius: '50%',
+              backgroundColor: 'white',
+              transition: 'left 0.15s',
+              boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+            }} />
+          </div>
         </div>
 
         <div className="flex justify-end gap-3 pt-4">

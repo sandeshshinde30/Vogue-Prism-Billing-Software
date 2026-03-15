@@ -10,6 +10,7 @@ import {
   BarChart3,
   PieChart as PieChartIcon,
   Activity,
+  Zap,
 } from 'lucide-react';
 import {
   LineChart,
@@ -73,18 +74,39 @@ interface AnalyticsData {
   };
 }
 
+interface ForecastData {
+  historicalDaily: Array<{ date: string; sales: number }>;
+  forecast30Days: Array<{ date: string; predicted: number; lower: number; upper: number }>;
+  forecast90Days: Array<{ date: string; predicted: number }>;
+  categoryTrends: Array<{ category: string; trend: number; forecast: number }>;
+  seasonalPattern: Array<{ month: string; avgSales: number }>;
+  summary: {
+    avgDailySales: number;
+    trend: number;
+    volatility: number;
+    forecast30DaysTotal: number;
+    forecast90DaysTotal: number;
+  };
+  insights: string[];
+}
+
 const COLORS = ['#22c55e', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#14b8a6', '#f97316'];
 
 type SortConfig = { key: string; direction: 'asc' | 'desc' | null };
 
 export function Analytics() {
   const [data, setData] = useState<AnalyticsData | null>(null);
+  const [forecastData, setForecastData] = useState<ForecastData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [forecastLoading, setForecastLoading] = useState(false);
+  const [activeTab, setActiveTab] = useState<'overview' | 'forecast'>('overview');
   const [dateRange, setDateRange] = useState<'today' | 'week' | 'month' | 'year' | 'custom'>('week');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [productSort, setProductSort] = useState<SortConfig>({ key: '', direction: null });
   const [dailySort, setDailySort] = useState<SortConfig>({ key: '', direction: null });
+  const [dailyPage, setDailyPage] = useState(1);
+  const DAILY_PAGE_SIZE = 10;
 
   // Growth comparison independent state
   const [growthRange, setGrowthRange] = useState<'day' | 'week' | 'month' | 'year' | 'custom'>('week');
@@ -131,7 +153,25 @@ export function Analytics() {
 
   useEffect(() => {
     loadAnalytics();
+    setDailyPage(1);
   }, [dateRange, dateFrom, dateTo]);
+
+  const loadForecast = async () => {
+    setForecastLoading(true);
+    try {
+      console.log('Loading forecast data...');
+      const forecast = await (window.electronAPI as any).getForecast();
+      console.log('Forecast data received:', forecast);
+      setForecastData(forecast as ForecastData);
+    } catch (error) {
+      console.error('Error loading forecast:', error);
+    }
+    setForecastLoading(false);
+  };
+
+  useEffect(() => {
+    loadForecast();
+  }, []);
 
   const loadGrowthData = async (
     range: typeof growthRange,
@@ -498,73 +538,130 @@ export function Analytics() {
 
       {/* Daily Performance Table */}
       <div style={{ backgroundColor: 'white', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', border: '1px solid #e5e7eb', padding: '24px', marginBottom: '24px' }}>
-        <h3 style={{ fontSize: '18px', fontWeight: '600', color: '#111827', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <Calendar style={{ color: '#3b82f6' }} size={20} />
-          Daily Performance
-        </h3>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+          <h3 style={{ fontSize: '18px', fontWeight: '600', color: '#111827', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <Calendar style={{ color: '#3b82f6' }} size={20} />
+            Daily Performance
+          </h3>
+          <span style={{ fontSize: '13px', color: '#6b7280' }}>{data.dailyStats.length} days total</span>
+        </div>
         <div style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr style={{ borderBottom: '2px solid #e5e7eb' }}>
-                <th onClick={() => handleSort('date', 'daily')} style={{ textAlign: 'left', padding: '12px 16px', fontSize: '14px', fontWeight: '600', color: '#374151', cursor: 'pointer', userSelect: 'none' }}>
+                <th onClick={() => { handleSort('date', 'daily'); setDailyPage(1); }} style={{ textAlign: 'left', padding: '12px 16px', fontSize: '14px', fontWeight: '600', color: '#374151', cursor: 'pointer', userSelect: 'none' }}>
                   Date {dailySort.key === 'date' && (dailySort.direction === 'asc' ? '↑' : dailySort.direction === 'desc' ? '↓' : '')}
                 </th>
-                <th onClick={() => handleSort('bills', 'daily')} style={{ textAlign: 'right', padding: '12px 16px', fontSize: '14px', fontWeight: '600', color: '#374151', cursor: 'pointer', userSelect: 'none' }}>
+                <th onClick={() => { handleSort('bills', 'daily'); setDailyPage(1); }} style={{ textAlign: 'right', padding: '12px 16px', fontSize: '14px', fontWeight: '600', color: '#374151', cursor: 'pointer', userSelect: 'none' }}>
                   Bills {dailySort.key === 'bills' && (dailySort.direction === 'asc' ? '↑' : dailySort.direction === 'desc' ? '↓' : '')}
                 </th>
-                <th onClick={() => handleSort('sales', 'daily')} style={{ textAlign: 'right', padding: '12px 16px', fontSize: '14px', fontWeight: '600', color: '#374151', cursor: 'pointer', userSelect: 'none' }}>
+                <th onClick={() => { handleSort('sales', 'daily'); setDailyPage(1); }} style={{ textAlign: 'right', padding: '12px 16px', fontSize: '14px', fontWeight: '600', color: '#374151', cursor: 'pointer', userSelect: 'none' }}>
                   Sales {dailySort.key === 'sales' && (dailySort.direction === 'asc' ? '↑' : dailySort.direction === 'desc' ? '↓' : '')}
                 </th>
-                <th onClick={() => handleSort('cost', 'daily')} style={{ textAlign: 'right', padding: '12px 16px', fontSize: '14px', fontWeight: '600', color: '#374151', cursor: 'pointer', userSelect: 'none' }}>
+                <th onClick={() => { handleSort('cost', 'daily'); setDailyPage(1); }} style={{ textAlign: 'right', padding: '12px 16px', fontSize: '14px', fontWeight: '600', color: '#374151', cursor: 'pointer', userSelect: 'none' }}>
                   Cost {dailySort.key === 'cost' && (dailySort.direction === 'asc' ? '↑' : dailySort.direction === 'desc' ? '↓' : '')}
                 </th>
-                <th onClick={() => handleSort('profit', 'daily')} style={{ textAlign: 'right', padding: '12px 16px', fontSize: '14px', fontWeight: '600', color: '#374151', cursor: 'pointer', userSelect: 'none' }}>
+                <th onClick={() => { handleSort('profit', 'daily'); setDailyPage(1); }} style={{ textAlign: 'right', padding: '12px 16px', fontSize: '14px', fontWeight: '600', color: '#374151', cursor: 'pointer', userSelect: 'none' }}>
                   Profit {dailySort.key === 'profit' && (dailySort.direction === 'asc' ? '↑' : dailySort.direction === 'desc' ? '↓' : '')}
                 </th>
-                <th onClick={() => handleSort('margin', 'daily')} style={{ textAlign: 'right', padding: '12px 16px', fontSize: '14px', fontWeight: '600', color: '#374151', cursor: 'pointer', userSelect: 'none' }}>
+                <th onClick={() => { handleSort('margin', 'daily'); setDailyPage(1); }} style={{ textAlign: 'right', padding: '12px 16px', fontSize: '14px', fontWeight: '600', color: '#374151', cursor: 'pointer', userSelect: 'none' }}>
                   Margin {dailySort.key === 'margin' && (dailySort.direction === 'asc' ? '↑' : dailySort.direction === 'desc' ? '↓' : '')}
                 </th>
               </tr>
             </thead>
             <tbody>
-              {getSortedData(
-                data.dailyStats.map(d => ({ ...d, margin: d.sales > 0 ? (d.profit / d.sales) * 100 : 0 })),
-                dailySort
-              ).map((day, index) => {
-                const margin = day.margin;
-                return (
-                  <tr key={index} style={{ borderBottom: '1px solid #f3f4f6' }}>
-                    <td style={{ padding: '12px 16px', fontSize: '14px', color: '#111827' }}>{day.date}</td>
-                    <td style={{ padding: '12px 16px', fontSize: '14px', color: '#374151', textAlign: 'right' }}>{day.bills}</td>
-                    <td style={{ padding: '12px 16px', fontSize: '14px', color: '#111827', textAlign: 'right', fontWeight: '500' }}>
-                      ₹{day.sales.toLocaleString()}
-                    </td>
-                    <td style={{ padding: '12px 16px', fontSize: '14px', color: '#f59e0b', textAlign: 'right' }}>
-                      ₹{day.cost.toLocaleString()}
-                    </td>
-                    <td style={{ padding: '12px 16px', fontSize: '14px', textAlign: 'right' }}>
-                      <span style={{ color: day.profit >= 0 ? '#22c55e' : '#ef4444', fontWeight: '500' }}>
-                        ₹{day.profit.toLocaleString()}
-                      </span>
-                    </td>
-                    <td style={{ padding: '12px 16px', fontSize: '14px', textAlign: 'right' }}>
-                      <span style={{
-                        padding: '4px 8px',
-                        borderRadius: '9999px',
-                        fontSize: '12px',
-                        fontWeight: '500',
-                        backgroundColor: margin >= 30 ? '#dcfce7' : margin >= 15 ? '#fef3c7' : '#fee2e2',
-                        color: margin >= 30 ? '#166534' : margin >= 15 ? '#92400e' : '#991b1b'
-                      }}>
-                        {margin.toFixed(1)}%
-                      </span>
-                    </td>
-                  </tr>
+              {(() => {
+                const sorted = getSortedData(
+                  data.dailyStats.map(d => ({ ...d, margin: d.sales > 0 ? (d.profit / d.sales) * 100 : 0 })),
+                  dailySort
                 );
-              })}
+                const paged = sorted.slice((dailyPage - 1) * DAILY_PAGE_SIZE, dailyPage * DAILY_PAGE_SIZE);
+                return paged.map((day, index) => {
+                  const margin = day.margin;
+                  return (
+                    <tr key={index} style={{ borderBottom: '1px solid #f3f4f6' }}>
+                      <td style={{ padding: '12px 16px', fontSize: '14px', color: '#111827' }}>{day.date}</td>
+                      <td style={{ padding: '12px 16px', fontSize: '14px', color: '#374151', textAlign: 'right' }}>{day.bills}</td>
+                      <td style={{ padding: '12px 16px', fontSize: '14px', color: '#111827', textAlign: 'right', fontWeight: '500' }}>
+                        ₹{day.sales.toLocaleString()}
+                      </td>
+                      <td style={{ padding: '12px 16px', fontSize: '14px', color: '#f59e0b', textAlign: 'right' }}>
+                        ₹{day.cost.toLocaleString()}
+                      </td>
+                      <td style={{ padding: '12px 16px', fontSize: '14px', textAlign: 'right' }}>
+                        <span style={{ color: day.profit >= 0 ? '#22c55e' : '#ef4444', fontWeight: '500' }}>
+                          ₹{day.profit.toLocaleString()}
+                        </span>
+                      </td>
+                      <td style={{ padding: '12px 16px', fontSize: '14px', textAlign: 'right' }}>
+                        <span style={{
+                          padding: '4px 8px',
+                          borderRadius: '9999px',
+                          fontSize: '12px',
+                          fontWeight: '500',
+                          backgroundColor: margin >= 30 ? '#dcfce7' : margin >= 15 ? '#fef3c7' : '#fee2e2',
+                          color: margin >= 30 ? '#166534' : margin >= 15 ? '#92400e' : '#991b1b'
+                        }}>
+                          {margin.toFixed(1)}%
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                });
+              })()}
             </tbody>
           </table>
         </div>
+        {/* Pagination */}
+        {(() => {
+          const totalPages = Math.ceil(data.dailyStats.length / DAILY_PAGE_SIZE);
+          if (totalPages <= 1) return null;
+          return (
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '16px', paddingTop: '16px', borderTop: '1px solid #e5e7eb' }}>
+              <span style={{ fontSize: '13px', color: '#6b7280' }}>
+                Page {dailyPage} of {totalPages} &nbsp;·&nbsp; Showing {Math.min((dailyPage - 1) * DAILY_PAGE_SIZE + 1, data.dailyStats.length)}–{Math.min(dailyPage * DAILY_PAGE_SIZE, data.dailyStats.length)} of {data.dailyStats.length}
+              </span>
+              <div style={{ display: 'flex', gap: '6px' }}>
+                <button
+                  onClick={() => setDailyPage(1)}
+                  disabled={dailyPage === 1}
+                  style={{ padding: '6px 10px', borderRadius: '6px', border: '1px solid #e5e7eb', backgroundColor: dailyPage === 1 ? '#f9fafb' : 'white', color: dailyPage === 1 ? '#9ca3af' : '#374151', cursor: dailyPage === 1 ? 'default' : 'pointer', fontSize: '13px' }}
+                >«</button>
+                <button
+                  onClick={() => setDailyPage(p => Math.max(1, p - 1))}
+                  disabled={dailyPage === 1}
+                  style={{ padding: '6px 12px', borderRadius: '6px', border: '1px solid #e5e7eb', backgroundColor: dailyPage === 1 ? '#f9fafb' : 'white', color: dailyPage === 1 ? '#9ca3af' : '#374151', cursor: dailyPage === 1 ? 'default' : 'pointer', fontSize: '13px' }}
+                >‹ Prev</button>
+                {Array.from({ length: totalPages }, (_, i) => i + 1)
+                  .filter(p => p === 1 || p === totalPages || Math.abs(p - dailyPage) <= 1)
+                  .reduce<(number | '...')[]>((acc, p, i, arr) => {
+                    if (i > 0 && typeof arr[i - 1] === 'number' && (p as number) - (arr[i - 1] as number) > 1) acc.push('...');
+                    acc.push(p);
+                    return acc;
+                  }, [])
+                  .map((p, i) => p === '...' ? (
+                    <span key={`ellipsis-${i}`} style={{ padding: '6px 4px', fontSize: '13px', color: '#9ca3af' }}>…</span>
+                  ) : (
+                    <button
+                      key={p}
+                      onClick={() => setDailyPage(p as number)}
+                      style={{ padding: '6px 10px', borderRadius: '6px', border: '1px solid #e5e7eb', backgroundColor: dailyPage === p ? '#22c55e' : 'white', color: dailyPage === p ? 'white' : '#374151', cursor: 'pointer', fontSize: '13px', fontWeight: dailyPage === p ? '600' : '400' }}
+                    >{p}</button>
+                  ))}
+                <button
+                  onClick={() => setDailyPage(p => Math.min(totalPages, p + 1))}
+                  disabled={dailyPage === totalPages}
+                  style={{ padding: '6px 12px', borderRadius: '6px', border: '1px solid #e5e7eb', backgroundColor: dailyPage === totalPages ? '#f9fafb' : 'white', color: dailyPage === totalPages ? '#9ca3af' : '#374151', cursor: dailyPage === totalPages ? 'default' : 'pointer', fontSize: '13px' }}
+                >Next ›</button>
+                <button
+                  onClick={() => setDailyPage(totalPages)}
+                  disabled={dailyPage === totalPages}
+                  style={{ padding: '6px 10px', borderRadius: '6px', border: '1px solid #e5e7eb', backgroundColor: dailyPage === totalPages ? '#f9fafb' : 'white', color: dailyPage === totalPages ? '#9ca3af' : '#374151', cursor: dailyPage === totalPages ? 'default' : 'pointer', fontSize: '13px' }}
+                >»</button>
+              </div>
+            </div>
+          );
+        })()}
       </div>
 
       {/* NEW ANALYTICS FEATURES */}
@@ -593,7 +690,12 @@ export function Analytics() {
           <div>
             <p style={{ fontSize: '12px', color: '#6b7280', marginBottom: '6px' }}>Quick Range</p>
             <div style={{ display: 'flex', gap: '6px' }}>
-              {(['day', 'week', 'month', 'year'] as const).map((r) => (
+              {([
+                { value: 'day', label: 'Today' },
+                { value: 'week', label: 'Week' },
+                { value: 'month', label: 'Month' },
+                { value: 'year', label: 'Year' },
+              ] as const).map(({ value: r, label }) => (
                 <button
                   key={r}
                   onClick={() => {
@@ -614,7 +716,7 @@ export function Analytics() {
                     color: growthRange === r && !growthCurrentFrom ? 'white' : '#374151',
                   }}
                 >
-                  {r.charAt(0).toUpperCase() + r.slice(1)}
+                  {label}
                 </button>
               ))}
             </div>

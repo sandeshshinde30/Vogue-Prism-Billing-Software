@@ -62,8 +62,6 @@ electron.contextBridge.exposeInMainWorld("electronAPI", {
   cleanupLogs: () => electron.ipcRenderer.invoke("logs:cleanup"),
   // Analytics
   getAnalytics: (dateFrom, dateTo) => electron.ipcRenderer.invoke("analytics:get", dateFrom, dateTo),
-  // Forecast
-  getForecast: () => electron.ipcRenderer.invoke("forecast:get"),
   // Combos
   getCombos: () => electron.ipcRenderer.invoke("combos:getAll"),
   createCombo: (data) => electron.ipcRenderer.invoke("combos:create", data),

@@ -10,5 +10,5 @@ export { BillManagement } from './BillManagement';
 export { DeletedBills } from './DeletedBills';
 export { PrinterManagement } from './PrinterManagement';
 export { Analytics } from './Analytics';
-export { Combos } from './Combos';
 export { Forecast } from './Forecast';
+export { Combos } from './Combos';

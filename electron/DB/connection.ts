@@ -45,6 +45,14 @@ export async function initDatabase() {
       db.exec('ALTER TABLE products ADD COLUMN costPrice REAL DEFAULT 0');
       console.log('Migration completed: costPrice column added');
     }
+
+    // Migration: Add isDiscountLocked column if it doesn't exist
+    const hasIsDiscountLocked = tableInfo.some((column: any) => column.name === 'isDiscountLocked');
+    if (!hasIsDiscountLocked) {
+      console.log('Adding isDiscountLocked column to products table...');
+      db.exec('ALTER TABLE products ADD COLUMN isDiscountLocked INTEGER NOT NULL DEFAULT 0');
+      console.log('Migration completed: isDiscountLocked column added');
+    }
   } catch (error) {
     console.error('Migration error:', error);
   }
@@ -280,6 +288,7 @@ export async function initDatabase() {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL,
       description TEXT,
+      comboPrice REAL,
       isActive INTEGER NOT NULL DEFAULT 1,
       createdAt TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
       updatedAt TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
@@ -293,6 +302,15 @@ export async function initDatabase() {
       FOREIGN KEY (productId) REFERENCES products(id)
     );
   `);
+
+  // Migration: Add comboPrice column to combos if it doesn't exist
+  try {
+    const combosInfo = db.prepare("PRAGMA table_info(combos)").all();
+    const hasComboPrice = combosInfo.some((col: any) => col.name === 'comboPrice');
+    if (!hasComboPrice) {
+      db.exec('ALTER TABLE combos ADD COLUMN comboPrice REAL');
+    }
+  } catch (e) { /* ignore */ }
 
   console.log('Database initialized at', dbPath);
 }

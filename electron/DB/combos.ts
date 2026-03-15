@@ -9,6 +9,7 @@ export interface ComboItem {
 export interface ComboData {
   name: string;
   description?: string;
+  comboPrice?: number | null;
   items: ComboItem[];
 }
 
@@ -23,6 +24,7 @@ export function getCombos() {
   `);
   return combos.map((combo: any) => ({
     ...combo,
+    comboPrice: combo.comboPrice ?? null,
     items: itemsStmt.all(combo.id),
   }));
 }
@@ -31,8 +33,8 @@ export function createCombo(data: ComboData) {
   const db = getDatabase();
   const tx = db.transaction(() => {
     const result = db.prepare(
-      `INSERT INTO combos (name, description) VALUES (?, ?)`
-    ).run(data.name, data.description || null);
+      `INSERT INTO combos (name, description, comboPrice) VALUES (?, ?, ?)`
+    ).run(data.name, data.description || null, data.comboPrice ?? null);
     const comboId = result.lastInsertRowid as number;
     const itemStmt = db.prepare(
       `INSERT INTO combo_items (comboId, productId, quantity) VALUES (?, ?, ?)`
@@ -56,8 +58,8 @@ export function updateCombo(id: number, data: ComboData) {
   const old = db.prepare(`SELECT * FROM combos WHERE id = ?`).get(id) as any;
   const tx = db.transaction(() => {
     db.prepare(
-      `UPDATE combos SET name = ?, description = ?, updatedAt = datetime('now','localtime') WHERE id = ?`
-    ).run(data.name, data.description || null, id);
+      `UPDATE combos SET name = ?, description = ?, comboPrice = ?, updatedAt = datetime('now','localtime') WHERE id = ?`
+    ).run(data.name, data.description || null, data.comboPrice ?? null, id);
     db.prepare(`DELETE FROM combo_items WHERE comboId = ?`).run(id);
     const itemStmt = db.prepare(
       `INSERT INTO combo_items (comboId, productId, quantity) VALUES (?, ?, ?)`

@@ -9,6 +9,7 @@ export interface Product {
   stock: number;
   lowStockThreshold: number;
   isActive: boolean;
+  isDiscountLocked: boolean;
   createdAt: string;
   updatedAt: string;
 }

@@ -11,14 +11,15 @@ export interface ProductData {
   stock: number;
   lowStockThreshold: number;
   isActive?: boolean;
+  isDiscountLocked?: boolean;
 }
 
 // CREATE - Add new product
 export function addProduct(data: ProductData) {
   const db = getDatabase();
   const stmt = db.prepare(`
-    INSERT INTO products (name, category, size, barcode, costPrice, price, stock, lowStockThreshold, isActive, createdAt, updatedAt)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now', 'localtime'), datetime('now', 'localtime'))
+    INSERT INTO products (name, category, size, barcode, costPrice, price, stock, lowStockThreshold, isActive, isDiscountLocked, createdAt, updatedAt)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now', 'localtime'), datetime('now', 'localtime'))
   `);
   
   const result = stmt.run(
@@ -30,7 +31,8 @@ export function addProduct(data: ProductData) {
     data.price,
     data.stock,
     data.lowStockThreshold,
-    data.isActive !== false ? 1 : 0
+    data.isActive !== false ? 1 : 0,
+    data.isDiscountLocked ? 1 : 0
   );
   
   const productId = result.lastInsertRowid as number;
@@ -63,7 +65,8 @@ export function getProducts(includeInactive: boolean = false) {
   // Ensure isActive is properly set for all results
   return results.map((product: any) => ({
     ...product,
-    isActive: product.isActive === null ? true : Boolean(product.isActive)
+    isActive: product.isActive === null ? true : Boolean(product.isActive),
+    isDiscountLocked: Boolean(product.isDiscountLocked)
   }));
 }
 
@@ -76,7 +79,8 @@ export function getProductById(id: number) {
   if (result) {
     return {
       ...result,
-      isActive: (result as any).isActive === null ? true : Boolean((result as any).isActive)
+      isActive: (result as any).isActive === null ? true : Boolean((result as any).isActive),
+      isDiscountLocked: Boolean((result as any).isDiscountLocked)
     };
   }
   
@@ -92,7 +96,8 @@ export function getProductByBarcode(barcode: string) {
   if (result) {
     return {
       ...result,
-      isActive: (result as any).isActive === null ? true : Boolean((result as any).isActive)
+      isActive: (result as any).isActive === null ? true : Boolean((result as any).isActive),
+      isDiscountLocked: Boolean((result as any).isDiscountLocked)
     };
   }
   
@@ -113,7 +118,8 @@ export function searchProducts(query: string) {
   // Ensure isActive is properly set
   return results.map((product: any) => ({
     ...product,
-    isActive: product.isActive === null ? true : Boolean(product.isActive)
+    isActive: product.isActive === null ? true : Boolean(product.isActive),
+    isDiscountLocked: Boolean(product.isDiscountLocked)
   }));
 }
 
@@ -126,7 +132,8 @@ export function getProductsByCategory(category: string) {
   // Ensure isActive is properly set
   return results.map((product: any) => ({
     ...product,
-    isActive: product.isActive === null ? true : Boolean(product.isActive)
+    isActive: product.isActive === null ? true : Boolean(product.isActive),
+    isDiscountLocked: Boolean(product.isDiscountLocked)
   }));
 }
 
@@ -186,6 +193,10 @@ export function updateProduct(id: number, data: Partial<ProductData>) {
   if (data.isActive !== undefined) {
     fields.push('isActive = ?');
     values.push(data.isActive ? 1 : 0);
+  }
+  if (data.isDiscountLocked !== undefined) {
+    fields.push('isDiscountLocked = ?');
+    values.push(data.isDiscountLocked ? 1 : 0);
   }
   
   fields.push('updatedAt = datetime(\'now\')');

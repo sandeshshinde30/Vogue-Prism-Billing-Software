@@ -39,6 +39,12 @@ async function initDatabase() {
       db.exec("ALTER TABLE products ADD COLUMN costPrice REAL DEFAULT 0");
       console.log("Migration completed: costPrice column added");
     }
+    const hasIsDiscountLocked = tableInfo.some((column) => column.name === "isDiscountLocked");
+    if (!hasIsDiscountLocked) {
+      console.log("Adding isDiscountLocked column to products table...");
+      db.exec("ALTER TABLE products ADD COLUMN isDiscountLocked INTEGER NOT NULL DEFAULT 0");
+      console.log("Migration completed: isDiscountLocked column added");
+    }
   } catch (error) {
     console.error("Migration error:", error);
   }
@@ -224,6 +230,7 @@ async function initDatabase() {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL,
       description TEXT,
+      comboPrice REAL,
       isActive INTEGER NOT NULL DEFAULT 1,
       createdAt TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
       updatedAt TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
@@ -237,6 +244,14 @@ async function initDatabase() {
       FOREIGN KEY (productId) REFERENCES products(id)
     );
   `);
+  try {
+    const combosInfo = db.prepare("PRAGMA table_info(combos)").all();
+    const hasComboPrice = combosInfo.some((col) => col.name === "comboPrice");
+    if (!hasComboPrice) {
+      db.exec("ALTER TABLE combos ADD COLUMN comboPrice REAL");
+    }
+  } catch (e) {
+  }
   console.log("Database initialized at", dbPath);
 }
 function getDatabase() {
@@ -330,8 +345,8 @@ function cleanupOldLogs() {
 function addProduct(data) {
   const db2 = getDatabase();
   const stmt = db2.prepare(`
-    INSERT INTO products (name, category, size, barcode, costPrice, price, stock, lowStockThreshold, isActive, createdAt, updatedAt)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now', 'localtime'), datetime('now', 'localtime'))
+    INSERT INTO products (name, category, size, barcode, costPrice, price, stock, lowStockThreshold, isActive, isDiscountLocked, createdAt, updatedAt)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now', 'localtime'), datetime('now', 'localtime'))
   `);
   const result = stmt.run(
     data.name,
@@ -342,7 +357,8 @@ function addProduct(data) {
     data.price,
     data.stock,
     data.lowStockThreshold,
-    data.isActive !== false ? 1 : 0
+    data.isActive !== false ? 1 : 0,
+    data.isDiscountLocked ? 1 : 0
   );
   const productId = result.lastInsertRowid;
   addActivityLog(
@@ -366,7 +382,8 @@ function getProducts(includeInactive = false) {
   const results = stmt.all();
   return results.map((product) => ({
     ...product,
-    isActive: product.isActive === null ? true : Boolean(product.isActive)
+    isActive: product.isActive === null ? true : Boolean(product.isActive),
+    isDiscountLocked: Boolean(product.isDiscountLocked)
   }));
 }
 function getProductById(id) {
@@ -376,7 +393,8 @@ function getProductById(id) {
   if (result) {
     return {
       ...result,
-      isActive: result.isActive === null ? true : Boolean(result.isActive)
+      isActive: result.isActive === null ? true : Boolean(result.isActive),
+      isDiscountLocked: Boolean(result.isDiscountLocked)
     };
   }
   return result;
@@ -388,7 +406,8 @@ function getProductByBarcode(barcode) {
   if (result) {
     return {
       ...result,
-      isActive: result.isActive === null ? true : Boolean(result.isActive)
+      isActive: result.isActive === null ? true : Boolean(result.isActive),
+      isDiscountLocked: Boolean(result.isDiscountLocked)
     };
   }
   return result;
@@ -404,7 +423,8 @@ function searchProducts(query) {
   const results = stmt.all(searchTerm, searchTerm);
   return results.map((product) => ({
     ...product,
-    isActive: product.isActive === null ? true : Boolean(product.isActive)
+    isActive: product.isActive === null ? true : Boolean(product.isActive),
+    isDiscountLocked: Boolean(product.isDiscountLocked)
   }));
 }
 function getProductsByCategory(category) {
@@ -413,7 +433,8 @@ function getProductsByCategory(category) {
   const results = stmt.all(category);
   return results.map((product) => ({
     ...product,
-    isActive: product.isActive === null ? true : Boolean(product.isActive)
+    isActive: product.isActive === null ? true : Boolean(product.isActive),
+    isDiscountLocked: Boolean(product.isDiscountLocked)
   }));
 }
 function getLowStockProducts() {
@@ -465,6 +486,10 @@ function updateProduct(id, data) {
   if (data.isActive !== void 0) {
     fields.push("isActive = ?");
     values.push(data.isActive ? 1 : 0);
+  }
+  if (data.isDiscountLocked !== void 0) {
+    fields.push("isDiscountLocked = ?");
+    values.push(data.isDiscountLocked ? 1 : 0);
   }
   fields.push("updatedAt = datetime('now')");
   values.push(id);
@@ -1615,53 +1640,182 @@ function getAnalytics(dateFrom, dateTo) {
     salesTarget
   };
 }
+function movingAverage(data, period) {
+  const result = [];
+  for (let i = 0; i < data.length; i++) {
+    if (i < period - 1) {
+      result.push(data[i]);
+    } else {
+      const sum = data.slice(i - period + 1, i + 1).reduce((a, b) => a + b, 0);
+      result.push(sum / period);
+    }
+  }
+  return result;
+}
+function linearRegression(data) {
+  const n = data.length;
+  let sumX = 0, sumY = 0, sumXY = 0, sumX2 = 0;
+  for (let i = 0; i < n; i++) {
+    sumX += i;
+    sumY += data[i];
+    sumXY += i * data[i];
+    sumX2 += i * i;
+  }
+  const slope = (n * sumXY - sumX * sumY) / (n * sumX2 - sumX * sumX);
+  const intercept = (sumY - slope * sumX) / n;
+  return { slope, intercept };
+}
+function stdDev(data) {
+  const mean = data.reduce((a, b) => a + b, 0) / data.length;
+  const variance = data.reduce((sum, val) => sum + Math.pow(val - mean, 2), 0) / data.length;
+  return Math.sqrt(variance);
+}
 function getForecast() {
   const db2 = getDatabase();
-  const now = /* @__PURE__ */ new Date();
-  `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
-  const d60 = new Date(now);
-  d60.setDate(d60.getDate() - 60);
-  const day60ago = `${d60.getFullYear()}-${String(d60.getMonth() + 1).padStart(2, "0")}-${String(d60.getDate()).padStart(2, "0")}`;
-  const dailyRevenue = db2.prepare(`
-    SELECT date(createdAt, 'localtime') as date,
-           SUM(total) as revenue,
-           COUNT(*) as bills
+  const historicalStmt = db2.prepare(`
+    SELECT 
+      date(createdAt) as date,
+      COALESCE(SUM(total), 0) as sales
     FROM bills
-    WHERE date(createdAt, 'localtime') >= ?
-    GROUP BY date
-    ORDER BY date ASC
-  `).all(day60ago);
-  const products = db2.prepare(`
-    SELECT p.name, p.category, COALESCE(p.size,'') as size,
-           p.stock, p.price,
-           bi.quantity,
-           date(b.createdAt, 'localtime') as date
+    GROUP BY date(createdAt)
+    ORDER BY date(createdAt) ASC
+  `);
+  const historicalRaw = historicalStmt.all();
+  const historicalDaily = historicalRaw.map((d) => ({
+    date: d.date,
+    sales: d.sales
+  }));
+  const salesData = historicalDaily.map((d) => d.sales);
+  if (salesData.length === 0) {
+    return {
+      historicalDaily: [],
+      forecast30Days: [],
+      forecast90Days: [],
+      categoryTrends: [],
+      seasonalPattern: [],
+      summary: {
+        avgDailySales: 0,
+        trend: 0,
+        volatility: 0,
+        forecast30DaysTotal: 0,
+        forecast90DaysTotal: 0
+      },
+      insights: ["No historical data available for forecasting"]
+    };
+  }
+  const avgDailySales = salesData.reduce((a, b) => a + b, 0) / salesData.length;
+  const volatility = stdDev(salesData) / avgDailySales * 100;
+  const { slope } = linearRegression(salesData);
+  const trend = slope / avgDailySales * 100;
+  const forecast30Days = [];
+  const ma7 = movingAverage(salesData, 7);
+  const lastMA = ma7[ma7.length - 1];
+  const std = stdDev(salesData);
+  for (let i = 1; i <= 30; i++) {
+    const predicted = Math.max(0, lastMA + slope * i);
+    const lower = Math.max(0, predicted - 1.96 * std);
+    const upper = predicted + 1.96 * std;
+    const forecastDate = /* @__PURE__ */ new Date();
+    forecastDate.setDate(forecastDate.getDate() + i);
+    forecast30Days.push({
+      date: forecastDate.toISOString().split("T")[0],
+      predicted: Math.round(predicted),
+      lower: Math.round(lower),
+      upper: Math.round(upper)
+    });
+  }
+  const forecast90Days = [];
+  for (let i = 1; i <= 90; i++) {
+    const predicted = Math.max(0, lastMA + slope * i);
+    const forecastDate = /* @__PURE__ */ new Date();
+    forecastDate.setDate(forecastDate.getDate() + i);
+    forecast90Days.push({
+      date: forecastDate.toISOString().split("T")[0],
+      predicted: Math.round(predicted)
+    });
+  }
+  const categoryStmt = db2.prepare(`
+    SELECT 
+      COALESCE(p.category, 'Unknown') as category,
+      COALESCE(SUM(bi.totalPrice), 0) as total,
+      COUNT(DISTINCT date(b.createdAt)) as days
     FROM bill_items bi
     JOIN bills b ON bi.billId = b.id
-    JOIN products p ON bi.productId = p.id
-    WHERE date(b.createdAt, 'localtime') >= ?
-      AND p.isActive = 1
-    ORDER BY b.createdAt DESC
-    LIMIT 500
-  `).all(day60ago);
-  const payments = db2.prepare(`
-    SELECT date(createdAt, 'localtime') as date,
-           paymentMode as mode,
-           total
+    LEFT JOIN products p ON bi.productId = p.id
+    GROUP BY p.category
+    ORDER BY total DESC
+    LIMIT 10
+  `);
+  const categoryData = categoryStmt.all();
+  const categoryTrends = categoryData.map((cat) => {
+    const avgDaily = cat.total / Math.max(cat.days, 1);
+    const forecast = Math.max(0, avgDaily + slope * 30);
+    return {
+      category: cat.category,
+      trend: Math.round(avgDaily),
+      forecast: Math.round(forecast)
+    };
+  });
+  const seasonalStmt = db2.prepare(`
+    SELECT 
+      strftime('%m', createdAt) as month,
+      COALESCE(AVG(total), 0) as avgSales
     FROM bills
-    WHERE date(createdAt, 'localtime') >= ?
-    ORDER BY date ASC
-  `).all(day60ago);
-  const discounts = db2.prepare(`
-    SELECT discountPercent, total
-    FROM bills
-    WHERE date(createdAt, 'localtime') >= ?
-  `).all(day60ago);
+    GROUP BY strftime('%m', createdAt)
+    ORDER BY month
+  `);
+  const seasonalRaw = seasonalStmt.all();
+  const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const seasonalPattern = seasonalRaw.map((s) => ({
+    month: monthNames[parseInt(s.month) - 1],
+    avgSales: Math.round(s.avgSales)
+  }));
+  const forecast30DaysTotal = forecast30Days.reduce((sum, d) => sum + d.predicted, 0);
+  const forecast90DaysTotal = forecast90Days.reduce((sum, d) => sum + d.predicted, 0);
+  const insights = [];
+  if (trend > 5) {
+    insights.push(`📈 Strong upward trend detected (+${trend.toFixed(1)}%). Sales are expected to grow significantly.`);
+  } else if (trend > 0) {
+    insights.push(`📈 Slight upward trend (+${trend.toFixed(1)}%). Sales are gradually improving.`);
+  } else if (trend < -5) {
+    insights.push(`📉 Strong downward trend (${trend.toFixed(1)}%). Consider reviewing pricing or marketing strategies.`);
+  } else if (trend < 0) {
+    insights.push(`📉 Slight downward trend (${trend.toFixed(1)}%). Monitor sales closely.`);
+  }
+  if (volatility > 40) {
+    insights.push(`⚠️ High volatility (${volatility.toFixed(1)}%). Sales are unpredictable. Consider stabilizing factors.`);
+  } else if (volatility < 15) {
+    insights.push(`✅ Low volatility (${volatility.toFixed(1)}%). Sales are stable and predictable.`);
+  }
+  const topCategory = categoryTrends[0];
+  if (topCategory) {
+    const categoryGrowth = (topCategory.forecast - topCategory.trend) / topCategory.trend * 100;
+    if (categoryGrowth > 10) {
+      insights.push(`🎯 ${topCategory.category} category showing strong growth potential (+${categoryGrowth.toFixed(1)}%).`);
+    }
+  }
+  const forecast30Avg = forecast30DaysTotal / 30;
+  const growth30 = (forecast30Avg - avgDailySales) / avgDailySales * 100;
+  if (growth30 > 0) {
+    insights.push(`💰 30-day forecast shows +${growth30.toFixed(1)}% growth compared to historical average.`);
+  }
+  if (historicalDaily.length < 30) {
+    insights.push(`ℹ️ Limited historical data (${historicalDaily.length} days). Forecast accuracy will improve with more data.`);
+  }
   return {
-    dailyRevenue,
-    products,
-    payments,
-    discounts
+    historicalDaily,
+    forecast30Days,
+    forecast90Days,
+    categoryTrends,
+    seasonalPattern,
+    summary: {
+      avgDailySales: Math.round(avgDailySales),
+      trend: Math.round(trend * 100) / 100,
+      volatility: Math.round(volatility * 100) / 100,
+      forecast30DaysTotal,
+      forecast90DaysTotal
+    },
+    insights
   };
 }
 function getCombos() {
@@ -1675,6 +1829,7 @@ function getCombos() {
   `);
   return combos.map((combo) => ({
     ...combo,
+    comboPrice: combo.comboPrice ?? null,
     items: itemsStmt.all(combo.id)
   }));
 }
@@ -1682,8 +1837,8 @@ function createCombo(data) {
   const db2 = getDatabase();
   const tx = db2.transaction(() => {
     const result = db2.prepare(
-      `INSERT INTO combos (name, description) VALUES (?, ?)`
-    ).run(data.name, data.description || null);
+      `INSERT INTO combos (name, description, comboPrice) VALUES (?, ?, ?)`
+    ).run(data.name, data.description || null, data.comboPrice ?? null);
     const comboId2 = result.lastInsertRowid;
     const itemStmt = db2.prepare(
       `INSERT INTO combo_items (comboId, productId, quantity) VALUES (?, ?, ?)`
@@ -1709,8 +1864,8 @@ function updateCombo(id, data) {
   const old = db2.prepare(`SELECT * FROM combos WHERE id = ?`).get(id);
   const tx = db2.transaction(() => {
     db2.prepare(
-      `UPDATE combos SET name = ?, description = ?, updatedAt = datetime('now','localtime') WHERE id = ?`
-    ).run(data.name, data.description || null, id);
+      `UPDATE combos SET name = ?, description = ?, comboPrice = ?, updatedAt = datetime('now','localtime') WHERE id = ?`
+    ).run(data.name, data.description || null, data.comboPrice ?? null, id);
     db2.prepare(`DELETE FROM combo_items WHERE comboId = ?`).run(id);
     const itemStmt = db2.prepare(
       `INSERT INTO combo_items (comboId, productId, quantity) VALUES (?, ?, ?)`
@@ -3179,17 +3334,13 @@ $shell.Run("notepad /p \\"$filePath\\"", 0, $true)
       throw error;
     }
   });
-  ipcMain.handle("forecast:get", () => {
-    return new Promise((resolve, reject) => {
-      setImmediate(() => {
-        try {
-          resolve(getForecast());
-        } catch (error) {
-          console.error("Error getting forecast:", error);
-          reject(error);
-        }
-      });
-    });
+  ipcMain.handle("forecast:get", async () => {
+    try {
+      return getForecast();
+    } catch (error) {
+      console.error("Error getting forecast:", error);
+      throw error;
+    }
   });
   ipcMain.handle("combos:getAll", async () => {
     try {

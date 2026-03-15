@@ -1431,19 +1431,13 @@ $shell.Run("notepad /p \\"$filePath\\"", 0, $true)
     }
   });
 
-  // ===== FORECAST HANDLERS =====
-
-  ipcMain.handle('forecast:get', () => {
-    return new Promise((resolve, reject) => {
-      setImmediate(() => {
-        try {
-          resolve(getForecast());
-        } catch (error) {
-          console.error('Error getting forecast:', error);
-          reject(error);
-        }
-      });
-    });
+  ipcMain.handle('forecast:get', async () => {
+    try {
+      return getForecast();
+    } catch (error) {
+      console.error('Error getting forecast:', error);
+      throw error;
+    }
   });
 
   // Combos

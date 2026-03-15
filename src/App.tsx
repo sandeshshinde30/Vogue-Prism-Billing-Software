@@ -15,8 +15,8 @@ import {
   PrinterManagement,
   DeletedBills,
   Analytics,
-  Combos,
   Forecast,
+  Combos,
 } from './pages';
 import { useStore } from './store/useStore';
 import { Settings as SettingsType } from './types';

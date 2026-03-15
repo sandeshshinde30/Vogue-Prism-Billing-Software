@@ -9,20 +9,20 @@ interface ComboProduct {
   price: number; stock: number; size?: string; category?: string; costPrice?: number;
 }
 interface Combo {
-  id: number; name: string; description?: string;
+  id: number; name: string; description?: string; comboPrice?: number | null;
   items: ComboProduct[]; createdAt: string;
 }
 interface ProductOption {
   id: number; name: string; price: number; stock: number;
   size?: string; category?: string; costPrice?: number; isActive?: boolean;
 }
-const emptyForm = { name: '', description: '', items: [] as { productId: number; quantity: number }[] };
+const emptyForm = { name: '', description: '', comboPrice: '', items: [] as { productId: number; quantity: number }[] };
 const ACCENT = '#22c55e';
 const CARD_COLORS = ['#f0fdf4','#eff6ff','#fdf4ff','#fff7ed','#f0fdfa','#fef2f2'];
 const ICON_COLORS = ['#16a34a','#2563eb','#9333ea','#ea580c','#0d9488','#dc2626'];
 
 export function Combos() {
-  const { addToCart } = useStore();
+  const { addToCart, setDiscountAmount } = useStore();
   const navigate = useNavigate();
   const [combos, setCombos] = useState<Combo[]>([]);
   const [products, setProducts] = useState<ProductOption[]>([]);
@@ -51,16 +51,22 @@ export function Combos() {
   const openCreate = () => { setEditingCombo(null); setForm(emptyForm); setProductSearch(''); setShowModal(true); };
   const openEdit = (c: Combo) => {
     setEditingCombo(c);
-    setForm({ name: c.name, description: c.description || '', items: c.items.map(i => ({ productId: i.productId, quantity: i.quantity })) });
+    setForm({ name: c.name, description: c.description || '', comboPrice: c.comboPrice != null ? String(c.comboPrice) : '', items: c.items.map(i => ({ productId: i.productId, quantity: i.quantity })) });
     setProductSearch(''); setShowModal(true);
   };
 
   const handleSave = async () => {
     if (!form.name.trim()) { toast.error('Combo name is required'); return; }
     if (form.items.length === 0) { toast.error('Add at least one product'); return; }
+    const parsedComboPrice = form.comboPrice !== '' ? parseFloat(form.comboPrice) : null;
+    if (parsedComboPrice !== null && parsedComboPrice >= formTotal && formTotal > 0) {
+      toast.error('Combo price must be less than the total to apply a discount');
+      return;
+    }
     try {
-      if (editingCombo) { await (window.electronAPI as any).updateCombo(editingCombo.id, form); toast.success('Combo updated'); }
-      else { await (window.electronAPI as any).createCombo(form); toast.success('Combo created'); }
+      const payload = { name: form.name, description: form.description, comboPrice: parsedComboPrice, items: form.items };
+      if (editingCombo) { await (window.electronAPI as any).updateCombo(editingCombo.id, payload); toast.success('Combo updated'); }
+      else { await (window.electronAPI as any).createCombo(payload); toast.success('Combo created'); }
       setShowModal(false); loadCombos();
     } catch { toast.error('Failed to save combo'); }
   };
@@ -77,16 +83,24 @@ export function Combos() {
       const p = products.find(x => x.id === item.productId);
       if (!p) continue;
       for (let i = 0; i < item.quantity; i++) {
-        const ok = addToCart({ id: p.id, name: item.productName, price: item.price, stock: item.stock, category: item.category || '', size: item.size || '', barcode: '', costPrice: item.costPrice || 0, lowStockThreshold: 5, isActive: true, createdAt: '', updatedAt: '' } as any);
+        const ok = addToCart({ id: p.id, name: item.productName, price: item.price, stock: item.stock, category: item.category || '', size: item.size || '', barcode: '', costPrice: item.costPrice || 0, lowStockThreshold: 5, isActive: true, isDiscountLocked: false, createdAt: '', updatedAt: '' } as any);
         if (ok) added++; else { failed.push(item.productName); break; }
       }
     }
     if (failed.length) {
       toast.error(`Stock limit reached: ${failed.join(', ')}`);
+      return;
+    }
+    // Apply combo price as discount if set and lower than total
+    const total = comboTotal(combo);
+    if (combo.comboPrice != null && combo.comboPrice < total) {
+      const discount = Math.round((total - combo.comboPrice) * 100) / 100;
+      setDiscountAmount(discount);
+      toast.success(`${combo.name} added — ₹${discount.toLocaleString()} discount applied`);
     } else {
       toast.success(`${combo.name} — ${added} items added`);
-      navigate('/billing');
     }
+    navigate('/billing');
   };
 
   const addItem = (id: number) => {
@@ -100,6 +114,9 @@ export function Combos() {
   const filteredCombos = combos.filter(c => c.name.toLowerCase().includes(search.toLowerCase()));
   const comboTotal = (c: Combo) => c.items.reduce((s, i) => s + i.price * i.quantity, 0);
   const formTotal = form.items.reduce((s, i) => { const p = products.find(x => x.id === i.productId); return s + (p ? p.price * i.quantity : 0); }, 0);
+  const formComboPriceNum = form.comboPrice !== '' ? parseFloat(form.comboPrice) : null;
+  const formDiscount = formComboPriceNum !== null && formComboPriceNum < formTotal ? formTotal - formComboPriceNum : 0;
+  const formDiscountPct = formTotal > 0 && formDiscount > 0 ? (formDiscount / formTotal) * 100 : 0;
 
   return (
     <div style={{ maxWidth: '100%' }}>
@@ -167,9 +184,23 @@ export function Combos() {
                     <span style={{ fontSize: '11px', fontWeight: '500', color: '#6b7280', backgroundColor: 'white', padding: '2px 8px', borderRadius: '20px', border: '1px solid #e5e7eb' }}>
                       {combo.items.length} item{combo.items.length !== 1 ? 's' : ''}
                     </span>
-                    <span style={{ fontSize: '11px', fontWeight: '700', color: ic, backgroundColor: 'white', padding: '2px 8px', borderRadius: '20px', border: `1px solid ${ic}30` }}>
-                      ₹{total.toLocaleString()}
-                    </span>
+                    {combo.comboPrice != null && combo.comboPrice < comboTotal(combo) ? (
+                      <>
+                        <span style={{ fontSize: '11px', fontWeight: '700', color: '#6b7280', backgroundColor: 'white', padding: '2px 8px', borderRadius: '20px', border: '1px solid #e5e7eb', textDecoration: 'line-through' }}>
+                          ₹{comboTotal(combo).toLocaleString()}
+                        </span>
+                        <span style={{ fontSize: '11px', fontWeight: '700', color: ic, backgroundColor: 'white', padding: '2px 8px', borderRadius: '20px', border: `1px solid ${ic}30` }}>
+                          ₹{combo.comboPrice.toLocaleString()}
+                        </span>
+                        <span style={{ fontSize: '11px', fontWeight: '700', color: '#16a34a', backgroundColor: '#dcfce7', padding: '2px 8px', borderRadius: '20px', border: '1px solid #bbf7d0' }}>
+                          Save ₹{(comboTotal(combo) - combo.comboPrice).toLocaleString()}
+                        </span>
+                      </>
+                    ) : (
+                      <span style={{ fontSize: '11px', fontWeight: '700', color: ic, backgroundColor: 'white', padding: '2px 8px', borderRadius: '20px', border: `1px solid ${ic}30` }}>
+                        ₹{comboTotal(combo).toLocaleString()}
+                      </span>
+                    )}
                   </div>
                 </div>
 
@@ -313,9 +344,49 @@ export function Combos() {
                         })}
                   </div>
                   {form.items.length > 0 && (
-                    <div style={{ marginTop: '8px', padding: '9px 12px', backgroundColor: '#f0fdf4', borderRadius: '8px', border: '1px solid #bbf7d0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span style={{ fontSize: '12px', color: '#374151', fontWeight: '500' }}>Combo Total</span>
-                      <span style={{ fontSize: '15px', fontWeight: '800', color: ACCENT }}>₹{formTotal.toLocaleString()}</span>
+                    <div style={{ marginTop: '8px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      {/* MRP total */}
+                      <div style={{ padding: '9px 12px', backgroundColor: '#f9fafb', borderRadius: '8px', border: '1px solid #e5e7eb', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ fontSize: '12px', color: '#6b7280', fontWeight: '500' }}>MRP Total</span>
+                        <span style={{ fontSize: '14px', fontWeight: '700', color: '#374151' }}>₹{formTotal.toLocaleString()}</span>
+                      </div>
+
+                      {/* Combo price input */}
+                      <div style={{ padding: '10px 12px', backgroundColor: '#fffbeb', borderRadius: '8px', border: `2px solid ${formDiscount > 0 ? '#f59e0b' : '#fde68a'}` }}>
+                        <label style={{ fontSize: '11px', fontWeight: '600', color: '#92400e', display: 'block', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                          Set Combo Price (optional)
+                        </label>
+                        <input
+                          type="number"
+                          min="0"
+                          step="1"
+                          value={form.comboPrice}
+                          onChange={e => setForm(f => ({ ...f, comboPrice: e.target.value }))}
+                          placeholder={`e.g. ${Math.round(formTotal * 0.9)}`}
+                          style={{ width: '100%', padding: '7px 10px', border: '1px solid #fcd34d', borderRadius: '6px', fontSize: '14px', outline: 'none', boxSizing: 'border-box', backgroundColor: 'white', fontWeight: '600' }}
+                        />
+                        {formDiscount > 0 && (
+                          <div style={{ marginTop: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span style={{ fontSize: '12px', color: '#92400e', fontWeight: '500' }}>Discount applied</span>
+                            <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                              <span style={{ fontSize: '12px', fontWeight: '700', color: '#16a34a', backgroundColor: '#dcfce7', padding: '2px 8px', borderRadius: '20px' }}>
+                                −₹{formDiscount.toLocaleString()} ({formDiscountPct.toFixed(1)}% off)
+                              </span>
+                            </div>
+                          </div>
+                        )}
+                        {form.comboPrice !== '' && formComboPriceNum !== null && formComboPriceNum >= formTotal && (
+                          <p style={{ fontSize: '11px', color: '#ef4444', marginTop: '6px' }}>Price must be less than MRP total to apply a discount</p>
+                        )}
+                      </div>
+
+                      {/* Final price */}
+                      {formDiscount > 0 && (
+                        <div style={{ padding: '9px 12px', backgroundColor: '#f0fdf4', borderRadius: '8px', border: '1px solid #bbf7d0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <span style={{ fontSize: '12px', color: '#374151', fontWeight: '500' }}>Combo Price</span>
+                          <span style={{ fontSize: '15px', fontWeight: '800', color: ACCENT }}>₹{formComboPriceNum!.toLocaleString()}</span>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>

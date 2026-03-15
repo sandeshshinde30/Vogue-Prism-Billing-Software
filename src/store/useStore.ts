@@ -123,7 +123,7 @@ export const useStore = create<AppState>((set, get) => ({
           productName: product.name,
           unitPrice: product.price,
           totalPrice: product.price,
-          discountLocked: false
+          discountLocked: product.isDiscountLocked ?? false
         }]
       });
     }
