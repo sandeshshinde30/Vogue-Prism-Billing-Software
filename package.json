@@ -13,8 +13,10 @@
     "@types/sqlite3": "^5.1.0",
     "better-sqlite3": "^12.5.0",
     "date-fns": "^4.1.0",
+    "firebase-admin": "^12.0.0",
     "html2canvas": "^1.4.1",
     "jsbarcode": "^3.12.1",
+    "jsdom": "^29.0.1",
     "jspdf": "^3.0.4",
     "lucide-react": "^0.562.0",
     "node-thermal-printer": "^4.5.0",
@@ -26,6 +28,7 @@
     "recharts": "^3.8.0",
     "sqlite": "^5.1.1",
     "sqlite3": "^5.1.7",
+    "twilio": "^4.10.0",
     "xlsx": "^0.18.5",
     "zustand": "^5.0.9"
   },

@@ -1,6 +1,7 @@
 import { getDatabase } from './connection';
 import { updateStock } from './products';
 import { addActivityLog } from './logs';
+import { createBillSendJob } from './billSendJobs';
 
 export interface BillData {
   items: Array<{
@@ -100,6 +101,22 @@ export function createBill(data: BillData) {
       itemCount: data.items.length
     })
   );
+  
+  // Create bill send job if customer phone number is provided
+  if (data.customerMobileNumber) {
+    try {
+      createBillSendJob({
+        billId,
+        customerPhone: data.customerMobileNumber,
+        status: 'pending',
+        attempts: 0
+      });
+      console.log(`Bill send job created for bill ${billNumber}`);
+    } catch (error) {
+      console.error('Error creating bill send job:', error);
+      // Don't fail bill creation if job creation fails
+    }
+  }
   
   return bill;
 }

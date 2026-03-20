@@ -14,6 +14,7 @@ import {
   BarChart3,
   Layers,
   TrendingUp,
+  Send,
 } from 'lucide-react';
 import { getLogoPath } from '../../utils/assetPath';
 
@@ -27,6 +28,7 @@ const navItems = [
   { to: '/reports', icon: FileBarChart, label: 'Reports' },
   { to: '/analytics', icon: BarChart3, label: 'Analytics' },
   { to: '/forecast', icon: TrendingUp, label: 'Forecast' },
+  { to: '/operations', icon: Send, label: 'Operations' },
   { to: '/deleted-bills', icon: Trash2, label: 'Deleted Bills' },
   { to: '/logs', icon: Activity, label: 'Logs' },
   { to: '/printer-management', icon: Printer, label: 'Printer' },

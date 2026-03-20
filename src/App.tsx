@@ -17,6 +17,7 @@ import {
   Analytics,
   Forecast,
   Combos,
+  Operations,
 } from './pages';
 import { useStore } from './store/useStore';
 import { Settings as SettingsType } from './types';
@@ -71,6 +72,7 @@ function App() {
           <Route path="reports" element={<Reports />} />
           <Route path="analytics" element={<Analytics />} />
           <Route path="forecast" element={<Forecast />} />
+          <Route path="operations" element={<Operations />} />
           <Route path="combos" element={<Combos />} />
           <Route path="logs" element={<Logs />} />
           <Route path="bill-management" element={<BillManagement />} />

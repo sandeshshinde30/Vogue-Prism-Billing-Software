@@ -78,6 +78,30 @@ export interface ElectronAPI {
 
   // Forecast
   getForecast: () => Promise<any>;
+
+  // Bill Send
+  billSend: {
+    getPendingJobs: () => Promise<any[]>;
+    getJobsByStatus: (status: string) => Promise<any[]>;
+    getAllJobs: () => Promise<any[]>;
+    getStats: () => Promise<{ pending: number; sent: number; failed: number; total: number }>;
+    manualRetry: (jobId: number) => Promise<{ success: boolean }>;
+    manualSend: (billId: number, customerPhone: string) => Promise<{ success: boolean }>;
+    deleteJob: (jobId: number) => Promise<{ success: boolean }>;
+    getQueueStatus: () => Promise<any>;
+  };
+
+  // Network
+  network: {
+    getStatus: () => Promise<{ isOnline: boolean; speed: number; latency: number; lastChecked: string; connectionType: string }>;
+    isAvailable: () => Promise<boolean>;
+    getQuality: () => Promise<'excellent' | 'good' | 'fair' | 'poor' | 'offline'>;
+  };
+
+  // Config
+  config: {
+    isConfigured: () => Promise<{ firebase: boolean; twilio: boolean }>;
+  };
 }
 
 contextBridge.exposeInMainWorld('electronAPI', {
@@ -169,4 +193,28 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // Forecast
   getForecast: () => ipcRenderer.invoke('forecast:get'),
+
+  // Bill Send
+  billSend: {
+    getPendingJobs: () => ipcRenderer.invoke('billSend:getPendingJobs'),
+    getJobsByStatus: (status: string) => ipcRenderer.invoke('billSend:getJobsByStatus', status),
+    getAllJobs: () => ipcRenderer.invoke('billSend:getAllJobs'),
+    getStats: () => ipcRenderer.invoke('billSend:getStats'),
+    manualRetry: (jobId: number) => ipcRenderer.invoke('billSend:manualRetry', jobId),
+    manualSend: (billId: number, customerPhone: string) => ipcRenderer.invoke('billSend:manualSend', billId, customerPhone),
+    deleteJob: (jobId: number) => ipcRenderer.invoke('billSend:deleteJob', jobId),
+    getQueueStatus: () => ipcRenderer.invoke('billSend:getQueueStatus'),
+  },
+
+  // Network
+  network: {
+    getStatus: () => ipcRenderer.invoke('network:getStatus'),
+    isAvailable: () => ipcRenderer.invoke('network:isAvailable'),
+    getQuality: () => ipcRenderer.invoke('network:getQuality'),
+  },
+
+  // Config
+  config: {
+    isConfigured: () => ipcRenderer.invoke('config:isConfigured'),
+  },
 } as ElectronAPI);

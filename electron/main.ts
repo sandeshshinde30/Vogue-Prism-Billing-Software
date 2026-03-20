@@ -3,6 +3,9 @@ import path from 'path';
 import { fileURLToPath } from 'node:url';
 import { initDatabase, closeDatabase } from './DB/connection';
 import { setupIpcHandlers } from './ipc-handlers';
+import { initializeBillSendJobsTable } from './DB/billSendJobs';
+import { startBillSendQueue, stopBillSendQueue } from './services/billSendQueue';
+import { startNetworkMonitoring, stopNetworkMonitoring } from './services/networkMonitor';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -31,6 +34,8 @@ function createWindow() {
   } else {
     win.loadFile(path.join(__dirname, '../dist/index.html'));
   }
+
+  return win;
 }
 
 app.on('window-all-closed', () => {
@@ -46,10 +51,19 @@ app.on('activate', () => {
 
 app.whenReady().then(async () => {
   await initDatabase();
+  initializeBillSendJobsTable();
+  
+  win = createWindow();
+  
   setupIpcHandlers();
-  createWindow();
+  
+  // Start background services
+  startNetworkMonitoring();
+  startBillSendQueue(win);
 });
 
 app.on('before-quit', async () => {
+  stopBillSendQueue();
+  stopNetworkMonitoring();
   await closeDatabase();
 });
