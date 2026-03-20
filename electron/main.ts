@@ -3,8 +3,6 @@ import path from 'path';
 import { fileURLToPath } from 'node:url';
 import { initDatabase, closeDatabase } from './DB/connection';
 import { setupIpcHandlers } from './ipc-handlers';
-import { initializeBillSendJobsTable } from './DB/billSendJobs';
-import { startBillSendQueue, stopBillSendQueue } from './services/billSendQueue';
 import { startNetworkMonitoring, stopNetworkMonitoring } from './services/networkMonitor';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -51,7 +49,6 @@ app.on('activate', () => {
 
 app.whenReady().then(async () => {
   await initDatabase();
-  initializeBillSendJobsTable();
   
   win = createWindow();
   
@@ -59,11 +56,9 @@ app.whenReady().then(async () => {
   
   // Start background services
   startNetworkMonitoring();
-  startBillSendQueue(win);
 });
 
 app.on('before-quit', async () => {
-  stopBillSendQueue();
   stopNetworkMonitoring();
   await closeDatabase();
 });

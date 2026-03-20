@@ -12,4 +12,3 @@ export { PrinterManagement } from './PrinterManagement';
 export { Analytics } from './Analytics';
 export { Forecast } from './Forecast';
 export { Combos } from './Combos';
-export { Operations } from './Operations';

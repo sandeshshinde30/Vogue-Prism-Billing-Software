@@ -1,7 +1,6 @@
 import { getDatabase } from './connection';
 import { updateStock } from './products';
 import { addActivityLog } from './logs';
-import { createBillSendJob } from './billSendJobs';
 
 export interface BillData {
   items: Array<{
@@ -21,7 +20,6 @@ export interface BillData {
   paymentMode: 'cash' | 'upi' | 'mixed';
   cashAmount?: number;
   upiAmount?: number;
-  customerMobileNumber?: string;
 }
 
 // CREATE - Create new bill with items
@@ -35,8 +33,8 @@ export function createBill(data: BillData) {
   const transaction = db.transaction(() => {
     // Insert bill with local time
     const billStmt = db.prepare(`
-      INSERT INTO bills (billNumber, subtotal, discountPercent, discountAmount, total, paymentMode, cashAmount, upiAmount, customerMobileNumber, createdAt)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now', 'localtime'))
+      INSERT INTO bills (billNumber, subtotal, discountPercent, discountAmount, total, paymentMode, cashAmount, upiAmount, createdAt)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now', 'localtime'))
     `);
     
     const billResult = billStmt.run(
@@ -47,8 +45,7 @@ export function createBill(data: BillData) {
       data.total,
       data.paymentMode,
       data.cashAmount || 0,
-      data.upiAmount || 0,
-      data.customerMobileNumber || null
+      data.upiAmount || 0
     );
     
     const billId = billResult.lastInsertRowid as number;
@@ -102,22 +99,6 @@ export function createBill(data: BillData) {
     })
   );
   
-  // Create bill send job if customer phone number is provided
-  if (data.customerMobileNumber) {
-    try {
-      createBillSendJob({
-        billId,
-        customerPhone: data.customerMobileNumber,
-        status: 'pending',
-        attempts: 0
-      });
-      console.log(`Bill send job created for bill ${billNumber}`);
-    } catch (error) {
-      console.error('Error creating bill send job:', error);
-      // Don't fail bill creation if job creation fails
-    }
-  }
-  
   return bill;
 }
 
@@ -143,9 +124,9 @@ export function getBills(dateFrom?: string, dateTo?: string, searchQuery?: strin
   
   // Search filtering
   if (searchQuery && searchQuery.trim()) {
-    conditions.push('(billNumber LIKE ? OR customerMobileNumber LIKE ?)');
+    conditions.push('(billNumber LIKE ?)');
     const searchTerm = `%${searchQuery.trim()}%`;
-    params.push(searchTerm, searchTerm);
+    params.push(searchTerm);
   }
   
   if (conditions.length > 0) {
@@ -543,8 +524,8 @@ export function restoreDeletedBill(deletedBillId: number) {
   const transaction = db.transaction(() => {
     // Restore the bill (without id to get new auto-increment id)
     const billStmt = db.prepare(`
-      INSERT INTO bills (billNumber, subtotal, discountPercent, discountAmount, total, paymentMode, cashAmount, upiAmount, customerMobileNumber, status, createdAt)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO bills (billNumber, subtotal, discountPercent, discountAmount, total, paymentMode, cashAmount, upiAmount, status, createdAt)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
     const billResult = billStmt.run(
       billData.billNumber + '-RESTORED',
@@ -555,7 +536,6 @@ export function restoreDeletedBill(deletedBillId: number) {
       billData.paymentMode,
       billData.cashAmount || 0,
       billData.upiAmount || 0,
-      billData.customerMobileNumber || null,
       'completed',
       billData.createdAt
     );

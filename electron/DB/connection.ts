@@ -178,7 +178,6 @@ export async function initDatabase() {
       paymentMode TEXT NOT NULL CHECK (paymentMode IN ('cash', 'upi', 'mixed')),
       cashAmount REAL DEFAULT 0,
       upiAmount REAL DEFAULT 0,
-      customerMobileNumber TEXT,
       status TEXT NOT NULL DEFAULT 'completed' CHECK (status IN ('completed', 'cancelled', 'held')),
       createdAt TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
     );

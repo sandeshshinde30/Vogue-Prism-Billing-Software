@@ -74,24 +74,6 @@ import {
   cleanupOldLogs
 } from './DB/logs';
 import {
-  createBillSendJob,
-  getPendingJobs,
-  getJobsByStatus,
-  getAllJobs,
-  getJobStats,
-  getJobById,
-  updateJobStatus,
-  deleteJob,
-  initializeBillSendJobsTable
-} from './DB/billSendJobs';
-import {
-  startBillSendQueue,
-  stopBillSendQueue,
-  manualRetryJob,
-  manualSendJob,
-  getQueueStatus
-} from './services/billSendQueue';
-import {
   startNetworkMonitoring,
   stopNetworkMonitoring,
   getNetworkStatus,
@@ -101,9 +83,6 @@ import {
 import {
   isFirebaseConfigured
 } from './services/firebase';
-import {
-  isTwilioConfigured
-} from './services/twilio';
 
 export function setupIpcHandlers() {
   
@@ -1485,83 +1464,6 @@ $shell.Run("notepad /p \\"$filePath\\"", 0, $true)
     try { deleteCombo(id); return { success: true }; } catch (e) { console.error(e); throw e; }
   });
 
-  // ===== BILL SEND HANDLERS =====
-
-  ipcMain.handle('billSend:getPendingJobs', async () => {
-    try {
-      return getPendingJobs();
-    } catch (error) {
-      console.error('Error getting pending jobs:', error);
-      throw error;
-    }
-  });
-
-  ipcMain.handle('billSend:getJobsByStatus', async (_, status: string) => {
-    try {
-      return getJobsByStatus(status as 'pending' | 'sent' | 'failed');
-    } catch (error) {
-      console.error('Error getting jobs by status:', error);
-      throw error;
-    }
-  });
-
-  ipcMain.handle('billSend:getAllJobs', async () => {
-    try {
-      return getAllJobs();
-    } catch (error) {
-      console.error('Error getting all jobs:', error);
-      throw error;
-    }
-  });
-
-  ipcMain.handle('billSend:getStats', async () => {
-    try {
-      return getJobStats();
-    } catch (error) {
-      console.error('Error getting job stats:', error);
-      throw error;
-    }
-  });
-
-  ipcMain.handle('billSend:manualRetry', async (_, jobId: number) => {
-    try {
-      await manualRetryJob(jobId);
-      return { success: true };
-    } catch (error) {
-      console.error('Error retrying job:', error);
-      throw error;
-    }
-  });
-
-  ipcMain.handle('billSend:manualSend', async (_, billId: number, customerPhone: string) => {
-    try {
-      await manualSendJob(billId, customerPhone);
-      return { success: true };
-    } catch (error) {
-      console.error('Error sending bill:', error);
-      throw error;
-    }
-  });
-
-  ipcMain.handle('billSend:deleteJob', async (_, jobId: number) => {
-    try {
-      deleteJob(jobId);
-      return { success: true };
-    } catch (error) {
-      console.error('Error deleting job:', error);
-      throw error;
-    }
-  });
-
-  ipcMain.handle('billSend:getQueueStatus', async () => {
-    try {
-      return getQueueStatus();
-    } catch (error) {
-      console.error('Error getting queue status:', error);
-      throw error;
-    }
-  });
-
   ipcMain.handle('network:getStatus', async () => {
     try {
       return getNetworkStatus();
@@ -1593,7 +1495,6 @@ $shell.Run("notepad /p \\"$filePath\\"", 0, $true)
     try {
       return {
         firebase: isFirebaseConfigured(),
-        twilio: isTwilioConfigured(),
       };
     } catch (error) {
       console.error('Error checking configuration:', error);

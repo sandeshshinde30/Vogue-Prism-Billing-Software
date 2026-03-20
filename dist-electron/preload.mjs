@@ -69,17 +69,6 @@ electron.contextBridge.exposeInMainWorld("electronAPI", {
   deleteCombo: (id) => electron.ipcRenderer.invoke("combos:delete", id),
   // Forecast
   getForecast: () => electron.ipcRenderer.invoke("forecast:get"),
-  // Bill Send
-  billSend: {
-    getPendingJobs: () => electron.ipcRenderer.invoke("billSend:getPendingJobs"),
-    getJobsByStatus: (status) => electron.ipcRenderer.invoke("billSend:getJobsByStatus", status),
-    getAllJobs: () => electron.ipcRenderer.invoke("billSend:getAllJobs"),
-    getStats: () => electron.ipcRenderer.invoke("billSend:getStats"),
-    manualRetry: (jobId) => electron.ipcRenderer.invoke("billSend:manualRetry", jobId),
-    manualSend: (billId, customerPhone) => electron.ipcRenderer.invoke("billSend:manualSend", billId, customerPhone),
-    deleteJob: (jobId) => electron.ipcRenderer.invoke("billSend:deleteJob", jobId),
-    getQueueStatus: () => electron.ipcRenderer.invoke("billSend:getQueueStatus")
-  },
   // Network
   network: {
     getStatus: () => electron.ipcRenderer.invoke("network:getStatus"),

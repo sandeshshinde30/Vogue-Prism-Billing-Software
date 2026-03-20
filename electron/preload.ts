@@ -194,18 +194,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Forecast
   getForecast: () => ipcRenderer.invoke('forecast:get'),
 
-  // Bill Send
-  billSend: {
-    getPendingJobs: () => ipcRenderer.invoke('billSend:getPendingJobs'),
-    getJobsByStatus: (status: string) => ipcRenderer.invoke('billSend:getJobsByStatus', status),
-    getAllJobs: () => ipcRenderer.invoke('billSend:getAllJobs'),
-    getStats: () => ipcRenderer.invoke('billSend:getStats'),
-    manualRetry: (jobId: number) => ipcRenderer.invoke('billSend:manualRetry', jobId),
-    manualSend: (billId: number, customerPhone: string) => ipcRenderer.invoke('billSend:manualSend', billId, customerPhone),
-    deleteJob: (jobId: number) => ipcRenderer.invoke('billSend:deleteJob', jobId),
-    getQueueStatus: () => ipcRenderer.invoke('billSend:getQueueStatus'),
-  },
-
   // Network
   network: {
     getStatus: () => ipcRenderer.invoke('network:getStatus'),
