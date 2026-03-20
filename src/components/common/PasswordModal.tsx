@@ -48,7 +48,7 @@ export function PasswordModal({
 
     if (password === ADMIN_PASSWORD) {
       onSuccess();
-      handleClose();
+      // Don't call handleClose on success - let parent handle modal closing
     } else {
       setError('Incorrect password');
       // Refocus on error

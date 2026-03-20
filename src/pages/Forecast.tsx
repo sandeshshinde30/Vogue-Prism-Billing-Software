@@ -14,6 +14,7 @@ import {
   LineChart as LineChartIcon,
   TrendingUpIcon,
 } from 'lucide-react';
+import { ProtectedTabWrapper } from '../components/common/ProtectedTabWrapper';
 import {
   LineChart,
   Line,
@@ -36,7 +37,7 @@ import toast from 'react-hot-toast';
 const ACCENT = '#22c55e';
 const COLORS = ['#22c55e', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4'];
 
-export function Forecast() {
+function ForecastContent() {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -560,5 +561,13 @@ function PredictionCard({ label, value, subtext, icon, color }: any) {
       <p style={{ fontSize: '24px', fontWeight: '700', margin: 0 }}>{value}</p>
       <p style={{ fontSize: '11px', opacity: 0.8, margin: '8px 0 0 0' }}>{subtext}</p>
     </div>
+  );
+}
+
+export function Forecast() {
+  return (
+    <ProtectedTabWrapper tabName="Forecast">
+      <ForecastContent />
+    </ProtectedTabWrapper>
   );
 }

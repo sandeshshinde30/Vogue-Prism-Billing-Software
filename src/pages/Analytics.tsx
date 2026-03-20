@@ -12,6 +12,7 @@ import {
   Activity,
   Zap,
 } from 'lucide-react';
+import { ProtectedTabWrapper } from '../components/common/ProtectedTabWrapper';
 import {
   LineChart,
   Line,
@@ -94,7 +95,7 @@ const COLORS = ['#22c55e', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'
 
 type SortConfig = { key: string; direction: 'asc' | 'desc' | null };
 
-export function Analytics() {
+function AnalyticsContent() {
   const [data, setData] = useState<AnalyticsData | null>(null);
   const [forecastData, setForecastData] = useState<ForecastData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -1162,5 +1163,13 @@ export function Analytics() {
         </div>
       </div>
     </div>
+  );
+}
+
+export function Analytics() {
+  return (
+    <ProtectedTabWrapper tabName="Analytics">
+      <AnalyticsContent />
+    </ProtectedTabWrapper>
   );
 }
