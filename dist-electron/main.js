@@ -1640,6 +1640,31 @@ function getAnalytics(dateFrom, dateTo) {
     salesTarget
   };
 }
+function linearRegression(data) {
+  const n = data.length;
+  if (n < 2) return { slope: 0, intercept: 0, rSquared: 0, predictions: data };
+  let sumX = 0, sumY = 0, sumXY = 0, sumX2 = 0, sumY2 = 0;
+  for (let i = 0; i < n; i++) {
+    sumX += i;
+    sumY += data[i];
+    sumXY += i * data[i];
+    sumX2 += i * i;
+    sumY2 += data[i] * data[i];
+  }
+  const slope = (n * sumXY - sumX * sumY) / (n * sumX2 - sumX * sumX);
+  const intercept = (sumY - slope * sumX) / n;
+  const yMean = sumY / n;
+  let ssRes = 0, ssTot = 0;
+  const predictions = [];
+  for (let i = 0; i < n; i++) {
+    const predicted = intercept + slope * i;
+    predictions.push(predicted);
+    ssRes += Math.pow(data[i] - predicted, 2);
+    ssTot += Math.pow(data[i] - yMean, 2);
+  }
+  const rSquared = ssTot === 0 ? 0 : 1 - ssRes / ssTot;
+  return { slope, intercept, rSquared, predictions };
+}
 function movingAverage(data, period) {
   const result = [];
   for (let i = 0; i < data.length; i++) {
@@ -1652,171 +1677,519 @@ function movingAverage(data, period) {
   }
   return result;
 }
-function linearRegression(data) {
-  const n = data.length;
-  let sumX = 0, sumY = 0, sumXY = 0, sumX2 = 0;
-  for (let i = 0; i < n; i++) {
-    sumX += i;
-    sumY += data[i];
-    sumXY += i * data[i];
-    sumX2 += i * i;
-  }
-  const slope = (n * sumXY - sumX * sumY) / (n * sumX2 - sumX * sumX);
-  const intercept = (sumY - slope * sumX) / n;
-  return { slope, intercept };
-}
-function stdDev(data) {
+function calculateStats(data) {
+  if (data.length === 0) return { mean: 0, stdDev: 0, variance: 0, min: 0, max: 0 };
   const mean = data.reduce((a, b) => a + b, 0) / data.length;
   const variance = data.reduce((sum, val) => sum + Math.pow(val - mean, 2), 0) / data.length;
-  return Math.sqrt(variance);
+  const stdDev = Math.sqrt(variance);
+  const min = Math.min(...data);
+  const max = Math.max(...data);
+  return { mean, stdDev, variance, min, max };
+}
+function coefficientOfVariation(data) {
+  const stats = calculateStats(data);
+  return stats.mean === 0 ? 0 : stats.stdDev / stats.mean * 100;
+}
+function getConfidenceLevel(cv, dataPoints) {
+  if (dataPoints < 7) return "Low";
+  if (cv > 50) return "Low";
+  if (cv > 30) return "Medium";
+  return "High";
+}
+function calculateGrowthRate(oldValue, newValue) {
+  if (oldValue === 0) return newValue > 0 ? 100 : 0;
+  return (newValue - oldValue) / oldValue * 100;
 }
 function getForecast() {
+  var _a, _b;
   const db2 = getDatabase();
-  const historicalStmt = db2.prepare(`
+  const billsStmt = db2.prepare(`
     SELECT 
+      id, 
+      total, 
+      paymentMode, 
       date(createdAt) as date,
-      COALESCE(SUM(total), 0) as sales
+      strftime('%w', createdAt) as dayOfWeek,
+      strftime('%Y-%m', createdAt) as yearMonth,
+      createdAt
     FROM bills
-    GROUP BY date(createdAt)
-    ORDER BY date(createdAt) ASC
+    WHERE status = 'completed'
+    ORDER BY createdAt ASC
   `);
-  const historicalRaw = historicalStmt.all();
-  const historicalDaily = historicalRaw.map((d) => ({
-    date: d.date,
-    sales: d.sales
-  }));
-  const salesData = historicalDaily.map((d) => d.sales);
-  if (salesData.length === 0) {
-    return {
-      historicalDaily: [],
-      forecast30Days: [],
-      forecast90Days: [],
-      categoryTrends: [],
-      seasonalPattern: [],
-      summary: {
-        avgDailySales: 0,
-        trend: 0,
-        volatility: 0,
-        forecast30DaysTotal: 0,
-        forecast90DaysTotal: 0
-      },
-      insights: ["No historical data available for forecasting"]
-    };
+  const bills = billsStmt.all();
+  if (bills.length === 0) {
+    return getEmptyForecast();
   }
-  const avgDailySales = salesData.reduce((a, b) => a + b, 0) / salesData.length;
-  const volatility = stdDev(salesData) / avgDailySales * 100;
-  const { slope } = linearRegression(salesData);
-  const trend = slope / avgDailySales * 100;
+  const productSalesStmt = db2.prepare(`
+    SELECT 
+      bi.productId,
+      bi.productName,
+      p.category,
+      SUM(bi.quantity) as totalQuantity,
+      SUM(bi.totalPrice) as totalRevenue,
+      COUNT(DISTINCT bi.billId) as billCount,
+      MIN(b.createdAt) as firstSale,
+      MAX(b.createdAt) as lastSale
+    FROM bill_items bi
+    JOIN bills b ON bi.billId = b.id
+    LEFT JOIN products p ON bi.productId = p.id
+    WHERE b.status = 'completed'
+    GROUP BY bi.productId, bi.productName, p.category
+    ORDER BY totalRevenue DESC
+  `);
+  const productSales = productSalesStmt.all();
+  const dailySalesMap = /* @__PURE__ */ new Map();
+  const dailyBillsMap = /* @__PURE__ */ new Map();
+  const dayOfWeekMap = /* @__PURE__ */ new Map();
+  for (const bill of bills) {
+    const date = bill.date;
+    const dow = parseInt(bill.dayOfWeek);
+    dailySalesMap.set(date, (dailySalesMap.get(date) || 0) + bill.total);
+    dailyBillsMap.set(date, (dailyBillsMap.get(date) || 0) + 1);
+    if (!dayOfWeekMap.has(dow)) {
+      dayOfWeekMap.set(dow, { sales: 0, count: 0 });
+    }
+    const dayData = dayOfWeekMap.get(dow);
+    dayData.sales += bill.total;
+    dayData.count += 1;
+  }
+  const dailySalesArray = Array.from(dailySalesMap.entries()).sort((a, b) => new Date(a[0]).getTime() - new Date(b[0]).getTime()).map(([date, sales]) => ({ date, sales }));
+  const salesValues = dailySalesArray.map((d) => d.sales);
+  const regression = linearRegression(salesValues);
+  const trendDirection = regression.slope > 0 ? "Increasing" : regression.slope < 0 ? "Decreasing" : "Stable";
+  const trendStrength = Math.abs(regression.slope);
+  const stats = calculateStats(salesValues);
+  const std = stats.stdDev;
+  const lastDate = new Date(dailySalesArray[dailySalesArray.length - 1].date);
+  const forecast7Days = [];
   const forecast30Days = [];
-  const ma7 = movingAverage(salesData, 7);
-  const lastMA = ma7[ma7.length - 1];
-  const std = stdDev(salesData);
-  for (let i = 1; i <= 30; i++) {
-    const predicted = Math.max(0, lastMA + slope * i);
-    const lower = Math.max(0, predicted - 1.96 * std);
-    const upper = predicted + 1.96 * std;
-    const forecastDate = /* @__PURE__ */ new Date();
+  const forecast90Days = [];
+  const confidenceMultiplier = 1.96;
+  for (let i = 1; i <= 7; i++) {
+    const forecastDate = new Date(lastDate);
     forecastDate.setDate(forecastDate.getDate() + i);
+    const predicted = Math.max(0, regression.intercept + regression.slope * (salesValues.length + i - 1));
+    const margin = confidenceMultiplier * std * Math.sqrt(1 + 1 / salesValues.length + Math.pow(i - salesValues.length / 2, 2) / Math.pow(salesValues.length, 2));
+    forecast7Days.push({
+      date: forecastDate.toISOString().split("T")[0],
+      predicted: Math.round(predicted),
+      lower: Math.max(0, Math.round(predicted - margin)),
+      upper: Math.round(predicted + margin)
+    });
+  }
+  for (let i = 1; i <= 30; i++) {
+    const forecastDate = new Date(lastDate);
+    forecastDate.setDate(forecastDate.getDate() + i);
+    const predicted = Math.max(0, regression.intercept + regression.slope * (salesValues.length + i - 1));
+    const margin = confidenceMultiplier * std * Math.sqrt(1 + 1 / salesValues.length + Math.pow(i - salesValues.length / 2, 2) / Math.pow(salesValues.length, 2));
     forecast30Days.push({
       date: forecastDate.toISOString().split("T")[0],
       predicted: Math.round(predicted),
-      lower: Math.round(lower),
-      upper: Math.round(upper)
+      lower: Math.max(0, Math.round(predicted - margin)),
+      upper: Math.round(predicted + margin)
     });
   }
-  const forecast90Days = [];
   for (let i = 1; i <= 90; i++) {
-    const predicted = Math.max(0, lastMA + slope * i);
-    const forecastDate = /* @__PURE__ */ new Date();
+    const forecastDate = new Date(lastDate);
     forecastDate.setDate(forecastDate.getDate() + i);
+    const predicted = Math.max(0, regression.intercept + regression.slope * (salesValues.length + i - 1));
     forecast90Days.push({
       date: forecastDate.toISOString().split("T")[0],
       predicted: Math.round(predicted)
     });
   }
-  const categoryStmt = db2.prepare(`
-    SELECT 
-      COALESCE(p.category, 'Unknown') as category,
-      COALESCE(SUM(bi.totalPrice), 0) as total,
-      COUNT(DISTINCT date(b.createdAt)) as days
-    FROM bill_items bi
-    JOIN bills b ON bi.billId = b.id
-    LEFT JOIN products p ON bi.productId = p.id
-    GROUP BY p.category
-    ORDER BY total DESC
-    LIMIT 10
-  `);
-  const categoryData = categoryStmt.all();
-  const categoryTrends = categoryData.map((cat) => {
-    const avgDaily = cat.total / Math.max(cat.days, 1);
-    const forecast = Math.max(0, avgDaily + slope * 30);
+  const nextWeekTotal = forecast7Days.reduce((sum, d) => sum + d.predicted, 0);
+  const nextMonthTotal = forecast30Days.reduce((sum, d) => sum + d.predicted, 0);
+  const next90DaysTotal = forecast90Days.reduce((sum, d) => sum + d.predicted, 0);
+  const nextWeekDaily = Math.round(nextWeekTotal / 7);
+  const nextMonthDaily = Math.round(nextMonthTotal / 30);
+  const next90DaysDaily = Math.round(next90DaysTotal / 90);
+  const ma7 = movingAverage(salesValues, 7);
+  const ma30 = movingAverage(salesValues, 30);
+  const dailyTrend = dailySalesArray.map((d, idx) => ({
+    date: d.date,
+    sales: d.sales,
+    ma7: Math.round(ma7[idx]),
+    ma30: Math.round(ma30[idx])
+  }));
+  const dayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+  const weeklyByDay = dayNames.map((day, idx) => {
+    const dayData = dayOfWeekMap.get(idx) || { sales: 0, count: 0 };
+    const avgSales = dayData.count > 0 ? dayData.sales / dayData.count : 0;
+    const predictedSales = Math.max(0, regression.intercept + regression.slope * (salesValues.length + 7));
     return {
-      category: cat.category,
-      trend: Math.round(avgDaily),
-      forecast: Math.round(forecast)
+      day,
+      avgSales: Math.round(avgSales),
+      totalSales: Math.round(dayData.sales),
+      billCount: dayData.count,
+      performance: getPerformanceLabel(avgSales, stats.mean),
+      predictedSales: Math.round(predictedSales)
     };
   });
-  const seasonalStmt = db2.prepare(`
-    SELECT 
-      strftime('%m', createdAt) as month,
-      COALESCE(AVG(total), 0) as avgSales
-    FROM bills
-    GROUP BY strftime('%m', createdAt)
-    ORDER BY month
-  `);
-  const seasonalRaw = seasonalStmt.all();
-  const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-  const seasonalPattern = seasonalRaw.map((s) => ({
-    month: monthNames[parseInt(s.month) - 1],
-    avgSales: Math.round(s.avgSales)
-  }));
-  const forecast30DaysTotal = forecast30Days.reduce((sum, d) => sum + d.predicted, 0);
-  const forecast90DaysTotal = forecast90Days.reduce((sum, d) => sum + d.predicted, 0);
-  const insights = [];
-  if (trend > 5) {
-    insights.push(`📈 Strong upward trend detected (+${trend.toFixed(1)}%). Sales are expected to grow significantly.`);
-  } else if (trend > 0) {
-    insights.push(`📈 Slight upward trend (+${trend.toFixed(1)}%). Sales are gradually improving.`);
-  } else if (trend < -5) {
-    insights.push(`📉 Strong downward trend (${trend.toFixed(1)}%). Consider reviewing pricing or marketing strategies.`);
-  } else if (trend < 0) {
-    insights.push(`📉 Slight downward trend (${trend.toFixed(1)}%). Monitor sales closely.`);
-  }
-  if (volatility > 40) {
-    insights.push(`⚠️ High volatility (${volatility.toFixed(1)}%). Sales are unpredictable. Consider stabilizing factors.`);
-  } else if (volatility < 15) {
-    insights.push(`✅ Low volatility (${volatility.toFixed(1)}%). Sales are stable and predictable.`);
-  }
-  const topCategory = categoryTrends[0];
-  if (topCategory) {
-    const categoryGrowth = (topCategory.forecast - topCategory.trend) / topCategory.trend * 100;
-    if (categoryGrowth > 10) {
-      insights.push(`🎯 ${topCategory.category} category showing strong growth potential (+${categoryGrowth.toFixed(1)}%).`);
+  const weeklyForecast = dayNames.map((day, idx) => {
+    const nextWeekDate = new Date(lastDate);
+    nextWeekDate.setDate(nextWeekDate.getDate() + 7 + idx);
+    const dayOfWeek = nextWeekDate.getDay();
+    weeklyByDay[dayOfWeek].avgSales;
+    const predicted = Math.max(0, regression.intercept + regression.slope * (salesValues.length + 7 + idx));
+    return {
+      day,
+      predicted: Math.round(predicted)
+    };
+  });
+  const weekendDays = [0, 6];
+  const weekendAvg = weeklyByDay.filter((_, idx) => weekendDays.includes(idx)).reduce((sum, d) => sum + d.avgSales, 0) / 2;
+  const weekdayAvg = weeklyByDay.filter((_, idx) => !weekendDays.includes(idx)).reduce((sum, d) => sum + d.avgSales, 0) / 5;
+  const bestDay = weeklyByDay.reduce((max, d) => d.avgSales > max.avgSales ? d : max);
+  const worstDay = weeklyByDay.reduce((min, d) => d.avgSales < min.avgSales ? d : min);
+  const monthlyMap = /* @__PURE__ */ new Map();
+  for (const bill of bills) {
+    const month = bill.yearMonth;
+    if (!monthlyMap.has(month)) {
+      monthlyMap.set(month, { sales: 0, count: 0 });
     }
+    const monthData = monthlyMap.get(month);
+    monthData.sales += bill.total;
+    monthData.count += 1;
   }
-  const forecast30Avg = forecast30DaysTotal / 30;
-  const growth30 = (forecast30Avg - avgDailySales) / avgDailySales * 100;
-  if (growth30 > 0) {
-    insights.push(`💰 30-day forecast shows +${growth30.toFixed(1)}% growth compared to historical average.`);
+  const monthlyTrend = Array.from(monthlyMap.entries()).sort((a, b) => a[0].localeCompare(b[0])).map((entry, idx, arr) => {
+    const [month, data] = entry;
+    const avgDaily = data.sales / 30;
+    const prevMonth = idx > 0 ? arr[idx - 1][1] : null;
+    const growth = prevMonth ? calculateGrowthRate(prevMonth.sales, data.sales) : 0;
+    return {
+      month,
+      sales: Math.round(data.sales),
+      avgDaily: Math.round(avgDaily),
+      growth: Math.round(growth * 10) / 10
+    };
+  });
+  const topSelling = productSales.slice(0, 10).map((p) => ({
+    name: p.productName,
+    category: p.category || "Uncategorized",
+    quantity: p.totalQuantity,
+    revenue: Math.round(p.totalRevenue),
+    growth: 0
+    // Will calculate from historical data if available
+  }));
+  const slowMoving = productSales.filter((p) => p.totalQuantity < 5).slice(0, 5).map((p) => ({
+    name: p.productName,
+    category: p.category || "Uncategorized",
+    quantity: p.totalQuantity,
+    revenue: Math.round(p.totalRevenue),
+    daysInStock: calculateDaysInStock(p.firstSale, p.lastSale)
+  }));
+  const productForecast = productSales.slice(0, 15).map((p) => {
+    const daysInStock = calculateDaysInStock(p.firstSale, p.lastSale);
+    const avgDailyDemand = p.totalQuantity / daysInStock;
+    const forecast30 = Math.round(avgDailyDemand * 30);
+    const forecast90 = Math.round(avgDailyDemand * 90);
+    const currentStock = getProductStock(db2, p.productId);
+    const daysUntilStockout = currentStock > 0 ? Math.ceil(currentStock / avgDailyDemand) : 0;
+    let priority = "Low";
+    if (daysUntilStockout < 7 || forecast30 > 50) priority = "High";
+    else if (daysUntilStockout < 14 || forecast30 > 20) priority = "Medium";
+    return {
+      name: p.productName,
+      currentDemand: Math.round(avgDailyDemand),
+      forecast30Days: forecast30,
+      forecast90Days: forecast90,
+      restockPriority: priority,
+      daysUntilStockout: Math.max(0, daysUntilStockout)
+    };
+  });
+  const productDemandTrend = productSales.slice(0, 10).map((p) => {
+    const daysInStock = calculateDaysInStock(p.firstSale, p.lastSale);
+    p.totalQuantity / daysInStock;
+    const midDate = new Date(p.firstSale);
+    midDate.setDate(midDate.getDate() + Math.floor(daysInStock / 2));
+    const firstHalfDemand = p.totalQuantity / 2;
+    const secondHalfDemand = p.totalQuantity / 2;
+    const growthRate = calculateGrowthRate(firstHalfDemand, secondHalfDemand);
+    let trend = "Stable";
+    if (growthRate > 10) trend = "Increasing";
+    else if (growthRate < -10) trend = "Decreasing";
+    return {
+      name: p.productName,
+      trend,
+      growthRate: Math.round(growthRate * 10) / 10
+    };
+  });
+  const categoryMap = /* @__PURE__ */ new Map();
+  for (const product of productSales) {
+    const cat = product.category || "Uncategorized";
+    if (!categoryMap.has(cat)) {
+      categoryMap.set(cat, { revenue: 0, quantity: 0, count: 0 });
+    }
+    const catData = categoryMap.get(cat);
+    catData.revenue += product.totalRevenue;
+    catData.quantity += product.totalQuantity;
+    catData.count += 1;
   }
-  if (historicalDaily.length < 30) {
-    insights.push(`ℹ️ Limited historical data (${historicalDaily.length} days). Forecast accuracy will improve with more data.`);
+  const categoryPerformance = Array.from(categoryMap.entries()).map(([name, data]) => {
+    const avgDailyRevenue = data.revenue / Math.max(data.count, 1);
+    const predictedRevenue30 = Math.round(avgDailyRevenue * 30);
+    return {
+      name,
+      revenue: Math.round(data.revenue),
+      quantity: data.quantity,
+      avgPrice: Math.round(data.revenue / data.quantity),
+      growth: 0,
+      predictedRevenue30
+    };
+  }).sort((a, b) => b.revenue - a.revenue);
+  const categoryForecast = categoryPerformance.map((cat) => {
+    const avgDailyRevenue = cat.revenue / Math.max(cat.quantity, 1);
+    const forecast30 = Math.round(avgDailyRevenue * 30);
+    const forecast90 = Math.round(avgDailyRevenue * 90);
+    return {
+      name: cat.name,
+      current: cat.revenue,
+      forecast30,
+      forecast90
+    };
+  });
+  const topCategory = ((_a = categoryPerformance[0]) == null ? void 0 : _a.name) || "N/A";
+  const bottomCategory = ((_b = categoryPerformance[categoryPerformance.length - 1]) == null ? void 0 : _b.name) || "N/A";
+  const paymentMap = /* @__PURE__ */ new Map();
+  for (const bill of bills) {
+    const mode = bill.paymentMode;
+    if (!paymentMap.has(mode)) {
+      paymentMap.set(mode, { count: 0, total: 0 });
+    }
+    const payData = paymentMap.get(mode);
+    payData.count += 1;
+    payData.total += bill.total;
   }
+  const totalBills = bills.length;
+  const paymentDistribution = Array.from(paymentMap.entries()).map(([mode, data]) => ({
+    mode: mode.toUpperCase(),
+    count: data.count,
+    percentage: Math.round(data.count / totalBills * 1e3) / 10,
+    avgValue: Math.round(data.total / data.count)
+  }));
+  const dominantMode = paymentDistribution.reduce((max, p) => p.count > max.count ? p : max).mode;
+  const midPoint = Math.floor(bills.length / 2);
+  const firstHalf = bills.slice(0, midPoint);
+  const secondHalf = bills.slice(midPoint);
+  const paymentTrends = Array.from(paymentMap.keys()).map((mode) => {
+    const firstHalfCount = firstHalf.filter((b) => b.paymentMode === mode).length;
+    const secondHalfCount = secondHalf.filter((b) => b.paymentMode === mode).length;
+    const growth = calculateGrowthRate(firstHalfCount || 1, secondHalfCount);
+    const trend = growth > 5 ? "Increasing" : growth < -5 ? "Decreasing" : "Stable";
+    const currentPercentage = secondHalfCount / secondHalf.length * 100;
+    const predictedPercentage = Math.min(100, Math.max(0, currentPercentage + growth * 0.3));
+    return {
+      mode: mode.toUpperCase(),
+      growth: Math.round(growth * 10) / 10,
+      trend,
+      predictedPercentage30: Math.round(predictedPercentage * 10) / 10
+    };
+  });
+  const paymentForecast = Array.from(paymentMap.keys()).map((mode) => {
+    const modeData = paymentMap.get(mode);
+    modeData.total / modeData.count;
+    const predicted7Days = Math.round(nextWeekTotal / 7 * (modeData.count / totalBills));
+    const predicted30Days = Math.round(nextMonthTotal / 30 * (modeData.count / totalBills));
+    return {
+      mode: mode.toUpperCase(),
+      predicted7Days,
+      predicted30Days
+    };
+  });
+  const cv = coefficientOfVariation(salesValues);
+  const confidence = getConfidenceLevel(cv, salesValues.length);
+  const dataQuality = Math.max(0, Math.min(100, 100 - cv));
+  const insights = generateInsights(
+    regression,
+    weeklyByDay,
+    weekendAvg,
+    weekdayAvg,
+    topSelling,
+    categoryPerformance,
+    paymentTrends,
+    productForecast,
+    stats
+  );
+  const weeklyPatternInsight = weekendAvg > weekdayAvg ? `Weekend sales are ${Math.round((weekendAvg - weekdayAvg) / weekdayAvg * 100)}% higher than weekdays` : `Weekday sales are ${Math.round((weekdayAvg - weekendAvg) / weekendAvg * 100)}% higher than weekends`;
+  const peakDays = weeklyByDay.filter((d) => d.performance === "High").map((d) => d.day);
+  const lowDays = weeklyByDay.filter((d) => d.performance === "Low").map((d) => d.day);
   return {
-    historicalDaily,
-    forecast30Days,
-    forecast90Days,
-    categoryTrends,
-    seasonalPattern,
     summary: {
-      avgDailySales: Math.round(avgDailySales),
-      trend: Math.round(trend * 100) / 100,
-      volatility: Math.round(volatility * 100) / 100,
-      forecast30DaysTotal,
-      forecast90DaysTotal
+      totalSales: Math.round(bills.reduce((sum, b) => sum + b.total, 0)),
+      avgDailySales: Math.round(stats.mean),
+      totalBills,
+      dataPoints: salesValues.length,
+      dateRange: {
+        from: dailySalesArray[0].date,
+        to: dailySalesArray[dailySalesArray.length - 1].date
+      }
     },
-    insights
+    trends: {
+      dailyTrend,
+      weeklyTrend: [],
+      monthlyTrend,
+      regression: {
+        slope: Math.round(regression.slope * 100) / 100,
+        slopeExplanation: `Sales are ${trendDirection.toLowerCase()} by ₹${Math.round(Math.abs(regression.slope))} per day`,
+        rSquared: Math.round(regression.rSquared * 1e4) / 1e4,
+        accuracy: getAccuracyLabel(regression.rSquared),
+        forecast7Days,
+        forecast30Days,
+        forecast90Days
+      }
+    },
+    predictions: {
+      nextWeekTotal,
+      nextMonthTotal,
+      next90DaysTotal,
+      nextWeekDaily,
+      nextMonthDaily,
+      next90DaysDaily,
+      trendStrength: Math.round(trendStrength * 100) / 100,
+      volatilityScore: Math.round(stats.stdDev * 100) / 100
+    },
+    weeklyPattern: {
+      byDay: weeklyByDay,
+      weekendVsWeekday: {
+        weekendAvg: Math.round(weekendAvg),
+        weekdayAvg: Math.round(weekdayAvg),
+        difference: Math.round(weekendAvg - weekdayAvg),
+        differencePercent: Math.round((weekendAvg - weekdayAvg) / weekdayAvg * 1e3) / 10
+      },
+      bestDay: bestDay.day,
+      worstDay: worstDay.day,
+      weeklyForecast
+    },
+    products: {
+      topSelling: topSelling.map((p, idx) => {
+        var _a2;
+        return {
+          ...p,
+          predictedDemand30: ((_a2 = productForecast[idx]) == null ? void 0 : _a2.forecast30Days) || 0
+        };
+      }),
+      slowMoving,
+      forecast: productForecast,
+      demandTrend: productDemandTrend
+    },
+    categories: {
+      performance: categoryPerformance,
+      topCategory,
+      bottomCategory,
+      categoryForecast
+    },
+    payments: {
+      distribution: paymentDistribution,
+      trends: paymentTrends,
+      dominantMode,
+      paymentForecast
+    },
+    seasonality: {
+      weeklyPattern: weeklyPatternInsight,
+      monthlyPattern: monthlyTrend.length > 1 ? "Multiple months of data available" : "Insufficient data",
+      peakDays,
+      lowDays,
+      seasonalIndex: weeklyByDay.map((d) => ({
+        day: d.day,
+        index: Math.round(d.avgSales / stats.mean * 100)
+      }))
+    },
+    insights,
+    confidence: {
+      level: confidence,
+      reason: `Data consistency: ${Math.round(dataQuality)}%. ${salesValues.length} days of sales data.`,
+      dataQuality: Math.round(dataQuality)
+    }
   };
+}
+function getEmptyForecast() {
+  return {
+    summary: { totalSales: 0, avgDailySales: 0, totalBills: 0, dataPoints: 0, dateRange: { from: "", to: "" } },
+    trends: {
+      dailyTrend: [],
+      weeklyTrend: [],
+      monthlyTrend: [],
+      regression: { slope: 0, slopeExplanation: "No data", rSquared: 0, accuracy: "N/A", forecast7Days: [], forecast30Days: [], forecast90Days: [] }
+    },
+    predictions: {
+      nextWeekTotal: 0,
+      nextMonthTotal: 0,
+      next90DaysTotal: 0,
+      nextWeekDaily: 0,
+      nextMonthDaily: 0,
+      next90DaysDaily: 0,
+      trendStrength: 0,
+      volatilityScore: 0
+    },
+    weeklyPattern: {
+      byDay: [],
+      weekendVsWeekday: { weekendAvg: 0, weekdayAvg: 0, difference: 0, differencePercent: 0 },
+      bestDay: "N/A",
+      worstDay: "N/A",
+      weeklyForecast: []
+    },
+    products: { topSelling: [], slowMoving: [], forecast: [], demandTrend: [] },
+    categories: { performance: [], topCategory: "N/A", bottomCategory: "N/A", categoryForecast: [] },
+    payments: { distribution: [], trends: [], dominantMode: "N/A", paymentForecast: [] },
+    seasonality: { weeklyPattern: "No data", monthlyPattern: "No data", peakDays: [], lowDays: [], seasonalIndex: [] },
+    insights: ["No sales data available"],
+    confidence: { level: "Low", reason: "No data", dataQuality: 0 }
+  };
+}
+function getPerformanceLabel(value, average) {
+  if (value > average * 1.2) return "High";
+  if (value < average * 0.8) return "Low";
+  return "Medium";
+}
+function getAccuracyLabel(rSquared) {
+  if (rSquared > 0.8) return "Very High";
+  if (rSquared > 0.6) return "High";
+  if (rSquared > 0.4) return "Medium";
+  return "Low";
+}
+function calculateDaysInStock(firstSale, lastSale) {
+  const first = new Date(firstSale).getTime();
+  const last = new Date(lastSale).getTime();
+  const days = Math.ceil((last - first) / (1e3 * 60 * 60 * 24)) + 1;
+  return Math.max(1, days);
+}
+function getProductStock(db2, productId) {
+  const stmt = db2.prepare("SELECT stock FROM products WHERE id = ?");
+  const result = stmt.get(productId);
+  return (result == null ? void 0 : result.stock) || 0;
+}
+function generateInsights(regression, weeklyByDay, weekendAvg, weekdayAvg, topSelling, categories, paymentTrends, productForecast, stats) {
+  const insights = [];
+  if (regression.slope > 0) {
+    const dailyGrowth = Math.round(regression.slope / stats.mean * 1e3) / 10;
+    insights.push(`📈 Sales trending UP by ${dailyGrowth}% daily. Maintain current strategy.`);
+  } else if (regression.slope < 0) {
+    const dailyDecline = Math.round(Math.abs(regression.slope) / stats.mean * 1e3) / 10;
+    insights.push(`📉 Sales declining by ${dailyDecline}% daily. Review marketing & pricing.`);
+  }
+  if (weekendAvg > weekdayAvg * 1.15) {
+    const diff = Math.round((weekendAvg - weekdayAvg) / weekdayAvg * 100);
+    insights.push(`🎯 Weekend sales ${diff}% higher. Stock up before weekends.`);
+  }
+  if (topSelling.length > 0) {
+    insights.push(`⭐ Top product: ${topSelling[0].name} (${topSelling[0].quantity} units sold)`);
+  }
+  const highPriority = productForecast.filter((p) => p.restockPriority === "High");
+  if (highPriority.length > 0) {
+    insights.push(`⚠️ URGENT: Restock ${highPriority.length} items - ${highPriority.map((p) => p.name).join(", ")}`);
+  }
+  const growingPayment = paymentTrends.find((p) => p.trend === "Increasing");
+  if (growingPayment) {
+    insights.push(`💳 ${growingPayment.mode} payments growing (+${growingPayment.growth}%)`);
+  }
+  if (categories.length > 0) {
+    insights.push(`🏆 Best category: ${categories[0].name} (₹${categories[0].revenue} revenue)`);
+  }
+  if (stats.stdDev / stats.mean > 0.5) {
+    insights.push(`📊 Sales highly variable. Consider promotions for consistency.`);
+  }
+  return insights;
 }
 function getCombos() {
   const db2 = getDatabase();

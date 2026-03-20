@@ -66,5 +66,7 @@ electron.contextBridge.exposeInMainWorld("electronAPI", {
   getCombos: () => electron.ipcRenderer.invoke("combos:getAll"),
   createCombo: (data) => electron.ipcRenderer.invoke("combos:create", data),
   updateCombo: (id, data) => electron.ipcRenderer.invoke("combos:update", id, data),
-  deleteCombo: (id) => electron.ipcRenderer.invoke("combos:delete", id)
+  deleteCombo: (id) => electron.ipcRenderer.invoke("combos:delete", id),
+  // Forecast
+  getForecast: () => electron.ipcRenderer.invoke("forecast:get")
 });

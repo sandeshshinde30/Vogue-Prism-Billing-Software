@@ -75,6 +75,9 @@ export interface ElectronAPI {
   createCombo: (data: any) => Promise<number>;
   updateCombo: (id: number, data: any) => Promise<{ success: boolean }>;
   deleteCombo: (id: number) => Promise<{ success: boolean }>;
+
+  // Forecast
+  getForecast: () => Promise<any>;
 }
 
 contextBridge.exposeInMainWorld('electronAPI', {
@@ -163,4 +166,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   createCombo: (data: any) => ipcRenderer.invoke('combos:create', data),
   updateCombo: (id: number, data: any) => ipcRenderer.invoke('combos:update', id, data),
   deleteCombo: (id: number) => ipcRenderer.invoke('combos:delete', id),
+
+  // Forecast
+  getForecast: () => ipcRenderer.invoke('forecast:get'),
 } as ElectronAPI);
