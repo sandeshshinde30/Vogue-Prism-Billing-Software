@@ -1,6 +1,7 @@
 import { getDatabase } from './connection';
 import { updateStock } from './products';
 import { addActivityLog } from './logs';
+import { trackLocalChange } from '../services/dbSync';
 
 export interface BillData {
   items: Array<{
@@ -82,7 +83,39 @@ export function createBill(data: BillData) {
   
   // Get the created bill and return just the bill object (not the full structure)
   const billStmt = db.prepare('SELECT * FROM bills WHERE id = ?');
-  const bill = billStmt.get(billId);
+  const bill = billStmt.get(billId) as any;
+  
+  // Track for sync
+  trackLocalChange('bills', 'insert', billId, {
+    bill_number: bill.billNumber,
+    subtotal: bill.subtotal,
+    discount_percent: bill.discountPercent,
+    discount_amount: bill.discountAmount,
+    total: bill.total,
+    payment_mode: bill.paymentMode,
+    cash_amount: bill.cashAmount,
+    upi_amount: bill.upiAmount,
+    customer_mobile_number: bill.customerMobileNumber,
+    status: bill.status,
+    created_at: bill.createdAt,
+  });
+  
+  // Track bill items for sync
+  const itemsStmt = db.prepare('SELECT * FROM bill_items WHERE billId = ?');
+  const items = itemsStmt.all(billId) as any[];
+  for (const item of items) {
+    trackLocalChange('bill_items', 'insert', item.id, {
+      bill_id: item.billId,
+      product_id: item.productId,
+      product_name: item.productName,
+      size: item.size,
+      quantity: item.quantity,
+      unit_price: item.unitPrice,
+      total_price: item.totalPrice,
+      discount_locked: item.discountLocked,
+      created_at: new Date().toISOString(),
+    });
+  }
   
   // Log the activity
   addActivityLog(

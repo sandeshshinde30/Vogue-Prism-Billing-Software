@@ -16,13 +16,19 @@ export default defineConfig({
         vite: {
           build: {
             rollupOptions: {
-              external: ['better-sqlite3', 'firebase-admin', 'twilio'],
+              external: ['better-sqlite3', 'firebase-admin', 'twilio', '@supabase/supabase-js'],
             },
+            minify: false, // Faster builds
           },
         },
       },
       preload: {
         input: path.join(__dirname, 'electron/preload.ts'),
+        vite: {
+          build: {
+            minify: false, // Faster builds
+          },
+        },
       },
       renderer: process.env.NODE_ENV === 'test'
         ? undefined
@@ -33,5 +39,18 @@ export default defineConfig({
     alias: {
       '@': path.resolve(__dirname, './src'),
     },
+  },
+  build: {
+    minify: false, // Faster builds
+    sourcemap: false, // Faster builds
+  },
+  server: {
+    hmr: true, // Hot module replacement for faster dev
+  },
+  define: {
+    'import.meta.env.VITE_SUPABASE_URL': JSON.stringify(process.env.VITE_SUPABASE_URL),
+    'import.meta.env.VITE_SUPABASE_ANON_KEY': JSON.stringify(process.env.VITE_SUPABASE_ANON_KEY),
+    'import.meta.env.VITE_STORE_ID': JSON.stringify(process.env.VITE_STORE_ID),
+    'import.meta.env.VITE_STORE_NAME': JSON.stringify(process.env.VITE_STORE_NAME),
   },
 })

@@ -77,6 +77,29 @@ electron.contextBridge.exposeInMainWorld("electronAPI", {
   },
   // Config
   config: {
-    isConfigured: () => electron.ipcRenderer.invoke("config:isConfigured")
-  }
+    isConfigured: () => electron.ipcRenderer.invoke("config:isConfigured"),
+    getAppConfig: () => electron.ipcRenderer.invoke("config:getAppConfig")
+  },
+  // DB Sync
+  sync: {
+    init: () => electron.ipcRenderer.invoke("sync:init"),
+    performSync: () => electron.ipcRenderer.invoke("sync:performSync"),
+    getStatus: () => electron.ipcRenderer.invoke("sync:getStatus"),
+    trackChange: (tableName, operation, recordId, data) => electron.ipcRenderer.invoke("sync:trackChange", tableName, operation, recordId, data),
+    forceFullSync: () => electron.ipcRenderer.invoke("sync:forceFullSync")
+  },
+  // Environment variables
+  env: {
+    VITE_SUPABASE_URL: process.env.VITE_SUPABASE_URL,
+    VITE_SUPABASE_ANON_KEY: process.env.VITE_SUPABASE_ANON_KEY,
+    VITE_STORE_ID: process.env.VITE_STORE_ID,
+    VITE_STORE_NAME: process.env.VITE_STORE_NAME
+  },
+  // Backward compatibility
+  initSync: () => electron.ipcRenderer.invoke("sync:init"),
+  performSync: () => electron.ipcRenderer.invoke("sync:performSync"),
+  getSyncStatus: () => electron.ipcRenderer.invoke("sync:getStatus"),
+  trackLocalChange: (tableName, operation, recordId, data) => electron.ipcRenderer.invoke("sync:trackChange", tableName, operation, recordId, data),
+  forceFullSync: () => electron.ipcRenderer.invoke("sync:forceFullSync"),
+  getNetworkStatus: () => electron.ipcRenderer.invoke("network:getStatus")
 });

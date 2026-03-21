@@ -1,15 +1,343 @@
-import { app, dialog, net, ipcMain, BrowserWindow } from "electron";
-import path from "path";
+import fs$1 from "fs";
+import path$1 from "path";
+import require$$2 from "os";
+import require$$3 from "crypto";
 import { fileURLToPath } from "node:url";
+import { app, dialog, net, ipcMain, BrowserWindow } from "electron";
 import Database from "better-sqlite3";
 import { exec } from "child_process";
 import { promisify } from "util";
-import fs from "fs";
+import { createClient } from "@supabase/supabase-js";
 import * as dns from "dns";
 import "firebase-admin";
+var main = { exports: {} };
+const version$1 = "17.3.1";
+const require$$4 = {
+  version: version$1
+};
+const fs = fs$1;
+const path = path$1;
+const os = require$$2;
+const crypto = require$$3;
+const packageJson = require$$4;
+const version = packageJson.version;
+const TIPS = [
+  "🔐 encrypt with Dotenvx: https://dotenvx.com",
+  "🔐 prevent committing .env to code: https://dotenvx.com/precommit",
+  "🔐 prevent building .env in docker: https://dotenvx.com/prebuild",
+  "🤖 agentic secret storage: https://dotenvx.com/as2",
+  "⚡️ secrets for agents: https://dotenvx.com/as2",
+  "🛡️ auth for agents: https://vestauth.com",
+  "🛠️  run anywhere with `dotenvx run -- yourcommand`",
+  "⚙️  specify custom .env file path with { path: '/custom/path/.env' }",
+  "⚙️  enable debug logging with { debug: true }",
+  "⚙️  override existing env vars with { override: true }",
+  "⚙️  suppress all logs with { quiet: true }",
+  "⚙️  write to custom object with { processEnv: myObject }",
+  "⚙️  load multiple .env files with { path: ['.env.local', '.env'] }"
+];
+function _getRandomTip() {
+  return TIPS[Math.floor(Math.random() * TIPS.length)];
+}
+function parseBoolean(value) {
+  if (typeof value === "string") {
+    return !["false", "0", "no", "off", ""].includes(value.toLowerCase());
+  }
+  return Boolean(value);
+}
+function supportsAnsi() {
+  return process.stdout.isTTY;
+}
+function dim(text) {
+  return supportsAnsi() ? `\x1B[2m${text}\x1B[0m` : text;
+}
+const LINE = /(?:^|^)\s*(?:export\s+)?([\w.-]+)(?:\s*=\s*?|:\s+?)(\s*'(?:\\'|[^'])*'|\s*"(?:\\"|[^"])*"|\s*`(?:\\`|[^`])*`|[^#\r\n]+)?\s*(?:#.*)?(?:$|$)/mg;
+function parse(src) {
+  const obj = {};
+  let lines = src.toString();
+  lines = lines.replace(/\r\n?/mg, "\n");
+  let match;
+  while ((match = LINE.exec(lines)) != null) {
+    const key = match[1];
+    let value = match[2] || "";
+    value = value.trim();
+    const maybeQuote = value[0];
+    value = value.replace(/^(['"`])([\s\S]*)\1$/mg, "$2");
+    if (maybeQuote === '"') {
+      value = value.replace(/\\n/g, "\n");
+      value = value.replace(/\\r/g, "\r");
+    }
+    obj[key] = value;
+  }
+  return obj;
+}
+function _parseVault(options) {
+  options = options || {};
+  const vaultPath = _vaultPath(options);
+  options.path = vaultPath;
+  const result2 = DotenvModule.configDotenv(options);
+  if (!result2.parsed) {
+    const err = new Error(`MISSING_DATA: Cannot parse ${vaultPath} for an unknown reason`);
+    err.code = "MISSING_DATA";
+    throw err;
+  }
+  const keys = _dotenvKey(options).split(",");
+  const length = keys.length;
+  let decrypted;
+  for (let i = 0; i < length; i++) {
+    try {
+      const key = keys[i].trim();
+      const attrs = _instructions(result2, key);
+      decrypted = DotenvModule.decrypt(attrs.ciphertext, attrs.key);
+      break;
+    } catch (error) {
+      if (i + 1 >= length) {
+        throw error;
+      }
+    }
+  }
+  return DotenvModule.parse(decrypted);
+}
+function _warn(message) {
+  console.error(`[dotenv@${version}][WARN] ${message}`);
+}
+function _debug(message) {
+  console.log(`[dotenv@${version}][DEBUG] ${message}`);
+}
+function _log(message) {
+  console.log(`[dotenv@${version}] ${message}`);
+}
+function _dotenvKey(options) {
+  if (options && options.DOTENV_KEY && options.DOTENV_KEY.length > 0) {
+    return options.DOTENV_KEY;
+  }
+  if (process.env.DOTENV_KEY && process.env.DOTENV_KEY.length > 0) {
+    return process.env.DOTENV_KEY;
+  }
+  return "";
+}
+function _instructions(result2, dotenvKey) {
+  let uri;
+  try {
+    uri = new URL(dotenvKey);
+  } catch (error) {
+    if (error.code === "ERR_INVALID_URL") {
+      const err = new Error("INVALID_DOTENV_KEY: Wrong format. Must be in valid uri format like dotenv://:key_1234@dotenvx.com/vault/.env.vault?environment=development");
+      err.code = "INVALID_DOTENV_KEY";
+      throw err;
+    }
+    throw error;
+  }
+  const key = uri.password;
+  if (!key) {
+    const err = new Error("INVALID_DOTENV_KEY: Missing key part");
+    err.code = "INVALID_DOTENV_KEY";
+    throw err;
+  }
+  const environment = uri.searchParams.get("environment");
+  if (!environment) {
+    const err = new Error("INVALID_DOTENV_KEY: Missing environment part");
+    err.code = "INVALID_DOTENV_KEY";
+    throw err;
+  }
+  const environmentKey = `DOTENV_VAULT_${environment.toUpperCase()}`;
+  const ciphertext = result2.parsed[environmentKey];
+  if (!ciphertext) {
+    const err = new Error(`NOT_FOUND_DOTENV_ENVIRONMENT: Cannot locate environment ${environmentKey} in your .env.vault file.`);
+    err.code = "NOT_FOUND_DOTENV_ENVIRONMENT";
+    throw err;
+  }
+  return { ciphertext, key };
+}
+function _vaultPath(options) {
+  let possibleVaultPath = null;
+  if (options && options.path && options.path.length > 0) {
+    if (Array.isArray(options.path)) {
+      for (const filepath of options.path) {
+        if (fs.existsSync(filepath)) {
+          possibleVaultPath = filepath.endsWith(".vault") ? filepath : `${filepath}.vault`;
+        }
+      }
+    } else {
+      possibleVaultPath = options.path.endsWith(".vault") ? options.path : `${options.path}.vault`;
+    }
+  } else {
+    possibleVaultPath = path.resolve(process.cwd(), ".env.vault");
+  }
+  if (fs.existsSync(possibleVaultPath)) {
+    return possibleVaultPath;
+  }
+  return null;
+}
+function _resolveHome(envPath2) {
+  return envPath2[0] === "~" ? path.join(os.homedir(), envPath2.slice(1)) : envPath2;
+}
+function _configVault(options) {
+  const debug = parseBoolean(process.env.DOTENV_CONFIG_DEBUG || options && options.debug);
+  const quiet = parseBoolean(process.env.DOTENV_CONFIG_QUIET || options && options.quiet);
+  if (debug || !quiet) {
+    _log("Loading env from encrypted .env.vault");
+  }
+  const parsed = DotenvModule._parseVault(options);
+  let processEnv = process.env;
+  if (options && options.processEnv != null) {
+    processEnv = options.processEnv;
+  }
+  DotenvModule.populate(processEnv, parsed, options);
+  return { parsed };
+}
+function configDotenv(options) {
+  const dotenvPath = path.resolve(process.cwd(), ".env");
+  let encoding = "utf8";
+  let processEnv = process.env;
+  if (options && options.processEnv != null) {
+    processEnv = options.processEnv;
+  }
+  let debug = parseBoolean(processEnv.DOTENV_CONFIG_DEBUG || options && options.debug);
+  let quiet = parseBoolean(processEnv.DOTENV_CONFIG_QUIET || options && options.quiet);
+  if (options && options.encoding) {
+    encoding = options.encoding;
+  } else {
+    if (debug) {
+      _debug("No encoding is specified. UTF-8 is used by default");
+    }
+  }
+  let optionPaths = [dotenvPath];
+  if (options && options.path) {
+    if (!Array.isArray(options.path)) {
+      optionPaths = [_resolveHome(options.path)];
+    } else {
+      optionPaths = [];
+      for (const filepath of options.path) {
+        optionPaths.push(_resolveHome(filepath));
+      }
+    }
+  }
+  let lastError;
+  const parsedAll = {};
+  for (const path2 of optionPaths) {
+    try {
+      const parsed = DotenvModule.parse(fs.readFileSync(path2, { encoding }));
+      DotenvModule.populate(parsedAll, parsed, options);
+    } catch (e) {
+      if (debug) {
+        _debug(`Failed to load ${path2} ${e.message}`);
+      }
+      lastError = e;
+    }
+  }
+  const populated = DotenvModule.populate(processEnv, parsedAll, options);
+  debug = parseBoolean(processEnv.DOTENV_CONFIG_DEBUG || debug);
+  quiet = parseBoolean(processEnv.DOTENV_CONFIG_QUIET || quiet);
+  if (debug || !quiet) {
+    const keysCount = Object.keys(populated).length;
+    const shortPaths = [];
+    for (const filePath of optionPaths) {
+      try {
+        const relative = path.relative(process.cwd(), filePath);
+        shortPaths.push(relative);
+      } catch (e) {
+        if (debug) {
+          _debug(`Failed to load ${filePath} ${e.message}`);
+        }
+        lastError = e;
+      }
+    }
+    _log(`injecting env (${keysCount}) from ${shortPaths.join(",")} ${dim(`-- tip: ${_getRandomTip()}`)}`);
+  }
+  if (lastError) {
+    return { parsed: parsedAll, error: lastError };
+  } else {
+    return { parsed: parsedAll };
+  }
+}
+function config$2(options) {
+  if (_dotenvKey(options).length === 0) {
+    return DotenvModule.configDotenv(options);
+  }
+  const vaultPath = _vaultPath(options);
+  if (!vaultPath) {
+    _warn(`You set DOTENV_KEY but you are missing a .env.vault file at ${vaultPath}. Did you forget to build it?`);
+    return DotenvModule.configDotenv(options);
+  }
+  return DotenvModule._configVault(options);
+}
+function decrypt(encrypted, keyStr) {
+  const key = Buffer.from(keyStr.slice(-64), "hex");
+  let ciphertext = Buffer.from(encrypted, "base64");
+  const nonce = ciphertext.subarray(0, 12);
+  const authTag = ciphertext.subarray(-16);
+  ciphertext = ciphertext.subarray(12, -16);
+  try {
+    const aesgcm = crypto.createDecipheriv("aes-256-gcm", key, nonce);
+    aesgcm.setAuthTag(authTag);
+    return `${aesgcm.update(ciphertext)}${aesgcm.final()}`;
+  } catch (error) {
+    const isRange = error instanceof RangeError;
+    const invalidKeyLength = error.message === "Invalid key length";
+    const decryptionFailed = error.message === "Unsupported state or unable to authenticate data";
+    if (isRange || invalidKeyLength) {
+      const err = new Error("INVALID_DOTENV_KEY: It must be 64 characters long (or more)");
+      err.code = "INVALID_DOTENV_KEY";
+      throw err;
+    } else if (decryptionFailed) {
+      const err = new Error("DECRYPTION_FAILED: Please check your DOTENV_KEY");
+      err.code = "DECRYPTION_FAILED";
+      throw err;
+    } else {
+      throw error;
+    }
+  }
+}
+function populate(processEnv, parsed, options = {}) {
+  const debug = Boolean(options && options.debug);
+  const override = Boolean(options && options.override);
+  const populated = {};
+  if (typeof parsed !== "object") {
+    const err = new Error("OBJECT_REQUIRED: Please check the processEnv argument being passed to populate");
+    err.code = "OBJECT_REQUIRED";
+    throw err;
+  }
+  for (const key of Object.keys(parsed)) {
+    if (Object.prototype.hasOwnProperty.call(processEnv, key)) {
+      if (override === true) {
+        processEnv[key] = parsed[key];
+        populated[key] = parsed[key];
+      }
+      if (debug) {
+        if (override === true) {
+          _debug(`"${key}" is already defined and WAS overwritten`);
+        } else {
+          _debug(`"${key}" is already defined and was NOT overwritten`);
+        }
+      }
+    } else {
+      processEnv[key] = parsed[key];
+      populated[key] = parsed[key];
+    }
+  }
+  return populated;
+}
+const DotenvModule = {
+  configDotenv,
+  _configVault,
+  _parseVault,
+  config: config$2,
+  decrypt,
+  parse,
+  populate
+};
+main.exports.configDotenv = DotenvModule.configDotenv;
+main.exports._configVault = DotenvModule._configVault;
+main.exports._parseVault = DotenvModule._parseVault;
+var config_1 = main.exports.config = DotenvModule.config;
+main.exports.decrypt = DotenvModule.decrypt;
+main.exports.parse = DotenvModule.parse;
+main.exports.populate = DotenvModule.populate;
+main.exports = DotenvModule;
 let db;
 async function initDatabase() {
-  const dbPath = path.join(app.getPath("userData"), "billing.db");
+  const dbPath = path$1.join(app.getPath("userData"), "billing.db");
   db = new Database(dbPath);
   db.exec(`
     CREATE TABLE IF NOT EXISTS products (
@@ -265,13 +593,67 @@ async function closeDatabase() {
     console.log("Database closed");
   }
 }
+const __filename$2 = fileURLToPath(import.meta.url);
+const __dirname$2 = path$1.dirname(__filename$2);
+let config$1 = null;
+function loadConfig() {
+  if (config$1) return config$1;
+  try {
+    const configPath = path$1.join(__dirname$2, "../app.config.json");
+    const configData = fs$1.readFileSync(configPath, "utf-8");
+    config$1 = JSON.parse(configData);
+    console.log("📋 App Configuration Loaded:");
+    console.log(`   Store Type: ${config$1.storeType}`);
+    console.log(`   Store ID: ${config$1.storeId}`);
+    console.log(`   Store Name: ${config$1.storeName}`);
+    console.log(`   DB Sync: ${config$1.features.dbSync ? "Enabled" : "Disabled"}`);
+    console.log(`   Auto-sync Interval: ${config$1.sync.autoSyncInterval / 1e3 / 60} minutes`);
+    return config$1;
+  } catch (error) {
+    console.warn("⚠️  Could not load app.config.json, using defaults");
+    config$1 = {
+      storeType: "master",
+      storeId: process.env.VITE_STORE_ID || "store_001",
+      storeName: process.env.VITE_STORE_NAME || "Main Store",
+      features: {
+        dbSync: true,
+        analytics: true,
+        forecast: true,
+        backup: true,
+        deletedBills: true,
+        combos: true
+      },
+      sync: {
+        enabled: true,
+        autoSyncInterval: 36e5,
+        // 1 hour
+        retryAttempts: 3,
+        batchSize: 100
+      },
+      ui: {
+        showDBSyncTab: true,
+        showAnalyticsTab: true,
+        showForecastTab: true,
+        showCombosTab: true,
+        showDeletedBillsTab: true
+      }
+    };
+    return config$1;
+  }
+}
+function getConfig() {
+  if (!config$1) {
+    return loadConfig();
+  }
+  return config$1;
+}
 function addActivityLog(action, entityType, details, entityId, oldValue, newValue, userId) {
   const db2 = getDatabase();
   const stmt = db2.prepare(`
     INSERT INTO activity_logs (action, entityType, entityId, details, oldValue, newValue, userId, createdAt)
     VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now', 'localtime'))
   `);
-  const result = stmt.run(
+  const result2 = stmt.run(
     action,
     entityType,
     entityId || null,
@@ -280,7 +662,7 @@ function addActivityLog(action, entityType, details, entityId, oldValue, newValu
     newValue || null,
     "system"
   );
-  return result.lastInsertRowid;
+  return result2.lastInsertRowid;
 }
 function getActivityLogs(limit = 100, offset = 0, entityType, dateFrom, dateTo) {
   const db2 = getDatabase();
@@ -340,8 +722,8 @@ function cleanupOldLogs() {
       LIMIT 1000
     )
   `);
-  const result = stmt.run();
-  return result.changes;
+  const result2 = stmt.run();
+  return result2.changes;
 }
 function addProduct(data) {
   const db2 = getDatabase();
@@ -349,7 +731,7 @@ function addProduct(data) {
     INSERT INTO products (name, category, size, barcode, costPrice, price, stock, lowStockThreshold, isActive, isDiscountLocked, createdAt, updatedAt)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now', 'localtime'), datetime('now', 'localtime'))
   `);
-  const result = stmt.run(
+  const result2 = stmt.run(
     data.name,
     data.category,
     data.size || null,
@@ -361,7 +743,7 @@ function addProduct(data) {
     data.isActive !== false ? 1 : 0,
     data.isDiscountLocked ? 1 : 0
   );
-  const productId = result.lastInsertRowid;
+  const productId = result2.lastInsertRowid;
   addActivityLog(
     "create",
     "product",
@@ -390,28 +772,28 @@ function getProducts(includeInactive = false) {
 function getProductById(id) {
   const db2 = getDatabase();
   const stmt = db2.prepare("SELECT * FROM products WHERE id = ?");
-  const result = stmt.get(id);
-  if (result) {
+  const result2 = stmt.get(id);
+  if (result2) {
     return {
-      ...result,
-      isActive: result.isActive === null ? true : Boolean(result.isActive),
-      isDiscountLocked: Boolean(result.isDiscountLocked)
+      ...result2,
+      isActive: result2.isActive === null ? true : Boolean(result2.isActive),
+      isDiscountLocked: Boolean(result2.isDiscountLocked)
     };
   }
-  return result;
+  return result2;
 }
 function getProductByBarcode(barcode) {
   const db2 = getDatabase();
   const stmt = db2.prepare("SELECT * FROM products WHERE barcode = ?");
-  const result = stmt.get(barcode);
-  if (result) {
+  const result2 = stmt.get(barcode);
+  if (result2) {
     return {
-      ...result,
-      isActive: result.isActive === null ? true : Boolean(result.isActive),
-      isDiscountLocked: Boolean(result.isDiscountLocked)
+      ...result2,
+      isActive: result2.isActive === null ? true : Boolean(result2.isActive),
+      isDiscountLocked: Boolean(result2.isDiscountLocked)
     };
   }
-  return result;
+  return result2;
 }
 function searchProducts(query) {
   const db2 = getDatabase();
@@ -495,8 +877,8 @@ function updateProduct(id, data) {
   fields.push("updatedAt = datetime('now')");
   values.push(id);
   const stmt = db2.prepare(`UPDATE products SET ${fields.join(", ")} WHERE id = ?`);
-  const result = stmt.run(...values);
-  if (result.changes > 0 && oldProduct) {
+  const result2 = stmt.run(...values);
+  if (result2.changes > 0 && oldProduct) {
     const changes = [];
     if (data.name !== void 0 && data.name !== oldProduct.name) {
       changes.push(`Name: "${oldProduct.name}" → "${data.name}"`);
@@ -532,7 +914,7 @@ function updateProduct(id, data) {
       JSON.stringify(data)
     );
   }
-  return result.changes > 0;
+  return result2.changes > 0;
 }
 function updateStock(id, quantity, changeType, referenceId) {
   const db2 = getDatabase();
@@ -580,8 +962,8 @@ function deleteProduct(id, forceDeactivate = false) {
         SET isActive = 0, updatedAt = datetime('now', 'localtime') 
         WHERE id = ?
       `);
-      const result = deactivateStmt.run(id);
-      if (result.changes > 0 && product) {
+      const result2 = deactivateStmt.run(id);
+      if (result2.changes > 0 && product) {
         addActivityLog(
           "deactivate",
           "product",
@@ -592,7 +974,7 @@ function deleteProduct(id, forceDeactivate = false) {
         );
       }
       return {
-        success: result.changes > 0,
+        success: result2.changes > 0,
         deactivated: true,
         message: "Product deactivated successfully (was referenced in bills)"
       };
@@ -604,11 +986,11 @@ function deleteProduct(id, forceDeactivate = false) {
     const deleteLogsStmt = db2.prepare("DELETE FROM stock_logs WHERE productId = ?");
     deleteLogsStmt.run(id);
     const deleteProductStmt = db2.prepare("DELETE FROM products WHERE id = ?");
-    const result = deleteProductStmt.run(id);
-    if (result.changes === 0) {
+    const result2 = deleteProductStmt.run(id);
+    if (result2.changes === 0) {
       throw new Error("Product not found");
     }
-    return result.changes > 0;
+    return result2.changes > 0;
   });
   const success = transaction();
   if (success && product) {
@@ -634,8 +1016,8 @@ function reactivateProduct(id) {
     SET isActive = 1, updatedAt = datetime('now', 'localtime') 
     WHERE id = ?
   `);
-  const result = stmt.run(id);
-  if (result.changes > 0 && product) {
+  const result2 = stmt.run(id);
+  if (result2.changes > 0 && product) {
     addActivityLog(
       "reactivate",
       "product",
@@ -645,7 +1027,531 @@ function reactivateProduct(id) {
       JSON.stringify({ isActive: true })
     );
   }
-  return result.changes > 0;
+  return result2.changes > 0;
+}
+let supabase = null;
+let initialized = false;
+function initSupabase() {
+  if (initialized) return;
+  initialized = true;
+  const supabaseUrl = process.env.VITE_SUPABASE_URL || "";
+  const supabaseAnonKey = process.env.VITE_SUPABASE_ANON_KEY || "";
+  if (!supabaseUrl || !supabaseAnonKey) {
+    console.warn("⚠️  Supabase credentials not configured. DB Sync will be disabled.");
+    console.warn("   VITE_SUPABASE_URL:", supabaseUrl ? "✓ Set" : "✗ Missing");
+    console.warn("   VITE_SUPABASE_ANON_KEY:", supabaseAnonKey ? "✓ Set" : "✗ Missing");
+    supabase = null;
+  } else {
+    console.log("✓ Supabase client initialized successfully");
+    console.log("  URL:", supabaseUrl);
+    console.log("  Store ID:", process.env.VITE_STORE_ID || "Not set");
+    supabase = createClient(supabaseUrl, supabaseAnonKey);
+  }
+}
+function getSupabase() {
+  if (!initialized) {
+    initSupabase();
+  }
+  return supabase;
+}
+const isSupabaseConfigured = () => {
+  if (!initialized) {
+    initSupabase();
+  }
+  return !!supabase;
+};
+function initSyncQueue() {
+  const db2 = getDatabase();
+  db2.exec(`
+    CREATE TABLE IF NOT EXISTS sync_queue (
+      id TEXT PRIMARY KEY,
+      table_name TEXT NOT NULL,
+      operation TEXT NOT NULL,
+      record_id INTEGER NOT NULL,
+      data TEXT,
+      created_at TEXT DEFAULT (datetime('now', 'localtime')),
+      synced INTEGER DEFAULT 0,
+      retry_count INTEGER DEFAULT 0,
+      error_message TEXT
+    )
+  `);
+}
+function addToSyncQueue(tableName, operation, recordId, data) {
+  const db2 = getDatabase();
+  const id = `${tableName}_${operation}_${recordId}_${Date.now()}`;
+  const stmt = db2.prepare(`
+    INSERT INTO sync_queue (id, table_name, operation, record_id, data, synced)
+    VALUES (?, ?, ?, ?, ?, 0)
+  `);
+  stmt.run(
+    id,
+    tableName,
+    operation,
+    recordId,
+    data ? JSON.stringify(data) : null
+  );
+  return id;
+}
+function getPendingSyncItems() {
+  const db2 = getDatabase();
+  const stmt = db2.prepare(`
+    SELECT * FROM sync_queue WHERE synced = 0 ORDER BY created_at ASC
+  `);
+  const items = stmt.all();
+  return items.map((item) => ({
+    ...item,
+    data: item.data ? JSON.parse(item.data) : void 0
+  }));
+}
+function getPendingSyncCount() {
+  const db2 = getDatabase();
+  const stmt = db2.prepare(`
+    SELECT COUNT(*) as count FROM sync_queue WHERE synced = 0
+  `);
+  const result2 = stmt.get();
+  return result2.count;
+}
+function markAsSynced(id) {
+  const db2 = getDatabase();
+  const stmt = db2.prepare(`
+    UPDATE sync_queue SET synced = 1 WHERE id = ?
+  `);
+  stmt.run(id);
+}
+function markSyncFailed(id, errorMessage) {
+  const db2 = getDatabase();
+  const stmt = db2.prepare(`
+    UPDATE sync_queue 
+    SET retry_count = retry_count + 1, error_message = ?
+    WHERE id = ?
+  `);
+  stmt.run(errorMessage, id);
+}
+function initSyncMetadata() {
+  const db2 = getDatabase();
+  db2.exec(`
+    CREATE TABLE IF NOT EXISTS sync_metadata (
+      table_name TEXT PRIMARY KEY,
+      last_sync_at TEXT DEFAULT (datetime('now', 'localtime')),
+      last_pull_at TEXT,
+      last_push_at TEXT,
+      pending_count INTEGER DEFAULT 0
+    )
+  `);
+}
+function initTableMetadata(tableName) {
+  const db2 = getDatabase();
+  const stmt = db2.prepare(`
+    INSERT OR IGNORE INTO sync_metadata (table_name, last_sync_at)
+    VALUES (?, datetime('now', 'localtime'))
+  `);
+  stmt.run(tableName);
+}
+function getTableMetadata(tableName) {
+  const db2 = getDatabase();
+  const stmt = db2.prepare(`
+    SELECT * FROM sync_metadata WHERE table_name = ?
+  `);
+  return stmt.get(tableName);
+}
+function updateLastPullTime(tableName) {
+  const db2 = getDatabase();
+  const stmt = db2.prepare(`
+    UPDATE sync_metadata 
+    SET last_pull_at = datetime('now', 'localtime')
+    WHERE table_name = ?
+  `);
+  stmt.run(tableName);
+}
+function updatePendingCount(tableName, count) {
+  const db2 = getDatabase();
+  const stmt = db2.prepare(`
+    UPDATE sync_metadata 
+    SET pending_count = ?
+    WHERE table_name = ?
+  `);
+  stmt.run(count, tableName);
+}
+const config = getConfig();
+const STORE_ID = config.storeId;
+const BATCH_SIZE = config.sync.batchSize;
+let syncStatus = {
+  isOnline: false,
+  isSyncing: false,
+  pendingCount: 0,
+  syncProgress: 0
+};
+let syncInProgress = false;
+async function initSync() {
+  if (!isSupabaseConfigured()) {
+    console.warn("Supabase not configured. Sync disabled.");
+    return;
+  }
+  const supabase2 = getSupabase();
+  if (!supabase2) {
+    console.warn("Supabase client is null. Sync disabled.");
+    return;
+  }
+  try {
+    const { data: existingStore } = await supabase2.from("stores").select("id").eq("id", STORE_ID).single();
+    if (!existingStore) {
+      await supabase2.from("stores").insert({
+        id: STORE_ID,
+        name: config.storeName
+      });
+      console.log(`✓ Store registered: ${config.storeName} (${STORE_ID})`);
+    }
+  } catch (error) {
+    console.error("Error initializing store:", error);
+  }
+  ["products", "bills", "bill_items"].forEach((table) => {
+    initTableMetadata(table);
+  });
+}
+async function incrementalPull(tableName) {
+  const supabase2 = getSupabase();
+  if (!supabase2) {
+    throw new Error("Supabase client not initialized");
+  }
+  const metadata = getTableMetadata(tableName);
+  const lastPullTime = metadata == null ? void 0 : metadata.last_pull_at;
+  let query = supabase2.from(`${tableName}_sync`).select("*").eq("store_id", STORE_ID);
+  if (lastPullTime) {
+    query = query.gt("updated_at", lastPullTime);
+  }
+  const { data, error } = await query.limit(BATCH_SIZE);
+  if (error) {
+    throw new Error(`Pull failed for ${tableName}: ${error.message}`);
+  }
+  if (!data || data.length === 0) {
+    return 0;
+  }
+  const db2 = getDatabase();
+  const transaction = db2.transaction(() => {
+    for (const record of data) {
+      upsertLocalRecord(tableName, record);
+    }
+  });
+  transaction();
+  updateLastPullTime(tableName);
+  return data.length;
+}
+async function incrementalPush() {
+  const supabase2 = getSupabase();
+  if (!supabase2) {
+    throw new Error("Supabase client not initialized");
+  }
+  const pendingItems = getPendingSyncItems();
+  if (pendingItems.length === 0) {
+    return 0;
+  }
+  console.log(`📤 Pushing ${pendingItems.length} pending items...`);
+  let successCount = 0;
+  for (const item of pendingItems) {
+    try {
+      console.log(`  Syncing ${item.table_name} #${item.record_id} (${item.operation})`);
+      await pushSyncItem(item);
+      markAsSynced(item.id);
+      successCount++;
+      console.log(`  ✓ Synced ${item.table_name} #${item.record_id}`);
+    } catch (error) {
+      console.error(`  ✗ Failed to sync ${item.table_name} #${item.record_id}:`, error);
+      markSyncFailed(item.id, error.message);
+    }
+  }
+  if (pendingItems.length > 0) {
+    updatePendingCount(pendingItems[0].table_name, getPendingSyncCount());
+  }
+  console.log(`✓ Successfully pushed ${successCount}/${pendingItems.length} items`);
+  return successCount;
+}
+async function pushSyncItem(item) {
+  const supabase2 = getSupabase();
+  if (!supabase2) {
+    throw new Error("Supabase client not initialized");
+  }
+  const tableName = `${item.table_name}_sync`;
+  switch (item.operation) {
+    case "insert":
+    case "update": {
+      const syncData = {
+        id: item.record_id,
+        store_id: STORE_ID,
+        ...item.data
+      };
+      if (item.table_name !== "bill_items") {
+        syncData.updated_at = (/* @__PURE__ */ new Date()).toISOString();
+      }
+      const { error } = await supabase2.from(tableName).upsert(syncData);
+      if (error) throw error;
+      break;
+    }
+    case "delete": {
+      const { error } = await supabase2.from(tableName).delete().eq("id", item.record_id).eq("store_id", STORE_ID);
+      if (error) throw error;
+      break;
+    }
+  }
+}
+function upsertLocalRecord(tableName, record) {
+  const db2 = getDatabase();
+  const localRecord = mapFromSyncFormat(tableName, record);
+  if (tableName === "products") {
+    const stmt = db2.prepare(`
+      INSERT OR REPLACE INTO products (
+        id, name, category, size, barcode, costPrice, price, stock,
+        lowStockThreshold, isActive, isDiscountLocked, createdAt, updatedAt
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    stmt.run(
+      localRecord.id,
+      localRecord.name,
+      localRecord.category,
+      localRecord.size,
+      localRecord.barcode,
+      localRecord.costPrice,
+      localRecord.price,
+      localRecord.stock,
+      localRecord.lowStockThreshold,
+      localRecord.isActive ? 1 : 0,
+      localRecord.isDiscountLocked ? 1 : 0,
+      localRecord.createdAt,
+      localRecord.updatedAt
+    );
+  } else if (tableName === "bills") {
+    const stmt = db2.prepare(`
+      INSERT OR REPLACE INTO bills (
+        id, billNumber, subtotal, discountPercent, discountAmount, total,
+        paymentMode, cashAmount, upiAmount, customerMobileNumber, status, createdAt
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    stmt.run(
+      localRecord.id,
+      localRecord.billNumber,
+      localRecord.subtotal,
+      localRecord.discountPercent,
+      localRecord.discountAmount,
+      localRecord.total,
+      localRecord.paymentMode,
+      localRecord.cashAmount,
+      localRecord.upiAmount,
+      localRecord.customerMobileNumber,
+      localRecord.status,
+      localRecord.createdAt
+    );
+  } else if (tableName === "bill_items") {
+    const stmt = db2.prepare(`
+      INSERT OR REPLACE INTO bill_items (
+        id, billId, productId, productName, size, quantity, unitPrice, totalPrice, discountLocked
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    stmt.run(
+      localRecord.id,
+      localRecord.billId,
+      localRecord.productId,
+      localRecord.productName,
+      localRecord.size,
+      localRecord.quantity,
+      localRecord.unitPrice,
+      localRecord.totalPrice,
+      localRecord.discountLocked ? 1 : 0
+    );
+  }
+}
+function mapFromSyncFormat(tableName, record) {
+  if (tableName === "products") {
+    return {
+      id: record.id,
+      name: record.name,
+      category: record.category,
+      size: record.size,
+      barcode: record.barcode,
+      costPrice: record.cost_price,
+      price: record.price,
+      stock: record.stock,
+      lowStockThreshold: record.low_stock_threshold,
+      isActive: record.is_active,
+      isDiscountLocked: record.is_discount_locked,
+      createdAt: record.created_at,
+      updatedAt: record.updated_at
+    };
+  } else if (tableName === "bills") {
+    return {
+      id: record.id,
+      billNumber: record.bill_number,
+      subtotal: record.subtotal,
+      discountPercent: record.discount_percent,
+      discountAmount: record.discount_amount,
+      total: record.total,
+      paymentMode: record.payment_mode,
+      cashAmount: record.cash_amount,
+      upiAmount: record.upi_amount,
+      customerMobileNumber: record.customer_mobile_number,
+      status: record.status,
+      createdAt: record.created_at
+    };
+  } else if (tableName === "bill_items") {
+    return {
+      id: record.id,
+      billId: record.bill_id,
+      productId: record.product_id,
+      productName: record.product_name,
+      size: record.size,
+      quantity: record.quantity,
+      unitPrice: record.unit_price,
+      totalPrice: record.total_price,
+      discountLocked: record.discount_locked
+    };
+  }
+  return record;
+}
+async function performSync(isOnline) {
+  const supabase2 = getSupabase();
+  if (!isSupabaseConfigured() || !supabase2 || syncInProgress) {
+    return syncStatus;
+  }
+  syncInProgress = true;
+  syncStatus.isSyncing = true;
+  syncStatus.isOnline = isOnline;
+  syncStatus.syncProgress = 0;
+  try {
+    if (!isOnline) {
+      syncStatus.error = "No internet connection";
+      return syncStatus;
+    }
+    syncStatus.syncProgress = 10;
+    let pullCount = 0;
+    for (const table of ["products", "bills", "bill_items"]) {
+      try {
+        const count = await incrementalPull(table);
+        pullCount += count;
+      } catch (error) {
+        console.error(`Pull error for ${table}:`, error);
+      }
+    }
+    syncStatus.syncProgress = 50;
+    const pushCount = await incrementalPush();
+    syncStatus.syncProgress = 90;
+    syncStatus.pendingCount = getPendingSyncCount();
+    syncStatus.lastSyncTime = (/* @__PURE__ */ new Date()).toISOString();
+    syncStatus.error = void 0;
+    syncStatus.syncProgress = 100;
+  } catch (error) {
+    syncStatus.error = error.message;
+    console.error("Sync error:", error);
+  } finally {
+    syncInProgress = false;
+    syncStatus.isSyncing = false;
+  }
+  return syncStatus;
+}
+function getSyncStatus() {
+  return {
+    ...syncStatus,
+    pendingCount: getPendingSyncCount()
+  };
+}
+function trackLocalChange(tableName, operation, recordId, data) {
+  if (!isSupabaseConfigured()) return;
+  addToSyncQueue(tableName, operation, recordId, data);
+  updatePendingCount(tableName, getPendingSyncCount());
+}
+async function forceFullSync() {
+  if (!isSupabaseConfigured()) return;
+  const db2 = getDatabase();
+  console.log("🔄 Starting Force Full Sync...");
+  const existingQueue = db2.prepare("SELECT table_name, operation, COUNT(*) as count FROM sync_queue GROUP BY table_name, operation").all();
+  console.log("📊 Current sync queue:", existingQueue);
+  db2.exec("DELETE FROM sync_queue");
+  console.log("✓ Cleared sync queue");
+  const bills = db2.prepare("SELECT * FROM bills").all();
+  console.log(`📋 Found ${bills.length} bills to sync`);
+  for (const bill of bills) {
+    trackLocalChange("bills", "insert", bill.id, {
+      bill_number: bill.billNumber,
+      subtotal: bill.subtotal,
+      discount_percent: bill.discountPercent,
+      discount_amount: bill.discountAmount,
+      total: bill.total,
+      payment_mode: bill.paymentMode,
+      cash_amount: bill.cashAmount,
+      upi_amount: bill.upiAmount,
+      customer_mobile_number: bill.customerMobileNumber,
+      status: bill.status,
+      created_at: bill.createdAt
+    });
+  }
+  const billItems = db2.prepare("SELECT * FROM bill_items").all();
+  console.log(`📦 Found ${billItems.length} bill items to sync`);
+  for (const item of billItems) {
+    trackLocalChange("bill_items", "insert", item.id, {
+      bill_id: item.billId,
+      product_id: item.productId,
+      product_name: item.productName,
+      size: item.size,
+      quantity: item.quantity,
+      unit_price: item.unitPrice,
+      total_price: item.totalPrice,
+      discount_locked: item.discountLocked,
+      created_at: (/* @__PURE__ */ new Date()).toISOString()
+    });
+  }
+  const products = db2.prepare("SELECT * FROM products").all();
+  console.log(`🏷️  Found ${products.length} products to sync`);
+  for (const product of products) {
+    trackLocalChange("products", "insert", product.id, {
+      name: product.name,
+      category: product.category,
+      size: product.size,
+      barcode: product.barcode,
+      cost_price: product.costPrice,
+      price: product.price,
+      stock: product.stock,
+      low_stock_threshold: product.lowStockThreshold,
+      is_active: product.isActive,
+      is_discount_locked: product.isDiscountLocked,
+      created_at: product.createdAt,
+      updated_at: product.updatedAt
+    });
+  }
+  const pendingCount = getPendingSyncCount();
+  console.log(`✓ Added ${pendingCount} items to sync queue`);
+  const queueBreakdown = db2.prepare("SELECT table_name, operation, status, COUNT(*) as count FROM sync_queue GROUP BY table_name, operation, status").all();
+  console.log("📊 Queue breakdown:", queueBreakdown);
+  db2.exec("DELETE FROM sync_metadata");
+  ["products", "bills", "bill_items"].forEach((table) => {
+    initTableMetadata(table);
+  });
+  console.log("🚀 Starting sync...");
+  return performSync(true);
+}
+function getSyncQueueDetails() {
+  const db2 = getDatabase();
+  const breakdown = db2.prepare(`
+    SELECT 
+      table_name,
+      operation,
+      status,
+      COUNT(*) as count
+    FROM sync_queue
+    GROUP BY table_name, operation, status
+  `).all();
+  const failedItems = db2.prepare(`
+    SELECT 
+      table_name,
+      operation,
+      record_id,
+      error_message,
+      retry_count
+    FROM sync_queue
+    WHERE status = 'failed'
+    LIMIT 10
+  `).all();
+  return {
+    breakdown,
+    failedItems,
+    totalPending: getPendingSyncCount()
+  };
 }
 function createBill(data) {
   const db2 = getDatabase();
@@ -689,6 +1595,34 @@ function createBill(data) {
   const billId = transaction();
   const billStmt = db2.prepare("SELECT * FROM bills WHERE id = ?");
   const bill = billStmt.get(billId);
+  trackLocalChange("bills", "insert", billId, {
+    bill_number: bill.billNumber,
+    subtotal: bill.subtotal,
+    discount_percent: bill.discountPercent,
+    discount_amount: bill.discountAmount,
+    total: bill.total,
+    payment_mode: bill.paymentMode,
+    cash_amount: bill.cashAmount,
+    upi_amount: bill.upiAmount,
+    customer_mobile_number: bill.customerMobileNumber,
+    status: bill.status,
+    created_at: bill.createdAt
+  });
+  const itemsStmt = db2.prepare("SELECT * FROM bill_items WHERE billId = ?");
+  const items = itemsStmt.all(billId);
+  for (const item of items) {
+    trackLocalChange("bill_items", "insert", item.id, {
+      bill_id: item.billId,
+      product_id: item.productId,
+      product_name: item.productName,
+      size: item.size,
+      quantity: item.quantity,
+      unit_price: item.unitPrice,
+      total_price: item.totalPrice,
+      discount_locked: item.discountLocked,
+      created_at: (/* @__PURE__ */ new Date()).toISOString()
+    });
+  }
   addActivityLog(
     "create",
     "bill",
@@ -784,8 +1718,8 @@ function getDailySummary(date) {
     FROM bills 
     WHERE date(createdAt) = ?
   `);
-  const result = stmt.get(targetDate);
-  if (!result || result.totalBills === 0) {
+  const result2 = stmt.get(targetDate);
+  if (!result2 || result2.totalBills === 0) {
     return {
       totalSales: 0,
       totalBills: 0,
@@ -794,7 +1728,7 @@ function getDailySummary(date) {
       itemsSold: 0
     };
   }
-  return result;
+  return result2;
 }
 function getDateRangeSummary(dateFrom, dateTo) {
   const db2 = getDatabase();
@@ -822,8 +1756,8 @@ function getDateRangeSummary(dateFrom, dateTo) {
     FROM bills 
     WHERE date(createdAt) BETWEEN ? AND ?
   `);
-  const result = stmt.get(dateFrom, dateTo);
-  if (!result || result.totalBills === 0) {
+  const result2 = stmt.get(dateFrom, dateTo);
+  if (!result2 || result2.totalBills === 0) {
     return {
       totalSales: 0,
       totalBills: 0,
@@ -832,7 +1766,7 @@ function getDateRangeSummary(dateFrom, dateTo) {
       itemsSold: 0
     };
   }
-  return result;
+  return result2;
 }
 function getTopSelling(date, limit = 5) {
   const db2 = getDatabase();
@@ -1022,8 +1956,8 @@ function restoreDeletedBill(deletedBillId) {
   const itemsData = JSON.parse(deletedBill.itemsData);
   const transaction = db2.transaction(() => {
     const billStmt = db2.prepare(`
-      INSERT INTO bills (billNumber, subtotal, discountPercent, discountAmount, total, paymentMode, cashAmount, upiAmount, customerMobileNumber, status, createdAt)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO bills (billNumber, subtotal, discountPercent, discountAmount, total, paymentMode, cashAmount, upiAmount, status, createdAt)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
     const billResult = billStmt.run(
       billData.billNumber + "-RESTORED",
@@ -1034,7 +1968,6 @@ function restoreDeletedBill(deletedBillId) {
       billData.paymentMode,
       billData.cashAmount || 0,
       billData.upiAmount || 0,
-      billData.customerMobileNumber || null,
       "completed",
       billData.createdAt
     );
@@ -1095,8 +2028,8 @@ function getSettings() {
 function getSetting(key) {
   const db2 = getDatabase();
   const stmt = db2.prepare("SELECT value FROM settings WHERE key = ?");
-  const result = stmt.get(key);
-  return result == null ? void 0 : result.value;
+  const result2 = stmt.get(key);
+  return result2 == null ? void 0 : result2.value;
 }
 function updateSetting(key, value) {
   const db2 = getDatabase();
@@ -1105,8 +2038,8 @@ function updateSetting(key, value) {
     INSERT OR REPLACE INTO settings (key, value, updatedAt) 
     VALUES (?, ?, datetime('now', 'localtime'))
   `);
-  const result = stmt.run(key, value);
-  if (result.changes > 0) {
+  const result2 = stmt.run(key, value);
+  if (result2.changes > 0) {
     addActivityLog(
       "update",
       "setting",
@@ -1116,7 +2049,7 @@ function updateSetting(key, value) {
       value
     );
   }
-  return result.changes > 0;
+  return result2.changes > 0;
 }
 function updateAllSettings(settings) {
   const db2 = getDatabase();
@@ -1666,16 +2599,16 @@ function linearRegression(data) {
   return { slope, intercept, rSquared, predictions };
 }
 function movingAverage(data, period) {
-  const result = [];
+  const result2 = [];
   for (let i = 0; i < data.length; i++) {
     if (i < period - 1) {
-      result.push(data[i]);
+      result2.push(data[i]);
     } else {
       const sum = data.slice(i - period + 1, i + 1).reduce((a, b) => a + b, 0);
-      result.push(sum / period);
+      result2.push(sum / period);
     }
   }
-  return result;
+  return result2;
 }
 function calculateStats(data) {
   if (data.length === 0) return { mean: 0, stdDev: 0, variance: 0, min: 0, max: 0 };
@@ -2156,8 +3089,8 @@ function calculateDaysInStock(firstSale, lastSale) {
 }
 function getProductStock(db2, productId) {
   const stmt = db2.prepare("SELECT stock FROM products WHERE id = ?");
-  const result = stmt.get(productId);
-  return (result == null ? void 0 : result.stock) || 0;
+  const result2 = stmt.get(productId);
+  return (result2 == null ? void 0 : result2.stock) || 0;
 }
 function generateInsights(regression, weeklyByDay, weekendAvg, weekdayAvg, topSelling, categories, paymentTrends, productForecast, stats) {
   const insights = [];
@@ -2209,10 +3142,10 @@ function getCombos() {
 function createCombo(data) {
   const db2 = getDatabase();
   const tx = db2.transaction(() => {
-    const result = db2.prepare(
+    const result2 = db2.prepare(
       `INSERT INTO combos (name, description, comboPrice) VALUES (?, ?, ?)`
     ).run(data.name, data.description || null, data.comboPrice ?? null);
-    const comboId2 = result.lastInsertRowid;
+    const comboId2 = result2.lastInsertRowid;
     const itemStmt = db2.prepare(
       `INSERT INTO combo_items (comboId, productId, quantity) VALUES (?, ?, ?)`
     );
@@ -2273,9 +3206,9 @@ function deleteCombo(id) {
 async function exportBackup() {
   try {
     const db2 = getDatabase();
-    const result = await dialog.showSaveDialog({
+    const result2 = await dialog.showSaveDialog({
       title: "Export Database Backup",
-      defaultPath: path.join(
+      defaultPath: path$1.join(
         app.getPath("desktop"),
         `vogue-prism-backup-${(/* @__PURE__ */ new Date()).toISOString().split("T")[0]}.sql`
       ),
@@ -2284,7 +3217,7 @@ async function exportBackup() {
         { name: "All Files", extensions: ["*"] }
       ]
     });
-    if (result.canceled) {
+    if (result2.canceled) {
       return { success: false, cancelled: true };
     }
     const backup = {
@@ -2334,10 +3267,10 @@ async function exportBackup() {
     sqlContent += generateInserts("bills", backup.data.bills);
     sqlContent += generateInserts("bill_items", backup.data.bill_items);
     sqlContent += generateInserts("stock_logs", backup.data.stock_logs);
-    fs.writeFileSync(result.filePath, sqlContent, "utf8");
+    fs$1.writeFileSync(result2.filePath, sqlContent, "utf8");
     return {
       success: true,
-      path: result.filePath,
+      path: result2.filePath,
       recordCount: {
         products: backup.data.products.length,
         bills: backup.data.bills.length,
@@ -2356,7 +3289,7 @@ async function exportBackup() {
 }
 async function importBackup() {
   try {
-    const result = await dialog.showOpenDialog({
+    const result2 = await dialog.showOpenDialog({
       title: "Import Database Backup",
       filters: [
         { name: "SQL Files", extensions: ["sql"] },
@@ -2364,7 +3297,7 @@ async function importBackup() {
       ],
       properties: ["openFile"]
     });
-    if (result.canceled || !result.filePaths.length) {
+    if (result2.canceled || !result2.filePaths.length) {
       return { success: false, cancelled: true };
     }
     const confirmResult = await dialog.showMessageBox({
@@ -2380,8 +3313,8 @@ async function importBackup() {
       return { success: false, cancelled: true };
     }
     const db2 = getDatabase();
-    const backupPath = result.filePaths[0];
-    const sqlContent = fs.readFileSync(backupPath, "utf8");
+    const backupPath = result2.filePaths[0];
+    const sqlContent = fs$1.readFileSync(backupPath, "utf8");
     const transaction = db2.transaction(() => {
       db2.exec("PRAGMA foreign_keys = OFF;");
       const lines = sqlContent.split("\n");
@@ -2435,8 +3368,8 @@ function getDatabaseStats() {
 }
 function getDatabaseSize() {
   try {
-    const dbPath = path.join(app.getPath("userData"), "billing.db");
-    const stats = fs.statSync(dbPath);
+    const dbPath = path$1.join(app.getPath("userData"), "billing.db");
+    const stats = fs$1.statSync(dbPath);
     return {
       bytes: stats.size,
       mb: Math.round(stats.size / 1024 / 1024 * 100) / 100
@@ -2620,8 +3553,8 @@ function setupIpcHandlers() {
   });
   ipcMain.handle("products:delete", async (_, id, forceDeactivate) => {
     try {
-      const result = deleteProduct(id, forceDeactivate);
-      return result;
+      const result2 = deleteProduct(id, forceDeactivate);
+      return result2;
     } catch (error) {
       console.error("Error deleting product:", error);
       throw error;
@@ -2629,8 +3562,8 @@ function setupIpcHandlers() {
   });
   ipcMain.handle("products:deactivate", async (_, id) => {
     try {
-      const result = deactivateProduct(id);
-      return result;
+      const result2 = deactivateProduct(id);
+      return result2;
     } catch (error) {
       console.error("Error deactivating product:", error);
       throw error;
@@ -2648,9 +3581,9 @@ function setupIpcHandlers() {
   ipcMain.handle("bills:create", async (_, billData) => {
     try {
       console.log("Creating bill with data:", billData);
-      const result = createBill(billData);
-      console.log("Bill created successfully:", result);
-      return result;
+      const result2 = createBill(billData);
+      console.log("Bill created successfully:", result2);
+      return result2;
     } catch (error) {
       console.error("Error creating bill:", error);
       console.error("Bill data that caused error:", billData);
@@ -3228,8 +4161,8 @@ Payment:                                CASH
       const fullCut = Buffer.from([29, 86, 0]);
       const fs2 = await import("fs");
       const path2 = await import("path");
-      const os = await import("os");
-      const tempFile = path2.join(os.tmpdir(), `print-${Date.now()}.txt`);
+      const os2 = await import("os");
+      const tempFile = path2.join(os2.tmpdir(), `print-${Date.now()}.txt`);
       const contentBuffer = Buffer.from(content, "ascii");
       const finalBuffer = Buffer.concat([
         escInit,
@@ -3321,7 +4254,7 @@ $bytes = [System.IO.File]::ReadAllBytes($filePath)
 $result = [RawPrint]::Print($printerName, $bytes)
 if ($result -eq 0) { Write-Output "SUCCESS" } else { Write-Output "ERROR:$result" }
 `;
-          const psFile = path2.join(os.tmpdir(), `print-${Date.now()}.ps1`);
+          const psFile = path2.join(os2.tmpdir(), `print-${Date.now()}.ps1`);
           fs2.writeFileSync(psFile, psScript, "utf8");
           const { stdout } = await execAsync(`powershell -ExecutionPolicy Bypass -File "${psFile}"`, { timeout: 1e4 });
           setTimeout(() => {
@@ -3358,7 +4291,7 @@ if ($result -eq 0) { Write-Output "SUCCESS" } else { Write-Output "ERROR:$result
       const isWindows = process.platform === "win32";
       const fs2 = await import("fs");
       const path2 = await import("path");
-      const os = await import("os");
+      const os2 = await import("os");
       const simpleText = `
 PRINTER TEST
 ============
@@ -3369,7 +4302,7 @@ If you see this, printing works!
 
 
 `;
-      const tempFile = path2.join(os.tmpdir(), `debug-${Date.now()}.txt`);
+      const tempFile = path2.join(os2.tmpdir(), `debug-${Date.now()}.txt`);
       fs2.writeFileSync(tempFile, simpleText, "ascii");
       console.log(`Debug test - Printer: ${printerName}, Platform: ${process.platform}`);
       if (isWindows) {
@@ -3463,16 +4396,16 @@ if ($result -eq 0) {
     Write-Output "ERROR:$result"
 }
 `;
-          const psFile = path2.join(os.tmpdir(), `debugprint-${Date.now()}.ps1`);
+          const psFile = path2.join(os2.tmpdir(), `debugprint-${Date.now()}.ps1`);
           fs2.writeFileSync(psFile, psScript, "utf8");
-          const { stdout: result } = await execAsync(`powershell -ExecutionPolicy Bypass -File "${psFile}"`, { timeout: 3e4 });
+          const { stdout: result2 } = await execAsync(`powershell -ExecutionPolicy Bypass -File "${psFile}"`, { timeout: 3e4 });
           setTimeout(() => {
             try {
               fs2.unlinkSync(psFile);
             } catch (e) {
             }
           }, 1e3);
-          if (result.trim().includes("SUCCESS")) {
+          if (result2.trim().includes("SUCCESS")) {
             console.log("Windows raw print succeeded");
             setTimeout(() => {
               try {
@@ -3482,7 +4415,7 @@ if ($result -eq 0) {
             }, 2e3);
             return { success: true, message: "Debug test sent successfully" };
           } else {
-            console.log(`Windows raw print failed: ${result.trim()}`);
+            console.log(`Windows raw print failed: ${result2.trim()}`);
           }
         } catch (e) {
           console.log(`Windows print exception: ${e.message}`);
@@ -3686,8 +4619,8 @@ if ($result -eq 0) {
       content = content.replace(/₹/g, "Rs.");
       const fs2 = await import("fs");
       const path2 = await import("path");
-      const os = await import("os");
-      const tempFile = path2.join(os.tmpdir(), `fastprint-${Date.now()}.txt`);
+      const os2 = await import("os");
+      const tempFile = path2.join(os2.tmpdir(), `fastprint-${Date.now()}.txt`);
       if (isWindows) {
         const escapedPrinter = printerName.replace(/"/g, '""');
         try {
@@ -3727,7 +4660,7 @@ $printer.SetDefaultPrinter($printerName)
 $shell = New-Object -ComObject WScript.Shell
 $shell.Run("notepad /p \\"$filePath\\"", 0, $true)
 `;
-          const psFile = path2.join(os.tmpdir(), `fastprint-${Date.now()}.ps1`);
+          const psFile = path2.join(os2.tmpdir(), `fastprint-${Date.now()}.ps1`);
           fs2.writeFileSync(psFile, psScript, "utf8");
           await execAsync(`powershell -ExecutionPolicy Bypass -File "${psFile}"`, { timeout: 8e3 });
           setTimeout(() => {
@@ -3861,30 +4794,102 @@ $shell.Run("notepad /p \\"$filePath\\"", 0, $true)
       throw error;
     }
   });
+  ipcMain.handle("config:getAppConfig", async () => {
+    try {
+      return getConfig();
+    } catch (error) {
+      console.error("Error getting app config:", error);
+      throw error;
+    }
+  });
+  ipcMain.handle("sync:init", async () => {
+    try {
+      initSyncQueue();
+      initSyncMetadata();
+      await initSync();
+      return { success: true };
+    } catch (error) {
+      console.error("Error initializing sync:", error);
+      throw error;
+    }
+  });
+  ipcMain.handle("sync:performSync", async () => {
+    try {
+      const isOnline = await isNetworkAvailable();
+      return await performSync(isOnline);
+    } catch (error) {
+      console.error("Error performing sync:", error);
+      throw error;
+    }
+  });
+  ipcMain.handle("sync:getStatus", async () => {
+    try {
+      return getSyncStatus();
+    } catch (error) {
+      console.error("Error getting sync status:", error);
+      throw error;
+    }
+  });
+  ipcMain.handle("sync:trackChange", async (_, tableName, operation, recordId, data) => {
+    try {
+      trackLocalChange(tableName, operation, recordId, data);
+      return { success: true };
+    } catch (error) {
+      console.error("Error tracking change:", error);
+      throw error;
+    }
+  });
+  ipcMain.handle("sync:forceFullSync", async () => {
+    try {
+      return await forceFullSync();
+    } catch (error) {
+      console.error("Error forcing full sync:", error);
+      throw error;
+    }
+  });
+  ipcMain.handle("sync:getQueueDetails", async () => {
+    try {
+      return getSyncQueueDetails();
+    } catch (error) {
+      console.error("Error getting queue details:", error);
+      throw error;
+    }
+  });
   console.log("All IPC handlers set up successfully");
 }
 const __filename$1 = fileURLToPath(import.meta.url);
-const __dirname$1 = path.dirname(__filename$1);
+const __dirname$1 = path$1.dirname(__filename$1);
+const envPath = path$1.join(__dirname$1, "../.env");
+const result = config_1({ path: envPath, debug: true });
+console.log("=== ENV LOADING DEBUG ===");
+console.log("ENV Path:", envPath);
+console.log("ENV Load Result:", result.error ? `ERROR: ${result.error.message}` : "SUCCESS");
+console.log("VITE_SUPABASE_URL:", process.env.VITE_SUPABASE_URL ? "✓ Loaded" : "✗ Missing");
+console.log("VITE_SUPABASE_ANON_KEY:", process.env.VITE_SUPABASE_ANON_KEY ? "✓ Loaded" : "✗ Missing");
+console.log("VITE_STORE_ID:", process.env.VITE_STORE_ID || "Not set");
+console.log("VITE_STORE_NAME:", process.env.VITE_STORE_NAME || "Not set");
+console.log("========================");
 let win = null;
 function createWindow() {
+  const config2 = loadConfig();
   win = new BrowserWindow({
     width: 1400,
     height: 900,
     minWidth: 1200,
     minHeight: 700,
     webPreferences: {
-      preload: path.join(__dirname$1, "preload.mjs"),
+      preload: path$1.join(__dirname$1, "preload.mjs"),
       contextIsolation: true,
       nodeIntegration: false
     },
     titleBarStyle: "default",
-    title: "Vogue Prism - Billing Software"
+    title: `${config2.storeName} - Billing Software`
   });
   win.setMenuBarVisibility(false);
   if (process.env["VITE_DEV_SERVER_URL"]) {
     win.loadURL(process.env["VITE_DEV_SERVER_URL"]);
   } else {
-    win.loadFile(path.join(__dirname$1, "../dist/index.html"));
+    win.loadFile(path$1.join(__dirname$1, "../dist/index.html"));
   }
   return win;
 }
@@ -3899,6 +4904,9 @@ app.on("activate", () => {
 });
 app.whenReady().then(async () => {
   await initDatabase();
+  initSyncQueue();
+  initSyncMetadata();
+  await initSync();
   win = createWindow();
   setupIpcHandlers();
   startNetworkMonitoring();

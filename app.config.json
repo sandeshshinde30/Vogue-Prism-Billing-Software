@@ -1,0 +1,26 @@
+{
+  "storeType": "master",
+  "storeId": "store_001",
+  "storeName": "Main Store",
+  "features": {
+    "dbSync": true,
+    "analytics": true,
+    "forecast": true,
+    "backup": true,
+    "deletedBills": true,
+    "combos": true
+  },
+  "sync": {
+    "enabled": true,
+    "autoSyncInterval": 3600000,
+    "retryAttempts": 3,
+    "batchSize": 100
+  },
+  "ui": {
+    "showDBSyncTab": true,
+    "showAnalyticsTab": true,
+    "showForecastTab": true,
+    "showCombosTab": true,
+    "showDeletedBillsTab": true
+  }
+}

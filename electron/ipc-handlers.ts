@@ -1,6 +1,7 @@
 import { ipcMain } from 'electron';
 import { exec } from 'child_process';
 import { promisify } from 'util';
+import { getConfig } from './config';
 import { 
   addProduct, 
   getProducts, 
@@ -83,6 +84,20 @@ import {
 import {
   isFirebaseConfigured
 } from './services/firebase';
+import {
+  initSync,
+  performSync,
+  getSyncStatus,
+  trackLocalChange,
+  forceFullSync,
+  getSyncQueueDetails
+} from './services/dbSync';
+import {
+  initSyncQueue
+} from './services/syncQueue';
+import {
+  initSyncMetadata
+} from './services/syncMetadata';
 
 export function setupIpcHandlers() {
   
@@ -1498,6 +1513,76 @@ $shell.Run("notepad /p \\"$filePath\\"", 0, $true)
       };
     } catch (error) {
       console.error('Error checking configuration:', error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle('config:getAppConfig', async () => {
+    try {
+      return getConfig();
+    } catch (error) {
+      console.error('Error getting app config:', error);
+      throw error;
+    }
+  });
+
+  // ===== DB SYNC HANDLERS =====
+
+  ipcMain.handle('sync:init', async () => {
+    try {
+      initSyncQueue();
+      initSyncMetadata();
+      await initSync();
+      return { success: true };
+    } catch (error) {
+      console.error('Error initializing sync:', error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle('sync:performSync', async () => {
+    try {
+      const isOnline = await isNetworkAvailable();
+      return await performSync(isOnline);
+    } catch (error) {
+      console.error('Error performing sync:', error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle('sync:getStatus', async () => {
+    try {
+      return getSyncStatus();
+    } catch (error) {
+      console.error('Error getting sync status:', error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle('sync:trackChange', async (_, tableName: string, operation: 'insert' | 'update' | 'delete', recordId: number, data?: Record<string, any>) => {
+    try {
+      trackLocalChange(tableName, operation, recordId, data);
+      return { success: true };
+    } catch (error) {
+      console.error('Error tracking change:', error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle('sync:forceFullSync', async () => {
+    try {
+      return await forceFullSync();
+    } catch (error) {
+      console.error('Error forcing full sync:', error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle('sync:getQueueDetails', async () => {
+    try {
+      return getSyncQueueDetails();
+    } catch (error) {
+      console.error('Error getting queue details:', error);
       throw error;
     }
   });

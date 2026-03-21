@@ -1,5 +1,5 @@
 import React from 'react';
-import { Banknote, CreditCard, Edit2, Check, X } from 'lucide-react';
+import { Banknote, CreditCard, Edit2, Check, X, Smartphone } from 'lucide-react';
 import { useStore } from '../../store/useStore';
 import { DiscountInput } from './DiscountInput';
 import { BillPreview } from './BillPreview';

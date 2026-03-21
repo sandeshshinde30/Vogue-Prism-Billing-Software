@@ -1,16 +1,39 @@
-import { app, BrowserWindow } from 'electron';
+import { config } from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'node:url';
-import { initDatabase, closeDatabase } from './DB/connection';
-import { setupIpcHandlers } from './ipc-handlers';
-import { startNetworkMonitoring, stopNetworkMonitoring } from './services/networkMonitor';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// Load environment variables FIRST before any other imports
+const envPath = path.join(__dirname, '../.env');
+const result = config({ path: envPath, debug: true });
+
+// Log env loading status
+console.log('=== ENV LOADING DEBUG ===');
+console.log('ENV Path:', envPath);
+console.log('ENV Load Result:', result.error ? `ERROR: ${result.error.message}` : 'SUCCESS');
+console.log('VITE_SUPABASE_URL:', process.env.VITE_SUPABASE_URL ? '✓ Loaded' : '✗ Missing');
+console.log('VITE_SUPABASE_ANON_KEY:', process.env.VITE_SUPABASE_ANON_KEY ? '✓ Loaded' : '✗ Missing');
+console.log('VITE_STORE_ID:', process.env.VITE_STORE_ID || 'Not set');
+console.log('VITE_STORE_NAME:', process.env.VITE_STORE_NAME || 'Not set');
+console.log('========================');
+
+import { app, BrowserWindow } from 'electron';
+import { initDatabase, closeDatabase } from './DB/connection';
+import { setupIpcHandlers } from './ipc-handlers';
+import { startNetworkMonitoring, stopNetworkMonitoring } from './services/networkMonitor';
+import { initSync } from './services/dbSync';
+import { initSyncQueue } from './services/syncQueue';
+import { initSyncMetadata } from './services/syncMetadata';
+import { loadConfig } from './config';
+
 let win: BrowserWindow | null = null;
 
 function createWindow() {
+  // Load configuration
+  const config = loadConfig();
+  
   win = new BrowserWindow({
     width: 1400,
     height: 900,
@@ -22,7 +45,7 @@ function createWindow() {
       nodeIntegration: false,
     },
     titleBarStyle: 'default',
-    title: 'Vogue Prism - Billing Software',
+    title: `${config.storeName} - Billing Software`,
   });
 
   win.setMenuBarVisibility(false);
@@ -49,6 +72,11 @@ app.on('activate', () => {
 
 app.whenReady().then(async () => {
   await initDatabase();
+  
+  // Initialize sync system
+  initSyncQueue();
+  initSyncMetadata();
+  await initSync();
   
   win = createWindow();
   

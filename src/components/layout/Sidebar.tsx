@@ -1,4 +1,5 @@
 import { NavLink } from 'react-router-dom';
+import { useEffect, useState } from 'react';
 import {
   LayoutDashboard,
   ShoppingCart,
@@ -14,27 +15,35 @@ import {
   BarChart3,
   Layers,
   TrendingUp,
+  Wifi,
 } from 'lucide-react';
 import { getLogoPath } from '../../utils/assetPath';
 
-const navItems = [
-  { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
-  { to: '/billing', icon: ShoppingCart, label: 'Billing' },
-  { to: '/combos', icon: Layers, label: 'Combos' },
-  { to: '/products', icon: Package, label: 'Products' },
-  { to: '/stock', icon: Boxes, label: 'Stock' },
-  { to: '/bill-management', icon: FileEdit, label: 'Bill Management' },
-  { to: '/reports', icon: FileBarChart, label: 'Reports' },
-  { to: '/analytics', icon: BarChart3, label: 'Analytics' },
-  { to: '/forecast', icon: TrendingUp, label: 'Forecast' },
-  { to: '/deleted-bills', icon: Trash2, label: 'Deleted Bills' },
-  { to: '/logs', icon: Activity, label: 'Logs' },
-  { to: '/printer-management', icon: Printer, label: 'Printer' },
-  { to: '/backup', icon: Database, label: 'Backup' },
-  { to: '/settings', icon: Settings, label: 'Settings' },
-];
-
 export function Sidebar() {
+  const [config, setConfig] = useState<any>(null);
+
+  useEffect(() => {
+    window.electronAPI.config.getAppConfig().then(setConfig);
+  }, []);
+
+  const navItems = [
+    { to: '/', icon: LayoutDashboard, label: 'Dashboard', show: true },
+    { to: '/billing', icon: ShoppingCart, label: 'Billing', show: true },
+    { to: '/combos', icon: Layers, label: 'Combos', show: config?.ui?.showCombosTab ?? true },
+    { to: '/products', icon: Package, label: 'Products', show: true },
+    { to: '/stock', icon: Boxes, label: 'Stock', show: true },
+    { to: '/bill-management', icon: FileEdit, label: 'Bill Management', show: true },
+    { to: '/reports', icon: FileBarChart, label: 'Reports', show: true },
+    { to: '/analytics', icon: BarChart3, label: 'Analytics', show: config?.ui?.showAnalyticsTab ?? true },
+    { to: '/forecast', icon: TrendingUp, label: 'Forecast', show: config?.ui?.showForecastTab ?? true },
+    { to: '/deleted-bills', icon: Trash2, label: 'Deleted Bills', show: config?.ui?.showDeletedBillsTab ?? true },
+    { to: '/logs', icon: Activity, label: 'Logs', show: true },
+    { to: '/db-sync', icon: Wifi, label: 'DB Sync', show: config?.ui?.showDBSyncTab ?? true },
+    { to: '/printer-management', icon: Printer, label: 'Printer', show: true },
+    { to: '/backup', icon: Database, label: 'Backup', show: true },
+    { to: '/settings', icon: Settings, label: 'Settings', show: true },
+  ];
+
   return (
     <aside className="w-60 bg-gray-900 flex flex-col h-full flex-shrink-0">
       {/* Logo */}
@@ -54,7 +63,7 @@ export function Sidebar() {
           </div>
           <div>
             <h1 className="font-semibold text-white text-sm">
-              Vogue Prism
+              {config?.storeName || 'Vogue Prism'}
             </h1>
             <p className="text-xs text-gray-500">
               Billing Software
@@ -70,7 +79,7 @@ export function Sidebar() {
           padding : '10px'
         }}
         >
-          {navItems.map((item) => (
+          {navItems.filter(item => item.show).map((item) => (
             <NavLink
               key={item.to}
               to={item.to}

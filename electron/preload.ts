@@ -101,7 +101,33 @@ export interface ElectronAPI {
   // Config
   config: {
     isConfigured: () => Promise<{ firebase: boolean; twilio: boolean }>;
+    getAppConfig: () => Promise<any>;
   };
+
+  // DB Sync
+  sync: {
+    init: () => Promise<{ success: boolean }>;
+    performSync: () => Promise<any>;
+    getStatus: () => Promise<any>;
+    trackChange: (tableName: string, operation: 'insert' | 'update' | 'delete', recordId: number, data?: Record<string, any>) => Promise<{ success: boolean }>;
+    forceFullSync: () => Promise<any>;
+  };
+
+  // Environment variables
+  env: {
+    VITE_SUPABASE_URL: string | undefined;
+    VITE_SUPABASE_ANON_KEY: string | undefined;
+    VITE_STORE_ID: string | undefined;
+    VITE_STORE_NAME: string | undefined;
+  };
+
+  // Backward compatibility
+  initSync: () => Promise<{ success: boolean }>;
+  performSync: () => Promise<any>;
+  getSyncStatus: () => Promise<any>;
+  trackLocalChange: (tableName: string, operation: 'insert' | 'update' | 'delete', recordId: number, data?: Record<string, any>) => Promise<{ success: boolean }>;
+  forceFullSync: () => Promise<any>;
+  getNetworkStatus: () => Promise<{ isOnline: boolean; speed: number; latency: number; lastChecked: string; connectionType: string }>;
 }
 
 contextBridge.exposeInMainWorld('electronAPI', {
@@ -204,5 +230,33 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Config
   config: {
     isConfigured: () => ipcRenderer.invoke('config:isConfigured'),
+    getAppConfig: () => ipcRenderer.invoke('config:getAppConfig'),
   },
+
+  // DB Sync
+  sync: {
+    init: () => ipcRenderer.invoke('sync:init'),
+    performSync: () => ipcRenderer.invoke('sync:performSync'),
+    getStatus: () => ipcRenderer.invoke('sync:getStatus'),
+    trackChange: (tableName: string, operation: 'insert' | 'update' | 'delete', recordId: number, data?: Record<string, any>) => 
+      ipcRenderer.invoke('sync:trackChange', tableName, operation, recordId, data),
+    forceFullSync: () => ipcRenderer.invoke('sync:forceFullSync'),
+  },
+
+  // Environment variables
+  env: {
+    VITE_SUPABASE_URL: process.env.VITE_SUPABASE_URL,
+    VITE_SUPABASE_ANON_KEY: process.env.VITE_SUPABASE_ANON_KEY,
+    VITE_STORE_ID: process.env.VITE_STORE_ID,
+    VITE_STORE_NAME: process.env.VITE_STORE_NAME,
+  },
+
+  // Backward compatibility
+  initSync: () => ipcRenderer.invoke('sync:init'),
+  performSync: () => ipcRenderer.invoke('sync:performSync'),
+  getSyncStatus: () => ipcRenderer.invoke('sync:getStatus'),
+  trackLocalChange: (tableName: string, operation: 'insert' | 'update' | 'delete', recordId: number, data?: Record<string, any>) => 
+    ipcRenderer.invoke('sync:trackChange', tableName, operation, recordId, data),
+  forceFullSync: () => ipcRenderer.invoke('sync:forceFullSync'),
+  getNetworkStatus: () => ipcRenderer.invoke('network:getStatus'),
 } as ElectronAPI);

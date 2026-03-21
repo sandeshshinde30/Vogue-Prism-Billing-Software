@@ -17,6 +17,7 @@ import {
   Analytics,
   Forecast,
   Combos,
+  DBSync,
 } from './pages';
 import { useStore } from './store/useStore';
 import { Settings as SettingsType } from './types';
@@ -78,6 +79,7 @@ function App() {
           <Route path="backup" element={<Backup />} />
           <Route path="settings" element={<Settings />} />
           <Route path="printer-management" element={<PrinterManagement />} />
+          <Route path="db-sync" element={<DBSync />} />
         </Route>
       </Routes>
     </HashRouter>
