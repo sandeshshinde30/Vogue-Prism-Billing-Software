@@ -6,21 +6,60 @@
     "dbSync": true,
     "analytics": true,
     "forecast": true,
-    "backup": true,
+    "backup": true, 
     "deletedBills": true,
-    "combos": true
+    "combos": true,
+    "masterFeatures": true,
+    "crossStoreAnalytics": true,
+    "consolidatedReports": true,
+    "storeManagement": true,
+    "cashUpiTracking": true
   },
   "sync": {
     "enabled": true,
     "autoSyncInterval": 3600000,
     "retryAttempts": 3,
-    "batchSize": 100
+    "batchSize": 100,
+    "pullFromBranches": true,
+    "branchStores": [
+      {
+        "storeId": "store_002",
+        "storeName": "Branch Store 1",
+        "endpoint": "http://branch1.local:3000",
+        "lastSync": null,
+        "status": "active"
+      },
+      {
+        "storeId": "store_003", 
+        "storeName": "Branch Store 2",
+        "endpoint": "http://branch2.local:3000",
+        "lastSync": null,
+        "status": "active"
+      }
+    ]
   },
   "ui": {
     "showDBSyncTab": true,
     "showAnalyticsTab": true,
     "showForecastTab": true,
-    "showCombosTab": true,
-    "showDeletedBillsTab": true
+    "showCombosTab": false,
+    "showDeletedBillsTab": true,
+    "showStoreManagementTab": true,
+    "showMasterTab": true,
+    "showCashUpiTrackingTab": true,
+    "masterTabSubTabs": {
+      "dashboard": true,
+      "multiStoreAnalytics": true,
+      "consolidatedForecasting": true,
+      "crossStoreReports": true,
+      "syncManagement": true,
+      "storeManagement": true
+    }
+  },
+  "storeSelection": {
+    "enabled": true,
+    "defaultStore": "store_001",
+    "allowSwitching": true,
+    "showStoreSelector": true
   }
 }

@@ -1,0 +1,50 @@
+{
+  "storeType": "branch",
+  "storeId": "store_002",
+  "storeName": "Branch Store",
+  "features": {
+    "dbSync": true,
+    "analytics": true,
+    "forecast": true,
+    "backup": true, 
+    "deletedBills": true,
+    "combos": true,
+    "masterFeatures": false,
+    "crossStoreAnalytics": false,
+    "consolidatedReports": false,
+    "storeManagement": false,
+    "cashUpiTracking": true
+  },
+  "sync": {
+    "enabled": true,
+    "autoSyncInterval": 3600000,
+    "retryAttempts": 3,
+    "batchSize": 100,
+    "pullFromBranches": false,
+    "branchStores": []
+  },
+  "ui": {
+    "showDBSyncTab": true,
+    "showAnalyticsTab": true,
+    "showForecastTab": true,
+    "showCombosTab": true,
+    "showDeletedBillsTab": true,
+    "showStoreManagementTab": false,
+    "showMasterTab": false,
+    "showCashUpiTrackingTab": true,
+    "masterTabSubTabs": {
+      "dashboard": false,
+      "multiStoreAnalytics": false,
+      "consolidatedForecasting": false,
+      "crossStoreReports": false,
+      "syncManagement": false,
+      "storeManagement": false
+    }
+  },
+  "storeSelection": {
+    "enabled": false,
+    "defaultStore": "store_002",
+    "allowSwitching": false,
+    "showStoreSelector": false
+  }
+}

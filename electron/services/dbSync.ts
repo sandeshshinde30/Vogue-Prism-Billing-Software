@@ -320,10 +320,19 @@ function mapFromSyncFormat(tableName: string, record: any) {
   return record;
 }
 
-// Main sync function (pull then push)
+// Main sync function (pull then push) - only sync if there are pending changes
 export async function performSync(isOnline: boolean): Promise<SyncStatus> {
   const supabase = getSupabase();
   if (!isSupabaseConfigured() || !supabase || syncInProgress) {
+    return syncStatus;
+  }
+
+  // Check if there are any pending changes first
+  const pendingCount = getPendingSyncCount();
+  if (pendingCount === 0 && !syncStatus.error) {
+    // No changes to sync, just update status
+    syncStatus.isOnline = isOnline;
+    syncStatus.lastSyncTime = new Date().toISOString();
     return syncStatus;
   }
 
@@ -353,8 +362,11 @@ export async function performSync(isOnline: boolean): Promise<SyncStatus> {
 
     syncStatus.syncProgress = 50;
 
-    // Step 2: Push pending changes
-    const pushCount = await incrementalPush();
+    // Step 2: Push pending changes (only if there are any)
+    let pushCount = 0;
+    if (pendingCount > 0) {
+      pushCount = await incrementalPush();
+    }
 
     syncStatus.syncProgress = 90;
     syncStatus.pendingCount = getPendingSyncCount();
@@ -362,6 +374,8 @@ export async function performSync(isOnline: boolean): Promise<SyncStatus> {
     syncStatus.error = undefined;
 
     syncStatus.syncProgress = 100;
+    
+    console.log(`✓ Sync completed: ${pullCount} pulled, ${pushCount} pushed, ${syncStatus.pendingCount} pending`);
   } catch (error) {
     syncStatus.error = (error as Error).message;
     console.error('Sync error:', error);
@@ -518,4 +532,172 @@ export function getSyncQueueDetails() {
     failedItems,
     totalPending: getPendingSyncCount(),
   };
+}
+
+
+// Get DB statistics from Supabase
+export async function getDBStatistics() {
+  const supabase = getSupabase();
+  
+  if (!isSupabaseConfigured() || !supabase) {
+    return {
+      totalSize: 500,
+      usedSize: 0,
+      freeSize: 500,
+      bandwidthUsed: 0,
+      bandwidthLimit: 5000,
+    };
+  }
+
+  try {
+    // Get database size (approximate based on row counts)
+    const { count: productsCount } = await supabase
+      .from('products_sync')
+      .select('*', { count: 'exact', head: true })
+      .eq('store_id', STORE_ID);
+
+    const { count: billsCount } = await supabase
+      .from('bills_sync')
+      .select('*', { count: 'exact', head: true })
+      .eq('store_id', STORE_ID);
+
+    const { count: billItemsCount } = await supabase
+      .from('bill_items_sync')
+      .select('*', { count: 'exact', head: true })
+      .eq('store_id', STORE_ID);
+
+    // Estimate size (rough calculation: ~1KB per product, ~2KB per bill, ~0.5KB per bill item)
+    const estimatedSize = 
+      ((productsCount || 0) * 1) + 
+      ((billsCount || 0) * 2) + 
+      ((billItemsCount || 0) * 0.5);
+
+    const usedSizeMB = estimatedSize / 1024; // Convert KB to MB
+    const totalSizeMB = 500; // Free tier limit
+    const freeSizeMB = totalSizeMB - usedSizeMB;
+
+    // Estimate bandwidth (rough: same as data size for now)
+    const bandwidthUsedMB = usedSizeMB * 2; // Assume 2x for read/write
+    const bandwidthLimitMB = 5000; // 5GB free tier
+
+    return {
+      totalSize: totalSizeMB,
+      usedSize: Math.max(0, usedSizeMB),
+      freeSize: Math.max(0, freeSizeMB),
+      bandwidthUsed: Math.max(0, bandwidthUsedMB),
+      bandwidthLimit: bandwidthLimitMB,
+    };
+  } catch (error) {
+    console.error('Error getting DB statistics:', error);
+    return {
+      totalSize: 500,
+      usedSize: 0,
+      freeSize: 500,
+      bandwidthUsed: 0,
+      bandwidthLimit: 5000,
+    };
+  }
+}
+
+// Get unsynced bills from sync queue
+export function getUnsyncedBills() {
+  const db = getDatabase();
+  
+  const stmt = db.prepare(`
+    SELECT 
+      sq.id as queueId,
+      sq.operation,
+      sq.retry_count as retryCount,
+      sq.error_message as errorMessage,
+      b.id,
+      b.billNumber,
+      b.total,
+      b.createdAt,
+      b.paymentMode,
+      (SELECT COUNT(*) FROM bill_items WHERE billId = b.id) as itemCount
+    FROM sync_queue sq
+    JOIN bills b ON sq.record_id = b.id
+    WHERE sq.table_name = 'bills' AND sq.synced = 0
+    ORDER BY b.createdAt DESC
+  `);
+  
+  return stmt.all();
+}
+
+// Get synced bills (recently synced)
+export function getSyncedBills() {
+  const db = getDatabase();
+  
+  const stmt = db.prepare(`
+    SELECT 
+      sq.id as queueId,
+      sq.operation,
+      b.id,
+      b.billNumber,
+      b.total,
+      b.createdAt,
+      b.paymentMode,
+      (SELECT COUNT(*) FROM bill_items WHERE billId = b.id) as itemCount
+    FROM sync_queue sq
+    JOIN bills b ON sq.record_id = b.id
+    WHERE sq.table_name = 'bills' AND sq.synced = 1
+    ORDER BY b.createdAt DESC
+    LIMIT 50
+  `);
+  
+  return stmt.all();
+}
+
+// Sync a single bill by queue ID
+export async function syncSingleBill(queueId: string) {
+  const supabase = getSupabase();
+  if (!isSupabaseConfigured() || !supabase) {
+    throw new Error('Supabase not configured');
+  }
+
+  const db = getDatabase();
+  
+  // Get the sync queue item
+  const queueStmt = db.prepare('SELECT * FROM sync_queue WHERE id = ?');
+  const queueItem = queueStmt.get(queueId) as any;
+  
+  if (!queueItem) {
+    throw new Error('Queue item not found');
+  }
+
+  // Parse the data
+  const item = {
+    ...queueItem,
+    data: queueItem.data ? JSON.parse(queueItem.data) : undefined,
+  };
+
+  try {
+    await pushSyncItem(item);
+    markAsSynced(queueId);
+    
+    // Also sync bill items if this is a bill
+    if (item.table_name === 'bills') {
+      const billItemsStmt = db.prepare(`
+        SELECT * FROM sync_queue 
+        WHERE table_name = 'bill_items' 
+        AND synced = 0 
+        AND json_extract(data, '$.bill_id') = ?
+      `);
+      const billItems = billItemsStmt.all(item.record_id) as any[];
+      
+      for (const billItem of billItems) {
+        const parsedItem = {
+          ...billItem,
+          data: billItem.data ? JSON.parse(billItem.data) : undefined,
+        };
+        await pushSyncItem(parsedItem);
+        markAsSynced(billItem.id);
+      }
+    }
+    
+    return { success: true };
+  } catch (error) {
+    markSyncFailed(queueId, (error as Error).message);
+    throw error;
+  }
 }

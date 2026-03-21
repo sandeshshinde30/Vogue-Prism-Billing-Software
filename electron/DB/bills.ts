@@ -2,6 +2,7 @@ import { getDatabase } from './connection';
 import { updateStock } from './products';
 import { addActivityLog } from './logs';
 import { trackLocalChange } from '../services/dbSync';
+import { recordBillPaymentTransactions } from './cashUpiTransactions';
 
 export interface BillData {
   items: Array<{
@@ -131,6 +132,62 @@ export function createBill(data: BillData) {
       itemCount: data.items.length
     })
   );
+
+  // Record cash/UPI transactions for bill payments
+  try {
+    console.log(`🔄 About to record cash/UPI transactions for bill ${billNumber}:`);
+    console.log(`   Payment Mode: ${data.paymentMode}`);
+    console.log(`   Raw Cash Amount: ${data.cashAmount}`);
+    console.log(`   Raw UPI Amount: ${data.upiAmount}`);
+    console.log(`   Total: ₹${data.total}`);
+    
+    // Calculate actual cash and UPI amounts based on payment mode
+    let actualCashAmount = data.cashAmount || 0;
+    let actualUpiAmount = data.upiAmount || 0;
+    
+    // If payment mode is 'cash' but cashAmount is not set, use the total
+    if (data.paymentMode === 'cash' && actualCashAmount === 0) {
+      actualCashAmount = data.total;
+      console.log(`💰 Setting cash amount to total (${data.total}) for cash payment mode`);
+    }
+    
+    // If payment mode is 'upi' but upiAmount is not set, use the total
+    if (data.paymentMode === 'upi' && actualUpiAmount === 0) {
+      actualUpiAmount = data.total;
+      console.log(`📱 Setting UPI amount to total (${data.total}) for UPI payment mode`);
+    }
+    
+    // For mixed payments, both amounts should already be set correctly
+    if (data.paymentMode === 'mixed') {
+      console.log(`🔀 Mixed payment detected:`);
+      console.log(`   Cash: ₹${actualCashAmount}`);
+      console.log(`   UPI: ₹${actualUpiAmount}`);
+      console.log(`   Sum: ₹${actualCashAmount + actualUpiAmount}`);
+      console.log(`   Expected Total: ₹${data.total}`);
+      
+      if (actualCashAmount === 0 && actualUpiAmount === 0) {
+        console.error(`❌ Mixed payment but both amounts are 0! This should not happen.`);
+      }
+      
+      if (Math.abs((actualCashAmount + actualUpiAmount) - data.total) > 0.01) {
+        console.warn(`⚠️  Mixed payment amounts don't match total! Difference: ₹${Math.abs((actualCashAmount + actualUpiAmount) - data.total)}`);
+      }
+    }
+    
+    console.log(`📤 Calling recordBillPaymentTransactions with:`);
+    console.log(`   Cash: ₹${actualCashAmount}, UPI: ₹${actualUpiAmount}`);
+    
+    recordBillPaymentTransactions(
+      billNumber,
+      data.paymentMode,
+      actualCashAmount,
+      actualUpiAmount
+    );
+    
+    console.log(`✅ Successfully called recordBillPaymentTransactions for bill ${billNumber}`);
+  } catch (error) {
+    console.error('❌ Error recording bill payment transactions:', error);
+  }
   
   return bill;
 }

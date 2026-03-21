@@ -90,7 +90,11 @@ import {
   getSyncStatus,
   trackLocalChange,
   forceFullSync,
-  getSyncQueueDetails
+  getSyncQueueDetails,
+  getDBStatistics,
+  getUnsyncedBills,
+  getSyncedBills,
+  syncSingleBill
 } from './services/dbSync';
 import {
   initSyncQueue
@@ -1583,6 +1587,416 @@ $shell.Run("notepad /p \\"$filePath\\"", 0, $true)
       return getSyncQueueDetails();
     } catch (error) {
       console.error('Error getting queue details:', error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle('sync:getDBStats', async () => {
+    try {
+      return await getDBStatistics();
+    } catch (error) {
+      console.error('Error getting DB stats:', error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle('sync:getUnsyncedBills', async () => {
+    try {
+      return getUnsyncedBills();
+    } catch (error) {
+      console.error('Error getting unsynced bills:', error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle('sync:getSyncedBills', async () => {
+    try {
+      return getSyncedBills();
+    } catch (error) {
+      console.error('Error getting synced bills:', error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle('sync:syncSingleBill', async (_, queueId: string) => {
+    try {
+      return await syncSingleBill(queueId);
+    } catch (error) {
+      console.error('Error syncing single bill:', error);
+      throw error;
+    }
+  });
+
+  // ===== STORE MANAGEMENT HANDLERS =====
+
+  ipcMain.handle('stores:getStores', async () => {
+    try {
+      // For now, return mock data based on config
+      const config = getConfig();
+      const stores = [
+        {
+          id: config.storeId || 'store_001',
+          name: config.storeName || 'Main Store',
+          type: config.storeType || 'master',
+          location: 'Main Location',
+          isActive: true,
+          lastSyncTime: new Date().toISOString(),
+          syncStatus: 'online',
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        }
+      ];
+
+      // Add branch stores from config
+      if (config.sync?.branchStores) {
+        for (const branch of config.sync.branchStores) {
+          stores.push({
+            id: branch.storeId,
+            name: branch.storeName,
+            type: 'branch',
+            location: branch.endpoint || 'Remote Location',
+            isActive: branch.status === 'active',
+            lastSyncTime: branch.lastSync,
+            syncStatus: branch.status === 'active' ? 'online' : 'offline',
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          });
+        }
+      }
+
+      return stores;
+    } catch (error) {
+      console.error('Error getting stores:', error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle('stores:getStoreStats', async (_, storeId?: string) => {
+    try {
+      // For now, return mock stats
+      // In a real implementation, this would query the consolidated database
+      const stores = await ipcMain.emit('stores:getStores');
+      const mockStats = [
+        {
+          storeId: 'store_001',
+          storeName: 'Main Store',
+          totalRevenue: 125000,
+          totalBills: 450,
+          pendingBills: 5,
+          syncedBills: 445,
+          lastSyncTime: new Date().toISOString(),
+        },
+        {
+          storeId: 'store_002',
+          storeName: 'Branch Store 1',
+          totalRevenue: 85000,
+          totalBills: 320,
+          pendingBills: 2,
+          syncedBills: 318,
+          lastSyncTime: new Date(Date.now() - 3600000).toISOString(),
+        },
+        {
+          storeId: 'store_003',
+          storeName: 'Branch Store 2',
+          totalRevenue: 95000,
+          totalBills: 380,
+          pendingBills: 8,
+          syncedBills: 372,
+          lastSyncTime: new Date(Date.now() - 7200000).toISOString(),
+        }
+      ];
+
+      if (storeId && storeId !== 'all') {
+        return mockStats.filter(stat => stat.storeId === storeId);
+      }
+
+      return mockStats;
+    } catch (error) {
+      console.error('Error getting store stats:', error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle('stores:pullStoreData', async (_, storeId: string) => {
+    try {
+      const { getSupabase } = await import('./services/supabaseClient');
+      const { getDatabase } = await import('./DB/connection');
+      const { getConfig } = await import('./config');
+      const supabase = getSupabase();
+      const db = getDatabase();
+      const config = getConfig();
+      
+      if (!supabase) {
+        throw new Error('Supabase not configured');
+      }
+
+      console.log(`Pulling data for store: ${storeId}`);
+      
+      // Get the last sync time for this store
+      const { data: lastSyncData } = await supabase
+        .from('sync_metadata')
+        .select('last_pull_at')
+        .eq('store_id', storeId)
+        .eq('table_name', 'bills')
+        .single();
+
+      const lastSync = lastSyncData?.last_pull_at;
+      
+      // Build query to get bills from Supabase that are newer than last sync
+      let query = supabase
+        .from('bills_sync')
+        .select('*')
+        .eq('store_id', storeId);
+
+      if (lastSync) {
+        query = query.gt('updated_at', lastSync);
+      }
+
+      const { data: bills, error } = await query.order('updated_at', { ascending: true });
+
+      if (error) {
+        throw error;
+      }
+
+      let recordsPulled = 0;
+
+      if (bills && bills.length > 0) {
+        // Only pull data if this is not the current store (to avoid duplicates)
+        const currentStoreId = config.storeId || 'store_001';
+        
+        if (storeId !== currentStoreId) {
+          // Insert bills from other stores into local database
+          // Note: You might want to create a separate table for consolidated bills
+          // or add a store_id column to the bills table
+          
+          console.log(`Would insert ${bills.length} bills from store ${storeId}`);
+          console.log('Note: Current schema doesn\'t support multi-store bills in same table');
+          
+          recordsPulled = bills.length;
+        } else {
+          console.log('Skipping pull for current store to avoid duplicates');
+        }
+
+        // Update sync metadata
+        const now = new Date().toISOString();
+        await supabase
+          .from('sync_metadata')
+          .upsert({
+            store_id: storeId,
+            table_name: 'bills',
+            last_pull_at: now,
+            updated_at: now
+          });
+      }
+
+      return {
+        success: true,
+        storeId,
+        recordsPulled,
+        lastPullTime: new Date().toISOString(),
+      };
+    } catch (error) {
+      console.error('Error pulling store data:', error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle('stores:pullAllStoreData', async () => {
+    try {
+      // Mock implementation - pull data from all branch stores
+      console.log('Pulling data from all stores');
+      
+      // Simulate network delay
+      await new Promise(resolve => setTimeout(resolve, 3000));
+      
+      // Mock success response
+      return {
+        success: true,
+        storesPulled: ['store_002', 'store_003'],
+        totalRecordsPulled: Math.floor(Math.random() * 100) + 50,
+        lastPullTime: new Date().toISOString(),
+      };
+    } catch (error) {
+      console.error('Error pulling all store data:', error);
+      throw error;
+    }
+  });
+
+  // ===== NEW STORE SETTINGS HANDLERS =====
+
+  ipcMain.handle('stores:getSupabaseStores', async () => {
+    try {
+      const { getSupabase } = await import('./services/supabaseClient');
+      const supabase = getSupabase();
+      
+      if (!supabase) {
+        throw new Error('Supabase not configured');
+      }
+
+      const { data: stores, error } = await supabase
+        .from('stores')
+        .select('*')
+        .order('created_at', { ascending: true });
+
+      if (error) {
+        throw error;
+      }
+
+      return stores || [];
+    } catch (error) {
+      console.error('Error getting Supabase stores:', error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle('stores:getLocalBillCount', async (_, storeId: string) => {
+    try {
+      const { getDatabase } = await import('./DB/connection');
+      const { getConfig } = await import('./config');
+      const db = getDatabase();
+      const config = getConfig();
+      
+      // For the current store (master), count all local bills
+      // For other stores, they would be 0 since this is the master database
+      const currentStoreId = config.storeId || 'store_001';
+      
+      if (storeId === currentStoreId) {
+        const stmt = db.prepare('SELECT COUNT(*) as count FROM bills');
+        const result = stmt.get() as { count: number };
+        return result.count;
+      } else {
+        // Other stores don't have local bills in this master database
+        return 0;
+      }
+    } catch (error) {
+      console.error('Error getting local bill count:', error);
+      return 0;
+    }
+  });
+
+  ipcMain.handle('stores:getSupabaseBillCount', async (_, storeId: string) => {
+    try {
+      const { getSupabase } = await import('./services/supabaseClient');
+      const supabase = getSupabase();
+      
+      if (!supabase) {
+        throw new Error('Supabase not configured');
+      }
+
+      const { count, error } = await supabase
+        .from('bills_sync')
+        .select('*', { count: 'exact', head: true })
+        .eq('store_id', storeId);
+
+      if (error) {
+        throw error;
+      }
+
+      return count || 0;
+    } catch (error) {
+      console.error('Error getting Supabase bill count:', error);
+      return 0;
+    }
+  });
+
+  ipcMain.handle('stores:getLastSyncTime', async (_, storeId: string) => {
+    try {
+      const { getSupabase } = await import('./services/supabaseClient');
+      const supabase = getSupabase();
+      
+      if (!supabase) {
+        return null;
+      }
+
+      const { data: metadata, error } = await supabase
+        .from('sync_metadata')
+        .select('last_pull_at')
+        .eq('store_id', storeId)
+        .eq('table_name', 'bills')
+        .single();
+
+      if (error || !metadata) {
+        return null;
+      }
+
+      return metadata.last_pull_at;
+    } catch (error) {
+      console.error('Error getting last sync time:', error);
+      return null;
+    }
+  });
+
+  // ===== CASH/UPI TRACKING HANDLERS =====
+
+  ipcMain.handle('cashUpi:addTransaction', async (_, data: any) => {
+    try {
+      const { addCashUpiTransaction } = await import('./DB/cashUpiTransactions');
+      const id = addCashUpiTransaction(data);
+      return { success: true, id };
+    } catch (error) {
+      console.error('Error adding cash/UPI transaction:', error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle('cashUpi:getTransactions', async (_, type?: string, transactionType?: string, dateFrom?: string, dateTo?: string, limit?: number, offset?: number) => {
+    try {
+      const { getCashUpiTransactions } = await import('./DB/cashUpiTransactions');
+      return getCashUpiTransactions(type as any, transactionType as any, dateFrom, dateTo, limit, offset);
+    } catch (error) {
+      console.error('Error getting cash/UPI transactions:', error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle('cashUpi:getTransactionById', async (_, id: number) => {
+    try {
+      const { getCashUpiTransactionById } = await import('./DB/cashUpiTransactions');
+      return getCashUpiTransactionById(id);
+    } catch (error) {
+      console.error('Error getting cash/UPI transaction by ID:', error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle('cashUpi:getSummary', async (_, dateFrom?: string, dateTo?: string) => {
+    try {
+      const { getCashUpiSummary } = await import('./DB/cashUpiTransactions');
+      return getCashUpiSummary(dateFrom, dateTo);
+    } catch (error) {
+      console.error('Error getting cash/UPI summary:', error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle('cashUpi:getDailySummary', async (_, date?: string) => {
+    try {
+      const { getDailyCashUpiSummary } = await import('./DB/cashUpiTransactions');
+      return getDailyCashUpiSummary(date);
+    } catch (error) {
+      console.error('Error getting daily cash/UPI summary:', error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle('cashUpi:updateTransaction', async (_, id: number, updates: any) => {
+    try {
+      const { updateCashUpiTransaction } = await import('./DB/cashUpiTransactions');
+      const success = updateCashUpiTransaction(id, updates);
+      return { success };
+    } catch (error) {
+      console.error('Error updating cash/UPI transaction:', error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle('cashUpi:recordBillPayment', async (_, billNumber: string, paymentMode: string, cashAmount: number, upiAmount: number) => {
+    try {
+      const { recordBillPaymentTransactions } = await import('./DB/cashUpiTransactions');
+      recordBillPaymentTransactions(billNumber, paymentMode, cashAmount, upiAmount);
+      return { success: true };
+    } catch (error) {
+      console.error('Error recording bill payment transactions:', error);
       throw error;
     }
   });

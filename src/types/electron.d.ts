@@ -160,6 +160,52 @@ export interface ElectronAPI {
   getPrinterStatus: (printerName: string) => Promise<{ status: string; details?: any }>;
   setPrinterSettings: (settings: any) => Promise<{ success: boolean }>;
   getPrinterSettings: () => Promise<any>;
+
+  // Sync
+  sync: {
+    performSync: () => Promise<any>;
+    getStatus: () => Promise<any>;
+    forceFullSync: () => Promise<any>;
+    getQueueDetails: () => Promise<any>;
+    getDBStats: () => Promise<{
+      totalSize: number;
+      usedSize: number;
+      freeSize: number;
+      bandwidthUsed: number;
+      bandwidthLimit: number;
+    }>;
+    getUnsyncedBills: () => Promise<any[]>;
+    getSyncedBills: () => Promise<any[]>;
+    syncSingleBill: (queueId: string) => Promise<{ success: boolean }>;
+  };
+
+  // Network
+  network: {
+    getStatus: () => Promise<{
+      isOnline: boolean;
+      speed: number;
+      latency: number;
+      lastChecked: string;
+      connectionType: string;
+    }>;
+  };
+
+  // Config
+  config: {
+    getAppConfig: () => Promise<any>;
+  };
+
+  // Store Management
+  stores: {
+    getStores: () => Promise<any[]>;
+    getStoreStats: (storeId?: string) => Promise<any[]>;
+    pullStoreData: (storeId: string) => Promise<{ success: boolean; storeId: string; recordsPulled: number; lastPullTime: string }>;
+    pullAllStoreData: () => Promise<{ success: boolean; storesPulled: string[]; totalRecordsPulled: number; lastPullTime: string }>;
+    getSupabaseStores: () => Promise<any[]>;
+    getLocalBillCount: (storeId: string) => Promise<number>;
+    getSupabaseBillCount: (storeId: string) => Promise<number>;
+    getLastSyncTime: (storeId: string) => Promise<string | null>;
+  };
 }
 
 declare global {

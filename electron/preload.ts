@@ -79,6 +79,15 @@ export interface ElectronAPI {
   // Forecast
   getForecast: () => Promise<any>;
 
+  // Cash/UPI Tracking
+  addCashUpiTransaction: (data: any) => Promise<{ success: boolean; id: number }>;
+  getCashUpiTransactions: (type?: 'cash' | 'upi', transactionType?: 'incoming' | 'outgoing', dateFrom?: string, dateTo?: string, limit?: number, offset?: number) => Promise<any[]>;
+  getCashUpiTransactionById: (id: number) => Promise<any>;
+  getCashUpiSummary: (dateFrom?: string, dateTo?: string) => Promise<any>;
+  getDailyCashUpiSummary: (date?: string) => Promise<any>;
+  updateCashUpiTransaction: (id: number, updates: any) => Promise<{ success: boolean }>;
+  recordBillPayment: (billNumber: string, paymentMode: string, cashAmount: number, upiAmount: number) => Promise<{ success: boolean }>;
+
   // Bill Send
   billSend: {
     getPendingJobs: () => Promise<any[]>;
@@ -111,6 +120,28 @@ export interface ElectronAPI {
     getStatus: () => Promise<any>;
     trackChange: (tableName: string, operation: 'insert' | 'update' | 'delete', recordId: number, data?: Record<string, any>) => Promise<{ success: boolean }>;
     forceFullSync: () => Promise<any>;
+    getDBStats: () => Promise<{
+      totalSize: number;
+      usedSize: number;
+      freeSize: number;
+      bandwidthUsed: number;
+      bandwidthLimit: number;
+    }>;
+    getUnsyncedBills: () => Promise<any[]>;
+    getSyncedBills: () => Promise<any[]>;
+    syncSingleBill: (queueId: string) => Promise<{ success: boolean }>;
+  };
+
+  // Store Management
+  stores: {
+    getStores: () => Promise<any[]>;
+    getStoreStats: (storeId?: string) => Promise<any[]>;
+    pullStoreData: (storeId: string) => Promise<{ success: boolean; storeId: string; recordsPulled: number; lastPullTime: string }>;
+    pullAllStoreData: () => Promise<{ success: boolean; storesPulled: string[]; totalRecordsPulled: number; lastPullTime: string }>;
+    getSupabaseStores: () => Promise<any[]>;
+    getLocalBillCount: (storeId: string) => Promise<number>;
+    getSupabaseBillCount: (storeId: string) => Promise<number>;
+    getLastSyncTime: (storeId: string) => Promise<string | null>;
   };
 
   // Environment variables
@@ -220,6 +251,17 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Forecast
   getForecast: () => ipcRenderer.invoke('forecast:get'),
 
+  // Cash/UPI Tracking
+  addCashUpiTransaction: (data: any) => ipcRenderer.invoke('cashUpi:addTransaction', data),
+  getCashUpiTransactions: (type?: 'cash' | 'upi', transactionType?: 'incoming' | 'outgoing', dateFrom?: string, dateTo?: string, limit?: number, offset?: number) => 
+    ipcRenderer.invoke('cashUpi:getTransactions', type, transactionType, dateFrom, dateTo, limit, offset),
+  getCashUpiTransactionById: (id: number) => ipcRenderer.invoke('cashUpi:getTransactionById', id),
+  getCashUpiSummary: (dateFrom?: string, dateTo?: string) => ipcRenderer.invoke('cashUpi:getSummary', dateFrom, dateTo),
+  getDailyCashUpiSummary: (date?: string) => ipcRenderer.invoke('cashUpi:getDailySummary', date),
+  updateCashUpiTransaction: (id: number, updates: any) => ipcRenderer.invoke('cashUpi:updateTransaction', id, updates),
+  recordBillPayment: (billNumber: string, paymentMode: string, cashAmount: number, upiAmount: number) => 
+    ipcRenderer.invoke('cashUpi:recordBillPayment', billNumber, paymentMode, cashAmount, upiAmount),
+
   // Network
   network: {
     getStatus: () => ipcRenderer.invoke('network:getStatus'),
@@ -241,6 +283,22 @@ contextBridge.exposeInMainWorld('electronAPI', {
     trackChange: (tableName: string, operation: 'insert' | 'update' | 'delete', recordId: number, data?: Record<string, any>) => 
       ipcRenderer.invoke('sync:trackChange', tableName, operation, recordId, data),
     forceFullSync: () => ipcRenderer.invoke('sync:forceFullSync'),
+    getDBStats: () => ipcRenderer.invoke('sync:getDBStats'),
+    getUnsyncedBills: () => ipcRenderer.invoke('sync:getUnsyncedBills'),
+    getSyncedBills: () => ipcRenderer.invoke('sync:getSyncedBills'),
+    syncSingleBill: (queueId: string) => ipcRenderer.invoke('sync:syncSingleBill', queueId),
+  },
+
+  // Store Management
+  stores: {
+    getStores: () => ipcRenderer.invoke('stores:getStores'),
+    getStoreStats: (storeId?: string) => ipcRenderer.invoke('stores:getStoreStats', storeId),
+    pullStoreData: (storeId: string) => ipcRenderer.invoke('stores:pullStoreData', storeId),
+    pullAllStoreData: () => ipcRenderer.invoke('stores:pullAllStoreData'),
+    getSupabaseStores: () => ipcRenderer.invoke('stores:getSupabaseStores'),
+    getLocalBillCount: (storeId: string) => ipcRenderer.invoke('stores:getLocalBillCount', storeId),
+    getSupabaseBillCount: (storeId: string) => ipcRenderer.invoke('stores:getSupabaseBillCount', storeId),
+    getLastSyncTime: (storeId: string) => ipcRenderer.invoke('stores:getLastSyncTime', storeId),
   },
 
   // Environment variables

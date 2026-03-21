@@ -67,26 +67,72 @@ async function checkNetworkStatus() {
       networkStatus.latency = 0;
     }
 
-    // Estimate speed based on latency (rough estimation)
-    // Lower latency = higher speed
-    if (networkStatus.latency < 20) {
-      networkStatus.speed = 100; // 4G/5G
-      networkStatus.connectionType = '4G/5G';
-    } else if (networkStatus.latency < 50) {
-      networkStatus.speed = 50; // 3G
-      networkStatus.connectionType = '3G';
-    } else if (networkStatus.latency < 100) {
-      networkStatus.speed = 10; // 2G
-      networkStatus.connectionType = '2G';
-    } else {
-      networkStatus.speed = 5; // Slow
-      networkStatus.connectionType = 'Slow';
+    // Measure actual network speed
+    try {
+      const speed = await measureActualSpeed();
+      networkStatus.speed = speed;
+      
+      // Determine connection type based on speed
+      if (speed >= 50) {
+        networkStatus.connectionType = '4G/5G';
+      } else if (speed >= 10) {
+        networkStatus.connectionType = '3G/4G';
+      } else if (speed >= 2) {
+        networkStatus.connectionType = '2G/3G';
+      } else {
+        networkStatus.connectionType = 'Slow';
+      }
+    } catch (error) {
+      // Fallback to latency-based estimation
+      if (networkStatus.latency < 20) {
+        networkStatus.speed = 100;
+        networkStatus.connectionType = '4G/5G';
+      } else if (networkStatus.latency < 50) {
+        networkStatus.speed = 50;
+        networkStatus.connectionType = '3G';
+      } else if (networkStatus.latency < 100) {
+        networkStatus.speed = 10;
+        networkStatus.connectionType = '2G';
+      } else {
+        networkStatus.speed = 5;
+        networkStatus.connectionType = 'Slow';
+      }
     }
   } catch (error) {
     console.error('Error checking network status:', error);
     networkStatus.isOnline = false;
     networkStatus.speed = 0;
     networkStatus.latency = 0;
+  }
+}
+
+async function measureActualSpeed(): Promise<number> {
+  try {
+    const startTime = Date.now();
+    
+    // Download a small test file from a fast CDN
+    const testUrl = 'https://www.google.com/images/branding/googlelogo/2x/googlelogo_color_272x92dp.png';
+    const response = await fetch(testUrl, {
+      method: 'GET',
+      cache: 'no-cache',
+    });
+    
+    if (!response.ok) throw new Error('Failed to fetch test file');
+    
+    const blob = await response.blob();
+    const endTime = Date.now();
+    
+    const timeTakenSeconds = (endTime - startTime) / 1000;
+    const fileSizeBytes = blob.size;
+    const fileSizeMB = fileSizeBytes / (1024 * 1024);
+    
+    // Calculate speed in Mbps
+    const speedMbps = (fileSizeMB * 8) / timeTakenSeconds;
+    
+    // Return rounded speed, capped at reasonable max
+    return Math.min(Math.round(speedMbps * 10) / 10, 200);
+  } catch (error) {
+    throw error;
   }
 }
 

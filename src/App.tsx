@@ -18,6 +18,8 @@ import {
   Forecast,
   Combos,
   DBSync,
+  StoreManagement,
+  CashUpiTracking,
 } from './pages';
 import { useStore } from './store/useStore';
 import { Settings as SettingsType } from './types';
@@ -73,6 +75,8 @@ function App() {
           <Route path="analytics" element={<Analytics />} />
           <Route path="forecast" element={<Forecast />} />
           <Route path="combos" element={<Combos />} />
+          <Route path="store-management/*" element={<StoreManagement />} />
+          <Route path="cash-upi-tracking" element={<CashUpiTracking />} />
           <Route path="logs" element={<Logs />} />
           <Route path="bill-management" element={<BillManagement />} />
           <Route path="deleted-bills" element={<DeletedBills />} />

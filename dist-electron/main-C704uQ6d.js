@@ -582,22 +582,10 @@ async function initDatabase() {
       reason TEXT NOT NULL,
       description TEXT,
       referenceNumber TEXT,
-      billNumber TEXT,
       createdAt TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
       createdBy TEXT DEFAULT 'system'
     );
   `);
-  try {
-    const cashUpiTableInfo = db.prepare("PRAGMA table_info(cash_upi_transactions)").all();
-    const hasBillNumber = cashUpiTableInfo.some((column) => column.name === "billNumber");
-    if (!hasBillNumber) {
-      console.log("Adding billNumber column to cash_upi_transactions table...");
-      db.exec("ALTER TABLE cash_upi_transactions ADD COLUMN billNumber TEXT");
-      console.log("Migration completed: billNumber column added");
-    }
-  } catch (error) {
-    console.error("Cash/UPI transactions migration error:", error);
-  }
   try {
     const combosInfo = db.prepare("PRAGMA table_info(combos)").all();
     const hasComboPrice = combosInfo.some((col) => col.name === "comboPrice");
@@ -1725,241 +1713,6 @@ async function syncSingleBill(queueId) {
     throw error;
   }
 }
-function addCashUpiTransaction(data) {
-  const db2 = getDatabase();
-  if (data.transactionType === "outgoing") {
-    const currentSummary = getCashUpiSummary();
-    if (data.type === "cash") {
-      const newCashBalance = currentSummary.cashBalance - data.amount;
-      if (newCashBalance < 0) {
-        throw new Error(`Insufficient cash balance. Current: ₹${currentSummary.cashBalance.toFixed(2)}, Required: ₹${data.amount.toFixed(2)}, Shortage: ₹${Math.abs(newCashBalance).toFixed(2)}`);
-      }
-    } else if (data.type === "upi") {
-      const newUpiBalance = currentSummary.upiBalance - data.amount;
-      if (newUpiBalance < 0) {
-        throw new Error(`Insufficient UPI balance. Current: ₹${currentSummary.upiBalance.toFixed(2)}, Required: ₹${data.amount.toFixed(2)}, Shortage: ₹${Math.abs(newUpiBalance).toFixed(2)}`);
-      }
-    }
-  }
-  const stmt = db2.prepare(`
-    INSERT INTO cash_upi_transactions (type, transactionType, amount, reason, description, billNumber, createdBy)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
-  `);
-  const result2 = stmt.run(
-    data.type,
-    data.transactionType,
-    data.amount,
-    data.reason,
-    data.description || null,
-    data.billNumber || null,
-    data.createdBy || "system"
-  );
-  const transactionId = result2.lastInsertRowid;
-  addActivityLog(
-    `${data.transactionType} ${data.type} transaction`,
-    "system",
-    transactionId,
-    `${data.transactionType === "incoming" ? "Added" : "Deducted"} ₹${data.amount} - ${data.reason}${data.billNumber ? ` (Bill: ${data.billNumber})` : ""}`
-  );
-  return transactionId;
-}
-function recordBillPaymentTransactions(billNumber, paymentMode, cashAmount, upiAmount) {
-  getDatabase();
-  try {
-    console.log(`🔄 Recording bill payment transactions for bill ${billNumber}:`);
-    console.log(`   Payment Mode: ${paymentMode}`);
-    console.log(`   Cash Amount: ₹${cashAmount}`);
-    console.log(`   UPI Amount: ₹${upiAmount}`);
-    console.log(`   Total: ₹${cashAmount + upiAmount}`);
-    let transactionsCreated = 0;
-    if (cashAmount > 0) {
-      const cashTransactionId = addCashUpiTransaction({
-        type: "cash",
-        transactionType: "incoming",
-        amount: cashAmount,
-        reason: "Bill Payment",
-        description: `Payment received for bill ${billNumber}`,
-        billNumber,
-        createdBy: "system"
-      });
-      console.log(`✅ Created cash transaction ${cashTransactionId} for ₹${cashAmount}`);
-      transactionsCreated++;
-    } else {
-      console.log(`⏭️  Skipping cash transaction (amount: ₹${cashAmount})`);
-    }
-    if (upiAmount > 0) {
-      const upiTransactionId = addCashUpiTransaction({
-        type: "upi",
-        transactionType: "incoming",
-        amount: upiAmount,
-        reason: "Bill Payment",
-        description: `UPI payment received for bill ${billNumber}`,
-        billNumber,
-        createdBy: "system"
-      });
-      console.log(`✅ Created UPI transaction ${upiTransactionId} for ₹${upiAmount}`);
-      transactionsCreated++;
-    } else {
-      console.log(`⏭️  Skipping UPI transaction (amount: ₹${upiAmount})`);
-    }
-    if (transactionsCreated === 0) {
-      console.warn(`⚠️  No transactions recorded for bill ${billNumber} - both amounts are 0`);
-    } else {
-      console.log(`🎉 Successfully recorded ${transactionsCreated} transaction(s) for bill ${billNumber}`);
-    }
-  } catch (error) {
-    console.error("❌ Error recording bill payment transactions:", error);
-    throw error;
-  }
-}
-function getCashUpiTransactions(type, transactionType, dateFrom, dateTo, limit = 100, offset = 0) {
-  const db2 = getDatabase();
-  let query = `
-    SELECT * FROM cash_upi_transactions
-    WHERE 1=1
-  `;
-  const params = [];
-  if (type) {
-    query += ` AND type = ?`;
-    params.push(type);
-  }
-  if (transactionType) {
-    query += ` AND transactionType = ?`;
-    params.push(transactionType);
-  }
-  if (dateFrom) {
-    query += ` AND date(createdAt) >= date(?)`;
-    params.push(dateFrom);
-  }
-  if (dateTo) {
-    query += ` AND date(createdAt) <= date(?)`;
-    params.push(dateTo);
-  }
-  query += ` ORDER BY createdAt DESC LIMIT ? OFFSET ?`;
-  params.push(limit, offset);
-  const stmt = db2.prepare(query);
-  return stmt.all(...params);
-}
-function getCashUpiTransactionById(id) {
-  const db2 = getDatabase();
-  const stmt = db2.prepare(`
-    SELECT * FROM cash_upi_transactions WHERE id = ?
-  `);
-  return stmt.get(id) || null;
-}
-function getCashUpiSummary(dateFrom, dateTo) {
-  const db2 = getDatabase();
-  let whereClause = "";
-  const params = [];
-  if (dateFrom && dateTo) {
-    whereClause = ` WHERE date(createdAt) BETWEEN date(?) AND date(?)`;
-    params.push(dateFrom, dateTo);
-  }
-  const balanceStmt = db2.prepare(`
-    SELECT 
-      type,
-      transactionType,
-      SUM(amount) as total
-    FROM cash_upi_transactions
-    GROUP BY type, transactionType
-  `);
-  const balanceData = balanceStmt.all();
-  let cashIncoming = 0, cashOutgoing = 0, upiIncoming = 0, upiOutgoing = 0;
-  balanceData.forEach((row) => {
-    if (row.type === "cash") {
-      if (row.transactionType === "incoming") cashIncoming = row.total;
-      else cashOutgoing = row.total;
-    } else {
-      if (row.transactionType === "incoming") upiIncoming = row.total;
-      else upiOutgoing = row.total;
-    }
-  });
-  const periodStmt = db2.prepare(`
-    SELECT 
-      transactionType,
-      SUM(amount) as total
-    FROM cash_upi_transactions
-    ${whereClause}
-    GROUP BY transactionType
-  `);
-  const periodData = periodStmt.all(...params);
-  let periodIncoming = 0, periodOutgoing = 0;
-  periodData.forEach((row) => {
-    if (row.transactionType === "incoming") periodIncoming = row.total;
-    else periodOutgoing = row.total;
-  });
-  const todayStmt = db2.prepare(`
-    SELECT 
-      transactionType,
-      SUM(amount) as total
-    FROM cash_upi_transactions
-    WHERE date(createdAt) = date('now', 'localtime')
-    GROUP BY transactionType
-  `);
-  const todayData = todayStmt.all();
-  let todayIncoming = 0, todayOutgoing = 0;
-  todayData.forEach((row) => {
-    if (row.transactionType === "incoming") todayIncoming = row.total;
-    else todayOutgoing = row.total;
-  });
-  const countStmt = db2.prepare(`
-    SELECT COUNT(*) as count FROM cash_upi_transactions ${whereClause}
-  `);
-  const countResult = countStmt.get(...params);
-  return {
-    cashBalance: cashIncoming - cashOutgoing,
-    upiBalance: upiIncoming - upiOutgoing,
-    totalIncoming: periodIncoming,
-    totalOutgoing: periodOutgoing,
-    todayIncoming,
-    todayOutgoing,
-    transactionCount: countResult.count
-  };
-}
-function getDailyCashUpiSummary(date) {
-  const targetDate = date || (/* @__PURE__ */ new Date()).toISOString().split("T")[0];
-  return getCashUpiSummary(targetDate, targetDate);
-}
-function updateCashUpiTransaction(id, updates) {
-  const db2 = getDatabase();
-  const fields = [];
-  const params = [];
-  if (updates.description !== void 0) {
-    fields.push("description = ?");
-    params.push(updates.description);
-  }
-  if (updates.referenceNumber !== void 0) {
-    fields.push("referenceNumber = ?");
-    params.push(updates.referenceNumber);
-  }
-  if (fields.length === 0) return false;
-  params.push(id);
-  const stmt = db2.prepare(`
-    UPDATE cash_upi_transactions 
-    SET ${fields.join(", ")}
-    WHERE id = ?
-  `);
-  const result2 = stmt.run(...params);
-  if (result2.changes > 0) {
-    addActivityLog(
-      "Updated cash/UPI transaction",
-      "system",
-      id,
-      `Updated transaction details`
-    );
-  }
-  return result2.changes > 0;
-}
-const cashUpiTransactions = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.defineProperty({
-  __proto__: null,
-  addCashUpiTransaction,
-  getCashUpiSummary,
-  getCashUpiTransactionById,
-  getCashUpiTransactions,
-  getDailyCashUpiSummary,
-  recordBillPaymentTransactions,
-  updateCashUpiTransaction
-}, Symbol.toStringTag, { value: "Module" }));
 function createBill(data) {
   const db2 = getDatabase();
   const billNumber = generateBillNumber();
@@ -2043,47 +1796,6 @@ function createBill(data) {
       itemCount: data.items.length
     })
   );
-  try {
-    console.log(`🔄 About to record cash/UPI transactions for bill ${billNumber}:`);
-    console.log(`   Payment Mode: ${data.paymentMode}`);
-    console.log(`   Raw Cash Amount: ${data.cashAmount}`);
-    console.log(`   Raw UPI Amount: ${data.upiAmount}`);
-    console.log(`   Total: ₹${data.total}`);
-    let actualCashAmount = data.cashAmount || 0;
-    let actualUpiAmount = data.upiAmount || 0;
-    if (data.paymentMode === "cash" && actualCashAmount === 0) {
-      actualCashAmount = data.total;
-      console.log(`💰 Setting cash amount to total (${data.total}) for cash payment mode`);
-    }
-    if (data.paymentMode === "upi" && actualUpiAmount === 0) {
-      actualUpiAmount = data.total;
-      console.log(`📱 Setting UPI amount to total (${data.total}) for UPI payment mode`);
-    }
-    if (data.paymentMode === "mixed") {
-      console.log(`🔀 Mixed payment detected:`);
-      console.log(`   Cash: ₹${actualCashAmount}`);
-      console.log(`   UPI: ₹${actualUpiAmount}`);
-      console.log(`   Sum: ₹${actualCashAmount + actualUpiAmount}`);
-      console.log(`   Expected Total: ₹${data.total}`);
-      if (actualCashAmount === 0 && actualUpiAmount === 0) {
-        console.error(`❌ Mixed payment but both amounts are 0! This should not happen.`);
-      }
-      if (Math.abs(actualCashAmount + actualUpiAmount - data.total) > 0.01) {
-        console.warn(`⚠️  Mixed payment amounts don't match total! Difference: ₹${Math.abs(actualCashAmount + actualUpiAmount - data.total)}`);
-      }
-    }
-    console.log(`📤 Calling recordBillPaymentTransactions with:`);
-    console.log(`   Cash: ₹${actualCashAmount}, UPI: ₹${actualUpiAmount}`);
-    recordBillPaymentTransactions(
-      billNumber,
-      data.paymentMode,
-      actualCashAmount,
-      actualUpiAmount
-    );
-    console.log(`✅ Successfully called recordBillPaymentTransactions for bill ${billNumber}`);
-  } catch (error) {
-    console.error("❌ Error recording bill payment transactions:", error);
-  }
   return bill;
 }
 function getBills(dateFrom, dateTo, searchQuery) {
@@ -5586,8 +5298,8 @@ $shell.Run("notepad /p \\"$filePath\\"", 0, $true)
   });
   ipcMain.handle("cashUpi:addTransaction", async (_, data) => {
     try {
-      const { addCashUpiTransaction: addCashUpiTransaction2 } = await Promise.resolve().then(() => cashUpiTransactions);
-      const id = addCashUpiTransaction2(data);
+      const { addCashUpiTransaction } = await import("./cashUpiTransactions-BSVhnEjd.js");
+      const id = addCashUpiTransaction(data);
       return { success: true, id };
     } catch (error) {
       console.error("Error adding cash/UPI transaction:", error);
@@ -5596,8 +5308,8 @@ $shell.Run("notepad /p \\"$filePath\\"", 0, $true)
   });
   ipcMain.handle("cashUpi:getTransactions", async (_, type, transactionType, dateFrom, dateTo, limit, offset) => {
     try {
-      const { getCashUpiTransactions: getCashUpiTransactions2 } = await Promise.resolve().then(() => cashUpiTransactions);
-      return getCashUpiTransactions2(type, transactionType, dateFrom, dateTo, limit, offset);
+      const { getCashUpiTransactions } = await import("./cashUpiTransactions-BSVhnEjd.js");
+      return getCashUpiTransactions(type, transactionType, dateFrom, dateTo, limit, offset);
     } catch (error) {
       console.error("Error getting cash/UPI transactions:", error);
       throw error;
@@ -5605,8 +5317,8 @@ $shell.Run("notepad /p \\"$filePath\\"", 0, $true)
   });
   ipcMain.handle("cashUpi:getTransactionById", async (_, id) => {
     try {
-      const { getCashUpiTransactionById: getCashUpiTransactionById2 } = await Promise.resolve().then(() => cashUpiTransactions);
-      return getCashUpiTransactionById2(id);
+      const { getCashUpiTransactionById } = await import("./cashUpiTransactions-BSVhnEjd.js");
+      return getCashUpiTransactionById(id);
     } catch (error) {
       console.error("Error getting cash/UPI transaction by ID:", error);
       throw error;
@@ -5614,8 +5326,8 @@ $shell.Run("notepad /p \\"$filePath\\"", 0, $true)
   });
   ipcMain.handle("cashUpi:getSummary", async (_, dateFrom, dateTo) => {
     try {
-      const { getCashUpiSummary: getCashUpiSummary2 } = await Promise.resolve().then(() => cashUpiTransactions);
-      return getCashUpiSummary2(dateFrom, dateTo);
+      const { getCashUpiSummary } = await import("./cashUpiTransactions-BSVhnEjd.js");
+      return getCashUpiSummary(dateFrom, dateTo);
     } catch (error) {
       console.error("Error getting cash/UPI summary:", error);
       throw error;
@@ -5623,8 +5335,8 @@ $shell.Run("notepad /p \\"$filePath\\"", 0, $true)
   });
   ipcMain.handle("cashUpi:getDailySummary", async (_, date) => {
     try {
-      const { getDailyCashUpiSummary: getDailyCashUpiSummary2 } = await Promise.resolve().then(() => cashUpiTransactions);
-      return getDailyCashUpiSummary2(date);
+      const { getDailyCashUpiSummary } = await import("./cashUpiTransactions-BSVhnEjd.js");
+      return getDailyCashUpiSummary(date);
     } catch (error) {
       console.error("Error getting daily cash/UPI summary:", error);
       throw error;
@@ -5632,21 +5344,11 @@ $shell.Run("notepad /p \\"$filePath\\"", 0, $true)
   });
   ipcMain.handle("cashUpi:updateTransaction", async (_, id, updates) => {
     try {
-      const { updateCashUpiTransaction: updateCashUpiTransaction2 } = await Promise.resolve().then(() => cashUpiTransactions);
-      const success = updateCashUpiTransaction2(id, updates);
+      const { updateCashUpiTransaction } = await import("./cashUpiTransactions-BSVhnEjd.js");
+      const success = updateCashUpiTransaction(id, updates);
       return { success };
     } catch (error) {
       console.error("Error updating cash/UPI transaction:", error);
-      throw error;
-    }
-  });
-  ipcMain.handle("cashUpi:recordBillPayment", async (_, billNumber, paymentMode, cashAmount, upiAmount) => {
-    try {
-      const { recordBillPaymentTransactions: recordBillPaymentTransactions2 } = await Promise.resolve().then(() => cashUpiTransactions);
-      recordBillPaymentTransactions2(billNumber, paymentMode, cashAmount, upiAmount);
-      return { success: true };
-    } catch (error) {
-      console.error("Error recording bill payment transactions:", error);
       throw error;
     }
   });
@@ -5710,3 +5412,7 @@ app.on("before-quit", async () => {
   stopNetworkMonitoring();
   await closeDatabase();
 });
+export {
+  addActivityLog as a,
+  getDatabase as g
+};

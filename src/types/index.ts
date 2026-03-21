@@ -106,6 +106,28 @@ export interface DailySummary {
   itemsSold: number;
 }
 
+export interface CashUpiTransaction {
+  id?: number;
+  type: 'cash' | 'upi';
+  transactionType: 'incoming' | 'outgoing';
+  amount: number;
+  reason: string;
+  description?: string;
+  billNumber?: string;
+  createdAt?: string;
+  createdBy?: string;
+}
+
+export interface CashUpiSummary {
+  cashBalance: number;
+  upiBalance: number;
+  totalIncoming: number;
+  totalOutgoing: number;
+  todayIncoming: number;
+  todayOutgoing: number;
+  transactionCount: number;
+}
+
 export const CATEGORIES = [
   'Shirt',
   'T-Shirt',

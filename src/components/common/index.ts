@@ -7,3 +7,4 @@ export { Modal } from './Modal';
 export { PasswordModal } from './PasswordModal';
 export { ProtectedTabWrapper } from './ProtectedTabWrapper';
 export { CategorySizeSelect } from './CategorySizeSelect';
+export { Pagination } from './Pagination';

@@ -69,6 +69,14 @@ electron.contextBridge.exposeInMainWorld("electronAPI", {
   deleteCombo: (id) => electron.ipcRenderer.invoke("combos:delete", id),
   // Forecast
   getForecast: () => electron.ipcRenderer.invoke("forecast:get"),
+  // Cash/UPI Tracking
+  addCashUpiTransaction: (data) => electron.ipcRenderer.invoke("cashUpi:addTransaction", data),
+  getCashUpiTransactions: (type, transactionType, dateFrom, dateTo, limit, offset) => electron.ipcRenderer.invoke("cashUpi:getTransactions", type, transactionType, dateFrom, dateTo, limit, offset),
+  getCashUpiTransactionById: (id) => electron.ipcRenderer.invoke("cashUpi:getTransactionById", id),
+  getCashUpiSummary: (dateFrom, dateTo) => electron.ipcRenderer.invoke("cashUpi:getSummary", dateFrom, dateTo),
+  getDailyCashUpiSummary: (date) => electron.ipcRenderer.invoke("cashUpi:getDailySummary", date),
+  updateCashUpiTransaction: (id, updates) => electron.ipcRenderer.invoke("cashUpi:updateTransaction", id, updates),
+  recordBillPayment: (billNumber, paymentMode, cashAmount, upiAmount) => electron.ipcRenderer.invoke("cashUpi:recordBillPayment", billNumber, paymentMode, cashAmount, upiAmount),
   // Network
   network: {
     getStatus: () => electron.ipcRenderer.invoke("network:getStatus"),
@@ -86,7 +94,22 @@ electron.contextBridge.exposeInMainWorld("electronAPI", {
     performSync: () => electron.ipcRenderer.invoke("sync:performSync"),
     getStatus: () => electron.ipcRenderer.invoke("sync:getStatus"),
     trackChange: (tableName, operation, recordId, data) => electron.ipcRenderer.invoke("sync:trackChange", tableName, operation, recordId, data),
-    forceFullSync: () => electron.ipcRenderer.invoke("sync:forceFullSync")
+    forceFullSync: () => electron.ipcRenderer.invoke("sync:forceFullSync"),
+    getDBStats: () => electron.ipcRenderer.invoke("sync:getDBStats"),
+    getUnsyncedBills: () => electron.ipcRenderer.invoke("sync:getUnsyncedBills"),
+    getSyncedBills: () => electron.ipcRenderer.invoke("sync:getSyncedBills"),
+    syncSingleBill: (queueId) => electron.ipcRenderer.invoke("sync:syncSingleBill", queueId)
+  },
+  // Store Management
+  stores: {
+    getStores: () => electron.ipcRenderer.invoke("stores:getStores"),
+    getStoreStats: (storeId) => electron.ipcRenderer.invoke("stores:getStoreStats", storeId),
+    pullStoreData: (storeId) => electron.ipcRenderer.invoke("stores:pullStoreData", storeId),
+    pullAllStoreData: () => electron.ipcRenderer.invoke("stores:pullAllStoreData"),
+    getSupabaseStores: () => electron.ipcRenderer.invoke("stores:getSupabaseStores"),
+    getLocalBillCount: (storeId) => electron.ipcRenderer.invoke("stores:getLocalBillCount", storeId),
+    getSupabaseBillCount: (storeId) => electron.ipcRenderer.invoke("stores:getSupabaseBillCount", storeId),
+    getLastSyncTime: (storeId) => electron.ipcRenderer.invoke("stores:getLastSyncTime", storeId)
   },
   // Environment variables
   env: {

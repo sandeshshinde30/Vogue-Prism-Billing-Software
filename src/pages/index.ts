@@ -13,3 +13,5 @@ export { Analytics } from './Analytics';
 export { Forecast } from './Forecast';
 export { Combos } from './Combos';
 export { DBSync } from './DBSync';
+export { StoreManagement } from './StoreManagement';
+export { CashUpiTracking } from './CashUpiTracking';

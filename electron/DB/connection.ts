@@ -302,6 +302,36 @@ export async function initDatabase() {
     );
   `);
 
+  // Cash/UPI tracking table for master app only
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS cash_upi_transactions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      type TEXT NOT NULL CHECK (type IN ('cash', 'upi')),
+      transactionType TEXT NOT NULL CHECK (transactionType IN ('incoming', 'outgoing')),
+      amount REAL NOT NULL,
+      reason TEXT NOT NULL,
+      description TEXT,
+      referenceNumber TEXT,
+      billNumber TEXT,
+      createdAt TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+      createdBy TEXT DEFAULT 'system'
+    );
+  `);
+
+  // Migration: Add billNumber column if it doesn't exist
+  try {
+    const cashUpiTableInfo = db.prepare("PRAGMA table_info(cash_upi_transactions)").all();
+    const hasBillNumber = cashUpiTableInfo.some((column: any) => column.name === 'billNumber');
+    
+    if (!hasBillNumber) {
+      console.log('Adding billNumber column to cash_upi_transactions table...');
+      db.exec('ALTER TABLE cash_upi_transactions ADD COLUMN billNumber TEXT');
+      console.log('Migration completed: billNumber column added');
+    }
+  } catch (error) {
+    console.error('Cash/UPI transactions migration error:', error);
+  }
+
   // Migration: Add comboPrice column to combos if it doesn't exist
   try {
     const combosInfo = db.prepare("PRAGMA table_info(combos)").all();
