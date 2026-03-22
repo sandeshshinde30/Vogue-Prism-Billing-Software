@@ -1766,13 +1766,55 @@ $shell.Run("notepad /p \\"$filePath\\"", 0, $true)
         
         if (storeId !== currentStoreId) {
           // Insert bills from other stores into local database
-          // Note: You might want to create a separate table for consolidated bills
-          // or add a store_id column to the bills table
-          
-          console.log(`Would insert ${bills.length} bills from store ${storeId}`);
-          console.log('Note: Current schema doesn\'t support multi-store bills in same table');
-          
+          const insertBillStmt = db.prepare(`
+            INSERT OR REPLACE INTO bills (billNumber, subtotal, discountPercent, discountAmount, total, paymentMode, cashAmount, upiAmount, status, createdAt)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          `);
+
+          const insertItemStmt = db.prepare(`
+            INSERT OR REPLACE INTO bill_items (billId, productId, productName, size, quantity, unitPrice, totalPrice, discountLocked)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+          `);
+
+          const transaction = db.transaction(() => {
+            for (const bill of bills) {
+              // Insert bill
+              const billResult = insertBillStmt.run(
+                bill.bill_number,
+                bill.subtotal,
+                bill.discount_percent,
+                bill.discount_amount,
+                bill.total,
+                bill.payment_mode,
+                bill.cash_amount || 0,
+                bill.upi_amount || 0,
+                bill.status || 'completed',
+                bill.created_at
+              );
+
+              const billId = billResult.lastInsertRowid as number;
+
+              // Insert bill items if available
+              if (bill.items && Array.isArray(bill.items)) {
+                for (const item of bill.items) {
+                  insertItemStmt.run(
+                    billId,
+                    item.product_id,
+                    item.product_name,
+                    item.size || null,
+                    item.quantity,
+                    item.unit_price,
+                    item.total_price,
+                    item.discount_locked ? 1 : 0
+                  );
+                }
+              }
+            }
+          });
+
+          transaction();
           recordsPulled = bills.length;
+          console.log(`✓ Inserted ${bills.length} bills from store ${storeId}`);
         } else {
           console.log('Skipping pull for current store to avoid duplicates');
         }

@@ -344,14 +344,24 @@ function getDatabasePath() {
     return cfg.database.customPath;
   }
   if (cfg.appType === "master") {
-    const configPath = path$1.join(os$1.homedir(), ".config", "vogue-prism-billing-software");
+    let configPath;
+    if (process.platform === "win32") {
+      configPath = path$1.join(app.getPath("appData"), "vogue-prism-billing-software");
+    } else {
+      configPath = path$1.join(os$1.homedir(), ".config", "vogue-prism-billing-software");
+    }
     if (!fs$1.existsSync(configPath)) {
       fs$1.mkdirSync(configPath, { recursive: true });
     }
     return path$1.join(configPath, "billing.db");
   }
   if (cfg.database.location === "documents") {
-    const documentsPath = path$1.join(os$1.homedir(), "Documents", "VoguePrism");
+    let documentsPath;
+    if (process.platform === "win32") {
+      documentsPath = path$1.join(os$1.homedir(), "Documents", "VoguePrism");
+    } else {
+      documentsPath = path$1.join(os$1.homedir(), "Documents", "VoguePrism");
+    }
     if (!fs$1.existsSync(documentsPath)) {
       fs$1.mkdirSync(documentsPath, { recursive: true });
     }
@@ -5721,9 +5731,48 @@ $shell.Run("notepad /p \\"$filePath\\"", 0, $true)
       if (bills && bills.length > 0) {
         const currentStoreId = config2.storeId || "store_001";
         if (storeId !== currentStoreId) {
-          console.log(`Would insert ${bills.length} bills from store ${storeId}`);
-          console.log("Note: Current schema doesn't support multi-store bills in same table");
+          const insertBillStmt = db2.prepare(`
+            INSERT OR REPLACE INTO bills (billNumber, subtotal, discountPercent, discountAmount, total, paymentMode, cashAmount, upiAmount, status, createdAt)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          `);
+          const insertItemStmt = db2.prepare(`
+            INSERT OR REPLACE INTO bill_items (billId, productId, productName, size, quantity, unitPrice, totalPrice, discountLocked)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+          `);
+          const transaction = db2.transaction(() => {
+            for (const bill of bills) {
+              const billResult = insertBillStmt.run(
+                bill.bill_number,
+                bill.subtotal,
+                bill.discount_percent,
+                bill.discount_amount,
+                bill.total,
+                bill.payment_mode,
+                bill.cash_amount || 0,
+                bill.upi_amount || 0,
+                bill.status || "completed",
+                bill.created_at
+              );
+              const billId = billResult.lastInsertRowid;
+              if (bill.items && Array.isArray(bill.items)) {
+                for (const item of bill.items) {
+                  insertItemStmt.run(
+                    billId,
+                    item.product_id,
+                    item.product_name,
+                    item.size || null,
+                    item.quantity,
+                    item.unit_price,
+                    item.total_price,
+                    item.discount_locked ? 1 : 0
+                  );
+                }
+              }
+            }
+          });
+          transaction();
           recordsPulled = bills.length;
+          console.log(`✓ Inserted ${bills.length} bills from store ${storeId}`);
         } else {
           console.log("Skipping pull for current store to avoid duplicates");
         }

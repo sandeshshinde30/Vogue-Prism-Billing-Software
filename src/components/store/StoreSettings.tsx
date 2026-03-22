@@ -6,9 +6,9 @@ import {
   RefreshCw,
   CheckCircle,
   AlertCircle,
-  Clock,
-  Server
+  Clock
 } from 'lucide-react';
+import toast from 'react-hot-toast';
 
 interface StoreData {
   storeId: string;
@@ -93,10 +93,12 @@ export function StoreSettings() {
   const handlePullData = async (storeId: string) => {
     setPullingData(storeId);
     try {
-      await window.electronAPI.stores.pullStoreData(storeId);
+      const result = await window.electronAPI.stores.pullStoreData(storeId);
+      toast.success(`✓ Pulled ${result.recordsPulled} records from ${storeId}`);
       await loadStoreData(); // Refresh data
     } catch (error) {
       console.error('Error pulling data:', error);
+      toast.error(`Failed to pull data: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setPullingData(null);
     }
@@ -105,14 +107,12 @@ export function StoreSettings() {
   const handlePullAllData = async () => {
     setPullingData('all');
     try {
-      const pullPromises = stores
-        .filter(store => store.pendingPull > 0)
-        .map(store => window.electronAPI.stores.pullStoreData(store.storeId));
-      
-      await Promise.all(pullPromises);
+      const result = await window.electronAPI.stores.pullAllStoreData();
+      toast.success(`✓ Pulled ${result.totalRecordsPulled} records from ${result.storesPulled.length} stores`);
       await loadStoreData(); // Refresh data
     } catch (error) {
       console.error('Error pulling all data:', error);
+      toast.error(`Failed to pull data: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setPullingData(null);
     }
@@ -265,8 +265,8 @@ export function StoreSettings() {
                     <Store className={`w-5 h-5 ${store.isOnline ? 'text-green-600' : 'text-gray-500'}`} />
                   </div>
                   <div>
-                    <h4 className="font-bold text-gray-900">{store.storeName}</h4>
-                    <p className="text-sm text-gray-500">ID: {store.storeId}</p>
+                    <h4 className="font-bold text-gray-900">{store.storeId}</h4>
+                    <p className="text-sm text-gray-500">{store.storeName}</p>
                   </div>
                 </div>
                 <div className={`px-2 py-1 rounded-full text-xs font-medium ${
@@ -338,11 +338,6 @@ export function StoreSettings() {
                     Refresh Data
                   </button>
                 )}
-                
-                <button className="w-full bg-gray-50 hover:bg-gray-100 text-gray-600 px-4 py-2 rounded-lg font-medium transition-colors flex items-center justify-center gap-2">
-                  <Server className="w-4 h-4" />
-                  View Details
-                </button>
               </div>
             </div>
           ))}

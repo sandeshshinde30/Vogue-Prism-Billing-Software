@@ -43,20 +43,38 @@ export function getDatabasePath(): string {
     return cfg.database.customPath;
   }
   
-  // Master store uses old path ~/.config/vogue-prism-billing-software/billing.db
-  // Branch store uses Documents/VoguePrism/ for production
+  // Master store uses old path ~/.config/vogue-prism-billing-software/billing.db (Linux)
+  // or %APPDATA%/vogue-prism-billing-software/billing.db (Windows)
   if (cfg.appType === 'master') {
     // Master store: use old config path
-    const configPath = path.join(os.homedir(), '.config', 'vogue-prism-billing-software');
+    let configPath: string;
+    
+    if (process.platform === 'win32') {
+      // Windows: Use AppData
+      configPath = path.join(app.getPath('appData'), 'vogue-prism-billing-software');
+    } else {
+      // Linux/Mac: Use .config
+      configPath = path.join(os.homedir(), '.config', 'vogue-prism-billing-software');
+    }
+    
     if (!fs.existsSync(configPath)) {
       fs.mkdirSync(configPath, { recursive: true });
     }
     return path.join(configPath, 'billing.db');
   }
   
-  // Branch store: use Documents/VoguePrism/
+  // Branch store: use Documents/VoguePrism/ (cross-platform)
   if (cfg.database.location === 'documents') {
-    const documentsPath = path.join(os.homedir(), 'Documents', 'VoguePrism');
+    let documentsPath: string;
+    
+    if (process.platform === 'win32') {
+      // Windows: Use Documents folder
+      documentsPath = path.join(os.homedir(), 'Documents', 'VoguePrism');
+    } else {
+      // Linux/Mac: Use Documents folder
+      documentsPath = path.join(os.homedir(), 'Documents', 'VoguePrism');
+    }
+    
     if (!fs.existsSync(documentsPath)) {
       fs.mkdirSync(documentsPath, { recursive: true });
     }

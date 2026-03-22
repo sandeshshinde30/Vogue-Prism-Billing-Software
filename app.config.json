@@ -28,11 +28,11 @@
     "showForecastTab": true,
     "showAnalyticsTab": true,
     "showDBSyncTab": true,
-    "showStoreManagementTab": true
+    "showStoreManagementTab": false
   },
   "sync": {
     "enabled": true,
-    "autoSyncInterval": 3600000,
+    "autoSyncInterval": 300,
     "retryAttempts": 3,
     "batchSize": 100,
     "pullFromBranches": true,
