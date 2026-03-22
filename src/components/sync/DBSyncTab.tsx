@@ -6,7 +6,6 @@ import {
   AlertCircle,
   CheckCircle,
   TrendingUp,
-  Gauge,
   Activity,
   HardDrive,
   Signal,
@@ -80,8 +79,6 @@ export function DBSyncTab() {
     bandwidthUsed: 0,
     bandwidthLimit: 5000, // 5GB free tier
   });
-  const [autoSync, setAutoSync] = useState(true);
-  const [syncStartTime, setSyncStartTime] = useState<number | null>(null);
   const [syncingBills, setSyncingBills] = useState<Set<string>>(new Set());
   
   // Pagination state
@@ -159,22 +156,9 @@ export function DBSyncTab() {
     return () => clearInterval(interval);
   }, []);
 
-  // Auto-sync when online (1 hour delay, only if there are unsynced bills)
-  useEffect(() => {
-    if (autoSync && networkStatus.isOnline && !syncStatus.isSyncing && unsyncedBills.length > 0) {
-      const timer = setTimeout(() => {
-        handleSync();
-      }, 3600000); // 1 hour = 3600000ms
-
-      return () => clearTimeout(timer);
-    }
-  }, [autoSync, networkStatus.isOnline, syncStatus.isSyncing, unsyncedBills.length]);
-
   const handleSync = async () => {
     try {
-      setSyncStartTime(Date.now());
       const result = await window.electronAPI.sync.performSync();
-      setSyncStartTime(null);
       setSyncStatus(result);
 
       if (result.error) {
@@ -183,7 +167,6 @@ export function DBSyncTab() {
         toast.success(`Sync completed! ${result.pendingCount} items pending.`);
       }
     } catch (error) {
-      setSyncStartTime(null);
       const errorMsg = (error as Error).message;
       toast.error('Sync error: ' + errorMsg);
     }
@@ -224,7 +207,7 @@ export function DBSyncTab() {
     }
 
     if (unsyncedBills.length === 0) {
-      toast.info('No bills to sync');
+      toast.success('No bills to sync');
       return;
     }
 
@@ -232,24 +215,6 @@ export function DBSyncTab() {
     if (!confirmed) return;
 
     await handleSync();
-  };
-
-  const handleForceFullSync = async () => {
-    if (
-      !window.confirm(
-        'This will reset all sync metadata and perform a full sync. Continue?'
-      )
-    ) {
-      return;
-    }
-
-    try {
-      const result = await window.electronAPI.sync.forceFullSync();
-      setSyncStatus(result);
-      toast.success('Full sync initiated');
-    } catch (error) {
-      toast.error('Full sync error: ' + (error as Error).message);
-    }
   };
 
   const getSpeedColor = (speed: number) => {
@@ -268,11 +233,6 @@ export function DBSyncTab() {
     if (speed >= 50) return 'Excellent';
     if (speed >= 10) return 'Good';
     return 'Slow';
-  };
-
-  const formatDuration = (ms: number) => {
-    if (ms < 1000) return `${ms}ms`;
-    return `${(ms / 1000).toFixed(1)}s`;
   };
 
   const formatSize = (mb: number) => {

@@ -160,7 +160,6 @@ export function Combos() {
           {filteredCombos.map((combo, idx) => {
             const bg = CARD_COLORS[idx % CARD_COLORS.length];
             const ic = ICON_COLORS[idx % ICON_COLORS.length];
-            const total = comboTotal(combo);
             return (
               <div key={combo.id} style={{ backgroundColor: 'white', borderRadius: '14px', border: '1px solid #e5e7eb', boxShadow: '0 1px 4px rgba(0,0,0,0.06)', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
                 {/* Coloured top strip */}

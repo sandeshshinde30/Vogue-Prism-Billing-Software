@@ -1,5 +1,5 @@
 import React from 'react';
-import { Banknote, CreditCard, Edit2, Check, X, Smartphone } from 'lucide-react';
+import { Banknote, CreditCard, Edit2, Check, X, Smartphone, Phone } from 'lucide-react';
 import { useStore } from '../../store/useStore';
 import { DiscountInput } from './DiscountInput';
 import { BillPreview } from './BillPreview';
@@ -41,6 +41,7 @@ export function PaymentPanel() {
   const [mixedPaymentError, setMixedPaymentError] = React.useState('');
   const [savedBillData, setSavedBillData] = React.useState<any>(null);
   const [showBillPreview, setShowBillPreview] = React.useState(false);
+  const [customerMobile, setCustomerMobile] = React.useState('');
 
   const handleEditTotal = () => {
     setEditedTotal(total.toString());
@@ -102,6 +103,7 @@ export function PaymentPanel() {
       paymentMode,
       cashAmount: paymentMode === 'mixed' ? cashAmount : (paymentMode === 'cash' ? total : 0),
       upiAmount: paymentMode === 'mixed' ? upiAmount : (paymentMode === 'upi' ? total : 0),
+      customerMobileNumber: customerMobile.trim() || undefined,
     };
   };
 
@@ -184,6 +186,7 @@ export function PaymentPanel() {
   const handleCloseBillPreview = () => {
     setShowBillPreview(false);
     setSavedBillData(null);
+    setCustomerMobile(''); // Clear mobile number
     clearCart();
     toast.success('Bill saved successfully!');
   };
@@ -203,6 +206,13 @@ export function PaymentPanel() {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [cart, paymentMode, subtotal, total, discountPercent, discountAmount]);
+
+  // Clear mobile number when cart is empty
+  React.useEffect(() => {
+    if (cart.length === 0) {
+      setCustomerMobile('');
+    }
+  }, [cart.length]);
 
   return (
     <>
@@ -327,6 +337,53 @@ export function PaymentPanel() {
               </div>
             )}
           </div>
+        </div>
+
+        {/* Customer Mobile Number */}
+        <div>
+          <label 
+            className="text-xs font-medium text-slate-500 mb-2 block"
+            style={{ fontSize: '12px', fontWeight: '500', color: '#64748b', marginBottom: '8px', display: 'block' }}
+          >
+            Customer Mobile (Optional)
+          </label>
+          <div className="relative flex items-center">
+            <Phone 
+              size={16} 
+              className="absolute left-3 text-slate-400 pointer-events-none"
+              style={{ position: 'absolute', left: '12px', color: '#94a3b8', pointerEvents: 'none' }}
+            />
+            <input
+              type="tel"
+              value={customerMobile}
+              onChange={(e) => {
+                const value = e.target.value.replace(/\D/g, ''); // Only allow digits
+                if (value.length <= 10) {
+                  setCustomerMobile(value);
+                }
+              }}
+              placeholder="Enter 10-digit mobile number"
+              className="w-full pl-10 pr-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+              style={{
+                width: '100%',
+                paddingLeft: '40px',
+                paddingRight: '12px',
+                paddingTop: '8px',
+                paddingBottom: '8px',
+                fontSize: '14px',
+                border: '1px solid #cbd5e1',
+                borderRadius: '8px',
+                outline: 'none',
+                boxSizing: 'border-box'
+              }}
+              maxLength={10}
+            />
+          </div>
+          {customerMobile && customerMobile.length !== 10 && (
+            <p className="text-xs text-amber-600 mt-1">
+              Mobile number should be 10 digits
+            </p>
+          )}
         </div>
 
         {/* Payment Mode */}

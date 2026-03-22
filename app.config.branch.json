@@ -1,7 +1,8 @@
 {
-  "appType": "master",
-  "storeId": "store_001",
-  "storeName": "Main Store",
+  "appType": "branch",
+  "storeId": "branch_001",
+  "storeName": "Branch Store",
+  "masterStoreId": "store_001",
   "features": {
     "billing": true,
     "products": true,
@@ -14,7 +15,7 @@
     "forecast": true,
     "analytics": true,
     "dbSync": true,
-    "storeManagement": true
+    "storeManagement": false
   },
   "ui": {
     "showBillingTab": true,
@@ -24,26 +25,18 @@
     "showReportsTab": true,
     "showBackupTab": true,
     "showDeletedBillsTab": true,
-    "showCombosTab": true,
+    "showCombosTab": false,
     "showForecastTab": true,
     "showAnalyticsTab": true,
     "showDBSyncTab": true,
-    "showStoreManagementTab": true
+    "showStoreManagementTab": false
   },
   "sync": {
     "enabled": true,
     "autoSyncInterval": 3600000,
     "retryAttempts": 3,
     "batchSize": 100,
-    "pullFromBranches": true,
-    "branchStores": [
-      {
-        "storeId": "branch_001",
-        "storeName": "Branch Store 1",
-        "endpoint": "http://branch1.local:3000",
-        "status": "active"
-      }
-    ]
+    "masterEndpoint": "http://localhost:3000"
   },
   "database": {
     "location": "documents",

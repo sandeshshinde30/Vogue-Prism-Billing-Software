@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card } from '../components/common/Card';
 import { PasswordModal } from '../components/common/PasswordModal';
@@ -6,16 +6,11 @@ import { CashUpiTransaction, CashUpiSummary } from '../types';
 import { toast } from 'react-hot-toast';
 import { 
   Plus, 
-  Minus, 
   Banknote, 
   Smartphone,
   ArrowUp,
   ArrowDown,
   Calendar,
-  Search,
-  CreditCard,
-  TrendingUp,
-  TrendingDown,
   AlertTriangle
 } from 'lucide-react';
 
@@ -645,12 +640,12 @@ export function CashUpiTracking() {
                   <button
                     type="submit"
                     disabled={
-                      formData.transactionType === 'outgoing' && 
+                      (formData.transactionType === 'outgoing' && 
                       formData.amount && 
                       summary && 
                       parseFloat(formData.amount) > 0 && 
                       ((formData.type === 'cash' && parseFloat(formData.amount) > summary.cashBalance) ||
-                       (formData.type === 'upi' && parseFloat(formData.amount) > summary.upiBalance))
+                       (formData.type === 'upi' && parseFloat(formData.amount) > summary.upiBalance))) || false
                     }
                     className="flex-1 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white font-medium py-3 rounded-xl transition-all shadow-lg hover:shadow-xl disabled:from-gray-400 disabled:to-gray-500 disabled:cursor-not-allowed disabled:shadow-none"
                   >

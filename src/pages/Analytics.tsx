@@ -10,7 +10,6 @@ import {
   BarChart3,
   PieChart as PieChartIcon,
   Activity,
-  Zap,
 } from 'lucide-react';
 import { ProtectedTabWrapper } from '../components/common/ProtectedTabWrapper';
 import {
@@ -75,32 +74,13 @@ interface AnalyticsData {
   };
 }
 
-interface ForecastData {
-  historicalDaily: Array<{ date: string; sales: number }>;
-  forecast30Days: Array<{ date: string; predicted: number; lower: number; upper: number }>;
-  forecast90Days: Array<{ date: string; predicted: number }>;
-  categoryTrends: Array<{ category: string; trend: number; forecast: number }>;
-  seasonalPattern: Array<{ month: string; avgSales: number }>;
-  summary: {
-    avgDailySales: number;
-    trend: number;
-    volatility: number;
-    forecast30DaysTotal: number;
-    forecast90DaysTotal: number;
-  };
-  insights: string[];
-}
-
 const COLORS = ['#22c55e', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#14b8a6', '#f97316'];
 
 type SortConfig = { key: string; direction: 'asc' | 'desc' | null };
 
 function AnalyticsContent() {
   const [data, setData] = useState<AnalyticsData | null>(null);
-  const [forecastData, setForecastData] = useState<ForecastData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [forecastLoading, setForecastLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState<'overview' | 'forecast'>('overview');
   const [dateRange, setDateRange] = useState<'today' | 'week' | 'month' | 'year' | 'custom'>('week');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
@@ -158,16 +138,13 @@ function AnalyticsContent() {
   }, [dateRange, dateFrom, dateTo]);
 
   const loadForecast = async () => {
-    setForecastLoading(true);
     try {
       console.log('Loading forecast data...');
       const forecast = await (window.electronAPI as any).getForecast();
       console.log('Forecast data received:', forecast);
-      setForecastData(forecast as ForecastData);
     } catch (error) {
       console.error('Error loading forecast:', error);
     }
-    setForecastLoading(false);
   };
 
   useEffect(() => {

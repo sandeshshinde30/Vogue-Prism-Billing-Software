@@ -24,7 +24,7 @@
     "showReportsTab": true,
     "showBackupTab": true,
     "showDeletedBillsTab": true,
-    "showCombosTab": true,
+    "showCombosTab": false,
     "showForecastTab": true,
     "showAnalyticsTab": true,
     "showDBSyncTab": true,

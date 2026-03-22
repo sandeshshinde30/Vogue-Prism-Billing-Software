@@ -265,7 +265,7 @@ export function EnhancedDBSyncTab() {
     }
 
     if (unsyncedBills.length === 0) {
-      toast.info('No bills to sync');
+      toast.success('No bills to sync');
       return;
     }
 

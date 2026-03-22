@@ -1,17 +1,32 @@
 import { config } from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'node:url';
+import fs from 'fs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // Load environment variables FIRST before any other imports
-const envPath = path.join(__dirname, '../.env');
-const result = config({ path: envPath, debug: true });
+// Try multiple paths for .env file
+const possibleEnvPaths = [
+  path.join(__dirname, '../.env'), // Development
+  path.join(process.resourcesPath, '.env'), // Production (AppImage resources)
+  path.join(process.cwd(), '.env'), // Current working directory
+];
+
+let envPath = '';
+for (const p of possibleEnvPaths) {
+  if (fs.existsSync(p)) {
+    envPath = p;
+    break;
+  }
+}
+
+const result = envPath ? config({ path: envPath, debug: true }) : { error: new Error('.env file not found') };
 
 // Log env loading status
 console.log('=== ENV LOADING DEBUG ===');
-console.log('ENV Path:', envPath);
+console.log('ENV Path:', envPath || 'Not found');
 console.log('ENV Load Result:', result.error ? `ERROR: ${result.error.message}` : 'SUCCESS');
 console.log('VITE_SUPABASE_URL:', process.env.VITE_SUPABASE_URL ? '✓ Loaded' : '✗ Missing');
 console.log('VITE_SUPABASE_ANON_KEY:', process.env.VITE_SUPABASE_ANON_KEY ? '✓ Loaded' : '✗ Missing');

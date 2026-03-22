@@ -125,6 +125,70 @@ interface ElectronAPI {
       percentage: number;
     };
   }>;
+
+  // Combos
+  getCombos: () => Promise<any[]>;
+  createCombo: (data: any) => Promise<number>;
+  updateCombo: (id: number, data: any) => Promise<{ success: boolean }>;
+  deleteCombo: (id: number) => Promise<{ success: boolean }>;
+
+  // Forecast
+  getForecast: () => Promise<any>;
+
+  // Cash/UPI Tracking
+  addCashUpiTransaction: (data: any) => Promise<{ success: boolean; id: number }>;
+  getCashUpiTransactions: (type?: 'cash' | 'upi', transactionType?: 'incoming' | 'outgoing', dateFrom?: string, dateTo?: string, limit?: number, offset?: number) => Promise<any[]>;
+  getCashUpiTransactionById: (id: number) => Promise<any>;
+  getCashUpiSummary: (dateFrom?: string, dateTo?: string) => Promise<any>;
+  getDailyCashUpiSummary: (date?: string) => Promise<any>;
+  updateCashUpiTransaction: (id: number, updates: any) => Promise<{ success: boolean }>;
+  recordBillPayment: (billNumber: string, paymentMode: string, cashAmount: number, upiAmount: number) => Promise<{ success: boolean }>;
+  reverseBillPayment: (billNumber: string, paymentMode: string, cashAmount: number, upiAmount: number) => Promise<{ success: boolean }>;
+  updateBillPayment: (billNumber: string, originalPaymentMode: string, originalCashAmount: number, originalUpiAmount: number, newPaymentMode: string, newCashAmount: number, newUpiAmount: number) => Promise<{ success: boolean }>;
+
+  // Network
+  network: {
+    getStatus: () => Promise<{ isOnline: boolean; speed: number; latency: number; lastChecked: string; connectionType: string }>;
+    isAvailable: () => Promise<boolean>;
+    getQuality: () => Promise<'excellent' | 'good' | 'fair' | 'poor' | 'offline'>;
+  };
+
+  // Config
+  config: {
+    isConfigured: () => Promise<{ firebase: boolean; twilio: boolean }>;
+    getAppConfig: () => Promise<any>;
+  };
+
+  // DB Sync
+  sync: {
+    init: () => Promise<{ success: boolean }>;
+    performSync: () => Promise<any>;
+    getStatus: () => Promise<any>;
+    trackChange: (tableName: string, operation: 'insert' | 'update' | 'delete', recordId: number, data?: Record<string, any>) => Promise<{ success: boolean }>;
+    forceFullSync: () => Promise<any>;
+    getDBStats: () => Promise<{
+      totalSize: number;
+      usedSize: number;
+      freeSize: number;
+      bandwidthUsed: number;
+      bandwidthLimit: number;
+    }>;
+    getUnsyncedBills: () => Promise<any[]>;
+    getSyncedBills: () => Promise<any[]>;
+    syncSingleBill: (queueId: string) => Promise<{ success: boolean }>;
+  };
+
+  // Store Management
+  stores: {
+    getStores: () => Promise<any[]>;
+    getStoreStats: (storeId?: string) => Promise<any[]>;
+    pullStoreData: (storeId: string) => Promise<{ success: boolean; storeId: string; recordsPulled: number; lastPullTime: string }>;
+    pullAllStoreData: () => Promise<{ success: boolean; storesPulled: string[]; totalRecordsPulled: number; lastPullTime: string }>;
+    getSupabaseStores: () => Promise<any[]>;
+    getLocalBillCount: (storeId: string) => Promise<number>;
+    getSupabaseBillCount: (storeId: string) => Promise<number>;
+    getLastSyncTime: (storeId: string) => Promise<string | null>;
+  };
 }
 
 declare global {

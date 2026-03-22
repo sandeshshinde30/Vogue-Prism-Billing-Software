@@ -5,14 +5,9 @@ import {
   Calendar,
   RefreshCw,
   BarChart3,
-  Activity,
   AlertCircle,
-  Target,
   Package,
-  DollarSign,
-  Zap,
   LineChart as LineChartIcon,
-  TrendingUpIcon,
 } from 'lucide-react';
 import { ProtectedTabWrapper } from '../components/common/ProtectedTabWrapper';
 import {
@@ -22,9 +17,6 @@ import {
   Area,
   BarChart,
   Bar,
-  PieChart,
-  Pie,
-  Cell,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -35,7 +27,6 @@ import {
 import toast from 'react-hot-toast';
 
 const ACCENT = '#22c55e';
-const COLORS = ['#22c55e', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4'];
 
 function ForecastContent() {
   const [data, setData] = useState<any>(null);
@@ -144,7 +135,7 @@ function ForecastContent() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', flexWrap: 'wrap', gap: '16px' }}>
         <div>
           <h1 style={{ fontSize: '28px', fontWeight: '700', color: '#111827', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <Zap style={{ color: ACCENT }} size={28} />
+            <TrendingUp style={{ color: ACCENT }} size={28} />
             Sales Predictions & Forecasts
           </h1>
           <p style={{ fontSize: '14px', color: '#6b7280' }}>

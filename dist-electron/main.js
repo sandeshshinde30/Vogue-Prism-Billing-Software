@@ -1,6 +1,6 @@
 import fs$1 from "fs";
 import path$1 from "path";
-import require$$2 from "os";
+import os$1 from "os";
 import require$$3 from "crypto";
 import { fileURLToPath } from "node:url";
 import { app, dialog, net, ipcMain, BrowserWindow } from "electron";
@@ -17,7 +17,7 @@ const require$$4 = {
 };
 const fs = fs$1;
 const path = path$1;
-const os = require$$2;
+const os = os$1;
 const crypto = require$$3;
 const packageJson = require$$4;
 const version = packageJson.version;
@@ -335,9 +335,129 @@ main.exports.decrypt = DotenvModule.decrypt;
 main.exports.parse = DotenvModule.parse;
 main.exports.populate = DotenvModule.populate;
 main.exports = DotenvModule;
+const __filename$2 = fileURLToPath(import.meta.url);
+const __dirname$2 = path$1.dirname(__filename$2);
+let config$1 = null;
+function getDatabasePath() {
+  const cfg = getConfig();
+  if (cfg.database.location === "custom" && cfg.database.customPath) {
+    return cfg.database.customPath;
+  }
+  if (cfg.appType === "master") {
+    const configPath = path$1.join(os$1.homedir(), ".config", "vogue-prism-billing-software");
+    if (!fs$1.existsSync(configPath)) {
+      fs$1.mkdirSync(configPath, { recursive: true });
+    }
+    return path$1.join(configPath, "billing.db");
+  }
+  if (cfg.database.location === "documents") {
+    const documentsPath = path$1.join(os$1.homedir(), "Documents", "VoguePrism");
+    if (!fs$1.existsSync(documentsPath)) {
+      fs$1.mkdirSync(documentsPath, { recursive: true });
+    }
+    return path$1.join(documentsPath, `${cfg.storeId}_billing.db`);
+  }
+  return path$1.join(app.getPath("userData"), `${cfg.storeId}_billing.db`);
+}
+function loadConfig() {
+  if (config$1) return config$1;
+  try {
+    const possiblePaths = [
+      path$1.join(__dirname$2, "../app.config.json"),
+      // Development
+      path$1.join(app.getAppPath(), "app.config.json"),
+      // Production (AppImage)
+      path$1.join(process.resourcesPath, "app.config.json"),
+      // Alternative production path
+      path$1.join(process.cwd(), "app.config.json")
+      // Current working directory
+    ];
+    let configPath = null;
+    for (const p of possiblePaths) {
+      if (fs$1.existsSync(p)) {
+        configPath = p;
+        break;
+      }
+    }
+    if (!configPath) {
+      throw new Error("app.config.json not found in any expected location");
+    }
+    const configData = fs$1.readFileSync(configPath, "utf-8");
+    config$1 = JSON.parse(configData);
+    console.log("📋 App Configuration Loaded:");
+    console.log(`   Config Path: ${configPath}`);
+    console.log(`   App Type: ${config$1.appType}`);
+    console.log(`   Store ID: ${config$1.storeId}`);
+    console.log(`   Store Name: ${config$1.storeName}`);
+    console.log(`   DB Sync: ${config$1.features.dbSync ? "Enabled" : "Disabled"}`);
+    console.log(`   Database Location: ${config$1.database.location}`);
+    console.log(`   Database Path: ${getDatabasePath()}`);
+    return config$1;
+  } catch (error) {
+    console.warn("⚠️  Could not load app.config.json, using defaults");
+    console.warn(`   Error: ${error instanceof Error ? error.message : String(error)}`);
+    config$1 = {
+      appType: "branch",
+      storeId: process.env.VITE_STORE_ID || "branch_001",
+      storeName: process.env.VITE_STORE_NAME || "Branch Store",
+      features: {
+        billing: true,
+        products: true,
+        stock: true,
+        cashUpiTracking: true,
+        reports: true,
+        backup: true,
+        deletedBills: true,
+        combos: true,
+        forecast: true,
+        analytics: true,
+        dbSync: true,
+        storeManagement: false
+      },
+      ui: {
+        showBillingTab: true,
+        showProductsTab: true,
+        showStockTab: true,
+        showCashUpiTrackingTab: true,
+        showReportsTab: true,
+        showBackupTab: true,
+        showDeletedBillsTab: true,
+        showCombosTab: false,
+        showForecastTab: true,
+        showAnalyticsTab: true,
+        showDBSyncTab: true,
+        showStoreManagementTab: false
+      },
+      sync: {
+        enabled: true,
+        autoSyncInterval: 36e5,
+        retryAttempts: 3,
+        batchSize: 100,
+        masterEndpoint: "http://localhost:3000"
+      },
+      database: {
+        location: "documents",
+        customPath: null
+      }
+    };
+    return config$1;
+  }
+}
+function getConfig() {
+  if (!config$1) {
+    return loadConfig();
+  }
+  return config$1;
+}
+const config$2 = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.defineProperty({
+  __proto__: null,
+  getConfig,
+  getDatabasePath,
+  loadConfig
+}, Symbol.toStringTag, { value: "Module" }));
 let db;
 async function initDatabase() {
-  const dbPath = path$1.join(app.getPath("userData"), "billing.db");
+  const dbPath = getDatabasePath();
   db = new Database(dbPath);
   db.exec(`
     CREATE TABLE IF NOT EXISTS products (
@@ -606,6 +726,34 @@ async function initDatabase() {
     }
   } catch (e) {
   }
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS sync_queue (
+      id TEXT PRIMARY KEY,
+      table_name TEXT NOT NULL,
+      operation TEXT NOT NULL CHECK (operation IN ('insert', 'update', 'delete')),
+      record_id INTEGER NOT NULL,
+      data TEXT,
+      created_at TEXT DEFAULT (datetime('now', 'localtime')),
+      synced INTEGER DEFAULT 0,
+      retry_count INTEGER DEFAULT 0,
+      error_message TEXT,
+      synced_at TEXT
+    );
+  `);
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS sync_metadata (
+      table_name TEXT PRIMARY KEY,
+      last_sync_at TEXT DEFAULT (datetime('now', 'localtime')),
+      last_pull_time TEXT,
+      last_push_time TEXT,
+      pending_count INTEGER NOT NULL DEFAULT 0
+    );
+  `);
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_sync_queue_synced ON sync_queue(synced);
+    CREATE INDEX IF NOT EXISTS idx_sync_queue_table ON sync_queue(table_name);
+    CREATE INDEX IF NOT EXISTS idx_sync_queue_created ON sync_queue(created_at);
+  `);
   console.log("Database initialized at", dbPath);
 }
 function getDatabase() {
@@ -623,65 +771,6 @@ const connection = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.definePr
   closeDatabase,
   getDatabase,
   initDatabase
-}, Symbol.toStringTag, { value: "Module" }));
-const __filename$2 = fileURLToPath(import.meta.url);
-const __dirname$2 = path$1.dirname(__filename$2);
-let config$1 = null;
-function loadConfig() {
-  if (config$1) return config$1;
-  try {
-    const configPath = path$1.join(__dirname$2, "../app.config.json");
-    const configData = fs$1.readFileSync(configPath, "utf-8");
-    config$1 = JSON.parse(configData);
-    console.log("📋 App Configuration Loaded:");
-    console.log(`   Store Type: ${config$1.storeType}`);
-    console.log(`   Store ID: ${config$1.storeId}`);
-    console.log(`   Store Name: ${config$1.storeName}`);
-    console.log(`   DB Sync: ${config$1.features.dbSync ? "Enabled" : "Disabled"}`);
-    console.log(`   Auto-sync Interval: ${config$1.sync.autoSyncInterval / 1e3 / 60} minutes`);
-    return config$1;
-  } catch (error) {
-    console.warn("⚠️  Could not load app.config.json, using defaults");
-    config$1 = {
-      storeType: "master",
-      storeId: process.env.VITE_STORE_ID || "store_001",
-      storeName: process.env.VITE_STORE_NAME || "Main Store",
-      features: {
-        dbSync: true,
-        analytics: true,
-        forecast: true,
-        backup: true,
-        deletedBills: true,
-        combos: true
-      },
-      sync: {
-        enabled: true,
-        autoSyncInterval: 36e5,
-        // 1 hour
-        retryAttempts: 3,
-        batchSize: 100
-      },
-      ui: {
-        showDBSyncTab: true,
-        showAnalyticsTab: true,
-        showForecastTab: true,
-        showCombosTab: true,
-        showDeletedBillsTab: true
-      }
-    };
-    return config$1;
-  }
-}
-function getConfig() {
-  if (!config$1) {
-    return loadConfig();
-  }
-  return config$1;
-}
-const config$2 = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.defineProperty({
-  __proto__: null,
-  getConfig,
-  loadConfig
 }, Symbol.toStringTag, { value: "Module" }));
 function addActivityLog(action, entityType, details, entityId, oldValue, newValue, userId) {
   const db2 = getDatabase();
@@ -2058,8 +2147,8 @@ function createBill(data) {
   const billNumber = generateBillNumber();
   const transaction = db2.transaction(() => {
     const billStmt2 = db2.prepare(`
-      INSERT INTO bills (billNumber, subtotal, discountPercent, discountAmount, total, paymentMode, cashAmount, upiAmount, createdAt)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now', 'localtime'))
+      INSERT INTO bills (billNumber, subtotal, discountPercent, discountAmount, total, paymentMode, cashAmount, upiAmount, customerMobileNumber, createdAt)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now', 'localtime'))
     `);
     const billResult = billStmt2.run(
       billNumber,
@@ -2069,7 +2158,8 @@ function createBill(data) {
       data.total,
       data.paymentMode,
       data.cashAmount || 0,
-      data.upiAmount || 0
+      data.upiAmount || 0,
+      data.customerMobileNumber || null
     );
     const billId2 = billResult.lastInsertRowid;
     const itemStmt = db2.prepare(`
@@ -5831,10 +5921,24 @@ $shell.Run("notepad /p \\"$filePath\\"", 0, $true)
 }
 const __filename$1 = fileURLToPath(import.meta.url);
 const __dirname$1 = path$1.dirname(__filename$1);
-const envPath = path$1.join(__dirname$1, "../.env");
-const result = config_1({ path: envPath, debug: true });
+const possibleEnvPaths = [
+  path$1.join(__dirname$1, "../.env"),
+  // Development
+  path$1.join(process.resourcesPath, ".env"),
+  // Production (AppImage resources)
+  path$1.join(process.cwd(), ".env")
+  // Current working directory
+];
+let envPath = "";
+for (const p of possibleEnvPaths) {
+  if (fs$1.existsSync(p)) {
+    envPath = p;
+    break;
+  }
+}
+const result = envPath ? config_1({ path: envPath, debug: true }) : { error: new Error(".env file not found") };
 console.log("=== ENV LOADING DEBUG ===");
-console.log("ENV Path:", envPath);
+console.log("ENV Path:", envPath || "Not found");
 console.log("ENV Load Result:", result.error ? `ERROR: ${result.error.message}` : "SUCCESS");
 console.log("VITE_SUPABASE_URL:", process.env.VITE_SUPABASE_URL ? "✓ Loaded" : "✗ Missing");
 console.log("VITE_SUPABASE_ANON_KEY:", process.env.VITE_SUPABASE_ANON_KEY ? "✓ Loaded" : "✗ Missing");

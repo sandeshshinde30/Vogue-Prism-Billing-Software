@@ -2,12 +2,14 @@
   "name": "vogue-prism-billing-software",
   "private": true,
   "version": "0.0.0",
+  "description": "Vogue Prism Billing Software - Branch Application",
+  "author": "Vogue Prism",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "dev:fast": "vite --force",
-    "build": "tsc && vite build && electron-builder --win",
-    "build:fast": "vite build && electron-builder --win",
+    "build": "tsc && vite build && electron-builder",
+    "build:fast": "vite build && electron-builder",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "preview": "vite preview"
   },
@@ -67,8 +69,19 @@
     "asar": true,
     "files": [
       "dist/**",
-      "dist-electron/**"
+      "dist-electron/**",
+      ".env",
+      "app.config.json"
     ],
+    "linux": {
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": ["x64"]
+        }
+      ],
+      "category": "Office"
+    },
     "win": {
       "target": "portable"
     },

@@ -150,6 +150,29 @@ export interface ElectronAPI {
   getLogsCount: (entityType?: string, dateFrom?: string, dateTo?: string) => Promise<{ count: number }>;
   cleanupLogs: () => Promise<{ success: boolean; deletedCount: number }>;
 
+  // Analytics
+  getAnalytics: (dateFrom: string, dateTo: string) => Promise<any>;
+
+  // Combos
+  getCombos: () => Promise<any[]>;
+  createCombo: (data: any) => Promise<number>;
+  updateCombo: (id: number, data: any) => Promise<{ success: boolean }>;
+  deleteCombo: (id: number) => Promise<{ success: boolean }>;
+
+  // Forecast
+  getForecast: () => Promise<any>;
+
+  // Cash/UPI Tracking
+  addCashUpiTransaction: (data: any) => Promise<{ success: boolean; id: number }>;
+  getCashUpiTransactions: (type?: 'cash' | 'upi', transactionType?: 'incoming' | 'outgoing', dateFrom?: string, dateTo?: string, limit?: number, offset?: number) => Promise<any[]>;
+  getCashUpiTransactionById: (id: number) => Promise<any>;
+  getCashUpiSummary: (dateFrom?: string, dateTo?: string) => Promise<any>;
+  getDailyCashUpiSummary: (date?: string) => Promise<any>;
+  updateCashUpiTransaction: (id: number, updates: any) => Promise<{ success: boolean }>;
+  recordBillPayment: (billNumber: string, paymentMode: string, cashAmount: number, upiAmount: number) => Promise<{ success: boolean }>;
+  reverseBillPayment: (billNumber: string, paymentMode: string, cashAmount: number, upiAmount: number) => Promise<{ success: boolean }>;
+  updateBillPayment: (billNumber: string, originalPaymentMode: string, originalCashAmount: number, originalUpiAmount: number, newPaymentMode: string, newCashAmount: number, newUpiAmount: number) => Promise<{ success: boolean }>;
+
   // Printer
   getPrinters: () => Promise<import('./index').PrinterInfo[]>;
   refreshPrinters: () => Promise<import('./index').PrinterInfo[]>;

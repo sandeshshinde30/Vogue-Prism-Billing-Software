@@ -1,11 +1,11 @@
 import Database from 'better-sqlite3';
 import path from 'path';
-import { app } from 'electron';
+import { getDatabasePath } from '../config';
 
 let db: Database.Database;
 
 export async function initDatabase() {
-  const dbPath = path.join(app.getPath('userData'), 'billing.db');
+  const dbPath = getDatabasePath();
 
   db = new Database(dbPath);
 
@@ -340,6 +340,39 @@ export async function initDatabase() {
       db.exec('ALTER TABLE combos ADD COLUMN comboPrice REAL');
     }
   } catch (e) { /* ignore */ }
+
+  // Create sync tables for DB synchronization
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS sync_queue (
+      id TEXT PRIMARY KEY,
+      table_name TEXT NOT NULL,
+      operation TEXT NOT NULL CHECK (operation IN ('insert', 'update', 'delete')),
+      record_id INTEGER NOT NULL,
+      data TEXT,
+      created_at TEXT DEFAULT (datetime('now', 'localtime')),
+      synced INTEGER DEFAULT 0,
+      retry_count INTEGER DEFAULT 0,
+      error_message TEXT,
+      synced_at TEXT
+    );
+  `);
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS sync_metadata (
+      table_name TEXT PRIMARY KEY,
+      last_sync_at TEXT DEFAULT (datetime('now', 'localtime')),
+      last_pull_time TEXT,
+      last_push_time TEXT,
+      pending_count INTEGER NOT NULL DEFAULT 0
+    );
+  `);
+
+  // Create indexes for sync tables
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_sync_queue_synced ON sync_queue(synced);
+    CREATE INDEX IF NOT EXISTS idx_sync_queue_table ON sync_queue(table_name);
+    CREATE INDEX IF NOT EXISTS idx_sync_queue_created ON sync_queue(created_at);
+  `);
 
   console.log('Database initialized at', dbPath);
 }
