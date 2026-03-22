@@ -87,6 +87,8 @@ export interface ElectronAPI {
   getDailyCashUpiSummary: (date?: string) => Promise<any>;
   updateCashUpiTransaction: (id: number, updates: any) => Promise<{ success: boolean }>;
   recordBillPayment: (billNumber: string, paymentMode: string, cashAmount: number, upiAmount: number) => Promise<{ success: boolean }>;
+  reverseBillPayment: (billNumber: string, paymentMode: string, cashAmount: number, upiAmount: number) => Promise<{ success: boolean }>;
+  updateBillPayment: (billNumber: string, originalPaymentMode: string, originalCashAmount: number, originalUpiAmount: number, newPaymentMode: string, newCashAmount: number, newUpiAmount: number) => Promise<{ success: boolean }>;
 
   // Bill Send
   billSend: {
@@ -261,6 +263,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   updateCashUpiTransaction: (id: number, updates: any) => ipcRenderer.invoke('cashUpi:updateTransaction', id, updates),
   recordBillPayment: (billNumber: string, paymentMode: string, cashAmount: number, upiAmount: number) => 
     ipcRenderer.invoke('cashUpi:recordBillPayment', billNumber, paymentMode, cashAmount, upiAmount),
+  reverseBillPayment: (billNumber: string, paymentMode: string, cashAmount: number, upiAmount: number) => 
+    ipcRenderer.invoke('cashUpi:reverseBillPayment', billNumber, paymentMode, cashAmount, upiAmount),
+  updateBillPayment: (billNumber: string, originalPaymentMode: string, originalCashAmount: number, originalUpiAmount: number, newPaymentMode: string, newCashAmount: number, newUpiAmount: number) => 
+    ipcRenderer.invoke('cashUpi:updateBillPayment', billNumber, originalPaymentMode, originalCashAmount, originalUpiAmount, newPaymentMode, newCashAmount, newUpiAmount),
 
   // Network
   network: {

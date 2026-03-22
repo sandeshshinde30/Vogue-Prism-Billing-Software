@@ -77,6 +77,8 @@ electron.contextBridge.exposeInMainWorld("electronAPI", {
   getDailyCashUpiSummary: (date) => electron.ipcRenderer.invoke("cashUpi:getDailySummary", date),
   updateCashUpiTransaction: (id, updates) => electron.ipcRenderer.invoke("cashUpi:updateTransaction", id, updates),
   recordBillPayment: (billNumber, paymentMode, cashAmount, upiAmount) => electron.ipcRenderer.invoke("cashUpi:recordBillPayment", billNumber, paymentMode, cashAmount, upiAmount),
+  reverseBillPayment: (billNumber, paymentMode, cashAmount, upiAmount) => electron.ipcRenderer.invoke("cashUpi:reverseBillPayment", billNumber, paymentMode, cashAmount, upiAmount),
+  updateBillPayment: (billNumber, originalPaymentMode, originalCashAmount, originalUpiAmount, newPaymentMode, newCashAmount, newUpiAmount) => electron.ipcRenderer.invoke("cashUpi:updateBillPayment", billNumber, originalPaymentMode, originalCashAmount, originalUpiAmount, newPaymentMode, newCashAmount, newUpiAmount),
   // Network
   network: {
     getStatus: () => electron.ipcRenderer.invoke("network:getStatus"),

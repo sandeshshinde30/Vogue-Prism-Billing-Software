@@ -108,6 +108,7 @@ export function BillManagement() {
       }
     }
     setPendingAction(null);
+    setShowPasswordModal(false);
   };
 
   const requestPasswordForAction = (type: 'edit' | 'delete', bill: Bill) => {

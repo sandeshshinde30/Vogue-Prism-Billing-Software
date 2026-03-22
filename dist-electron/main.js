@@ -1950,6 +1950,97 @@ function updateCashUpiTransaction(id, updates) {
   }
   return result2.changes > 0;
 }
+function reverseBillPaymentTransactions(billNumber, paymentMode, cashAmount, upiAmount) {
+  getDatabase();
+  try {
+    console.log(`🔄 Reversing bill payment transactions for deleted bill ${billNumber}:`);
+    console.log(`   Payment Mode: ${paymentMode}`);
+    console.log(`   Cash Amount: ₹${cashAmount}`);
+    console.log(`   UPI Amount: ₹${upiAmount}`);
+    let transactionsCreated = 0;
+    if (cashAmount > 0) {
+      const cashTransactionId = addCashUpiTransaction({
+        type: "cash",
+        transactionType: "outgoing",
+        amount: cashAmount,
+        reason: "Bill Deletion",
+        description: `Reversed payment for deleted bill ${billNumber}`,
+        billNumber,
+        createdBy: "system"
+      });
+      console.log(`✅ Created cash reversal transaction ${cashTransactionId} for ₹${cashAmount}`);
+      transactionsCreated++;
+    }
+    if (upiAmount > 0) {
+      const upiTransactionId = addCashUpiTransaction({
+        type: "upi",
+        transactionType: "outgoing",
+        amount: upiAmount,
+        reason: "Bill Deletion",
+        description: `Reversed UPI payment for deleted bill ${billNumber}`,
+        billNumber,
+        createdBy: "system"
+      });
+      console.log(`✅ Created UPI reversal transaction ${upiTransactionId} for ₹${upiAmount}`);
+      transactionsCreated++;
+    }
+    if (transactionsCreated === 0) {
+      console.warn(`⚠️  No reversal transactions recorded for bill ${billNumber} - both amounts are 0`);
+    } else {
+      console.log(`🎉 Successfully recorded ${transactionsCreated} reversal transaction(s) for bill ${billNumber}`);
+    }
+  } catch (error) {
+    console.error("❌ Error reversing bill payment transactions:", error);
+    throw error;
+  }
+}
+function updateBillPaymentTransactions(billNumber, originalPaymentMode, originalCashAmount, originalUpiAmount, newPaymentMode, newCashAmount, newUpiAmount) {
+  getDatabase();
+  try {
+    console.log(`🔄 Updating bill payment transactions for edited bill ${billNumber}:`);
+    console.log(`   Original: ${originalPaymentMode} - Cash: ₹${originalCashAmount}, UPI: ₹${originalUpiAmount}`);
+    console.log(`   New: ${newPaymentMode} - Cash: ₹${newCashAmount}, UPI: ₹${newUpiAmount}`);
+    const cashDifference = newCashAmount - originalCashAmount;
+    const upiDifference = newUpiAmount - originalUpiAmount;
+    console.log(`   Cash difference: ₹${cashDifference}`);
+    console.log(`   UPI difference: ₹${upiDifference}`);
+    let transactionsCreated = 0;
+    if (cashDifference !== 0) {
+      const cashTransactionId = addCashUpiTransaction({
+        type: "cash",
+        transactionType: cashDifference > 0 ? "incoming" : "outgoing",
+        amount: Math.abs(cashDifference),
+        reason: "Bill Edit",
+        description: `Payment ${cashDifference > 0 ? "increase" : "decrease"} for edited bill ${billNumber}`,
+        billNumber,
+        createdBy: "system"
+      });
+      console.log(`✅ Created cash adjustment transaction ${cashTransactionId} for ₹${Math.abs(cashDifference)} (${cashDifference > 0 ? "incoming" : "outgoing"})`);
+      transactionsCreated++;
+    }
+    if (upiDifference !== 0) {
+      const upiTransactionId = addCashUpiTransaction({
+        type: "upi",
+        transactionType: upiDifference > 0 ? "incoming" : "outgoing",
+        amount: Math.abs(upiDifference),
+        reason: "Bill Edit",
+        description: `UPI payment ${upiDifference > 0 ? "increase" : "decrease"} for edited bill ${billNumber}`,
+        billNumber,
+        createdBy: "system"
+      });
+      console.log(`✅ Created UPI adjustment transaction ${upiTransactionId} for ₹${Math.abs(upiDifference)} (${upiDifference > 0 ? "incoming" : "outgoing"})`);
+      transactionsCreated++;
+    }
+    if (transactionsCreated === 0) {
+      console.log(`ℹ️  No adjustment transactions needed for bill ${billNumber} - no payment changes`);
+    } else {
+      console.log(`🎉 Successfully recorded ${transactionsCreated} adjustment transaction(s) for bill ${billNumber}`);
+    }
+  } catch (error) {
+    console.error("❌ Error updating bill payment transactions:", error);
+    throw error;
+  }
+}
 const cashUpiTransactions = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.defineProperty({
   __proto__: null,
   addCashUpiTransaction,
@@ -1958,6 +2049,8 @@ const cashUpiTransactions = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object
   getCashUpiTransactions,
   getDailyCashUpiSummary,
   recordBillPaymentTransactions,
+  reverseBillPaymentTransactions,
+  updateBillPaymentTransactions,
   updateCashUpiTransaction
 }, Symbol.toStringTag, { value: "Module" }));
 function createBill(data) {
@@ -2266,6 +2359,9 @@ function updateBill(billId, data) {
   if (!originalBill) {
     throw new Error("Bill not found");
   }
+  const originalPaymentMode = originalBill.bill.paymentMode;
+  const originalCashAmount = originalBill.bill.cashAmount || 0;
+  const originalUpiAmount = originalBill.bill.upiAmount || 0;
   const transaction = db2.transaction(() => {
     if (data.items) {
       const oldItemsStmt = db2.prepare("SELECT * FROM bill_items WHERE billId = ?");
@@ -2332,6 +2428,27 @@ function updateBill(billId, data) {
     }
   });
   transaction();
+  const updatedBill = getBillById(billId);
+  if (updatedBill) {
+    const newPaymentMode = updatedBill.bill.paymentMode;
+    const newCashAmount = updatedBill.bill.cashAmount || 0;
+    const newUpiAmount = updatedBill.bill.upiAmount || 0;
+    if (originalPaymentMode !== newPaymentMode || originalCashAmount !== newCashAmount || originalUpiAmount !== newUpiAmount) {
+      try {
+        updateBillPaymentTransactions(
+          originalBill.bill.billNumber,
+          originalPaymentMode,
+          originalCashAmount,
+          originalUpiAmount,
+          newPaymentMode,
+          newCashAmount,
+          newUpiAmount
+        );
+      } catch (error) {
+        console.error("❌ Error updating cash/UPI transactions for bill edit:", error);
+      }
+    }
+  }
   addActivityLog(
     "update",
     "bill",
@@ -2370,6 +2487,26 @@ function deleteBill(billId, reason) {
     db2.prepare("DELETE FROM bills WHERE id = ?").run(billId);
   });
   transaction();
+  try {
+    const cashAmount = billData.bill.cashAmount || 0;
+    const upiAmount = billData.bill.upiAmount || 0;
+    let actualCashAmount = cashAmount;
+    let actualUpiAmount = upiAmount;
+    if (billData.bill.paymentMode === "cash" && actualCashAmount === 0) {
+      actualCashAmount = billData.bill.total;
+    }
+    if (billData.bill.paymentMode === "upi" && actualUpiAmount === 0) {
+      actualUpiAmount = billData.bill.total;
+    }
+    reverseBillPaymentTransactions(
+      billData.bill.billNumber,
+      billData.bill.paymentMode,
+      actualCashAmount,
+      actualUpiAmount
+    );
+  } catch (error) {
+    console.error("❌ Error reversing cash/UPI transactions for bill deletion:", error);
+  }
   addActivityLog(
     "delete",
     "bill",
@@ -2440,6 +2577,26 @@ function restoreDeletedBill(deletedBillId) {
     db2.prepare("DELETE FROM deleted_bills WHERE id = ?").run(deletedBillId);
   });
   transaction();
+  try {
+    const cashAmount = billData.cashAmount || 0;
+    const upiAmount = billData.upiAmount || 0;
+    let actualCashAmount = cashAmount;
+    let actualUpiAmount = upiAmount;
+    if (billData.paymentMode === "cash" && actualCashAmount === 0) {
+      actualCashAmount = billData.total;
+    }
+    if (billData.paymentMode === "upi" && actualUpiAmount === 0) {
+      actualUpiAmount = billData.total;
+    }
+    recordBillPaymentTransactions(
+      billData.billNumber + "-RESTORED",
+      billData.paymentMode,
+      actualCashAmount,
+      actualUpiAmount
+    );
+  } catch (error) {
+    console.error("❌ Error recording cash/UPI transactions for bill recovery:", error);
+  }
   addActivityLog(
     "create",
     "bill",
@@ -5647,6 +5804,26 @@ $shell.Run("notepad /p \\"$filePath\\"", 0, $true)
       return { success: true };
     } catch (error) {
       console.error("Error recording bill payment transactions:", error);
+      throw error;
+    }
+  });
+  ipcMain.handle("cashUpi:reverseBillPayment", async (_, billNumber, paymentMode, cashAmount, upiAmount) => {
+    try {
+      const { reverseBillPaymentTransactions: reverseBillPaymentTransactions2 } = await Promise.resolve().then(() => cashUpiTransactions);
+      reverseBillPaymentTransactions2(billNumber, paymentMode, cashAmount, upiAmount);
+      return { success: true };
+    } catch (error) {
+      console.error("Error reversing bill payment transactions:", error);
+      throw error;
+    }
+  });
+  ipcMain.handle("cashUpi:updateBillPayment", async (_, billNumber, originalPaymentMode, originalCashAmount, originalUpiAmount, newPaymentMode, newCashAmount, newUpiAmount) => {
+    try {
+      const { updateBillPaymentTransactions: updateBillPaymentTransactions2 } = await Promise.resolve().then(() => cashUpiTransactions);
+      updateBillPaymentTransactions2(billNumber, originalPaymentMode, originalCashAmount, originalUpiAmount, newPaymentMode, newCashAmount, newUpiAmount);
+      return { success: true };
+    } catch (error) {
+      console.error("Error updating bill payment transactions:", error);
       throw error;
     }
   });

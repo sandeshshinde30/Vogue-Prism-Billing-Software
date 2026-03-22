@@ -364,3 +364,125 @@ export function deleteCashUpiTransaction(id: number, reason: string): boolean {
   // Instead, we log the attempt and return false
   return false;
 }
+
+// BILL OPERATIONS - Handle cash/UPI tracking for bill modifications
+
+// Reverse bill payment transactions when bill is deleted
+export function reverseBillPaymentTransactions(billNumber: string, paymentMode: string, cashAmount: number, upiAmount: number): void {
+  const db = getDatabase();
+  
+  try {
+    console.log(`🔄 Reversing bill payment transactions for deleted bill ${billNumber}:`);
+    console.log(`   Payment Mode: ${paymentMode}`);
+    console.log(`   Cash Amount: ₹${cashAmount}`);
+    console.log(`   UPI Amount: ₹${upiAmount}`);
+    
+    let transactionsCreated = 0;
+    
+    // Create outgoing cash transaction if cash amount > 0 (to reverse the incoming payment)
+    if (cashAmount > 0) {
+      const cashTransactionId = addCashUpiTransaction({
+        type: 'cash',
+        transactionType: 'outgoing',
+        amount: cashAmount,
+        reason: 'Bill Deletion',
+        description: `Reversed payment for deleted bill ${billNumber}`,
+        billNumber: billNumber,
+        createdBy: 'system'
+      });
+      console.log(`✅ Created cash reversal transaction ${cashTransactionId} for ₹${cashAmount}`);
+      transactionsCreated++;
+    }
+    
+    // Create outgoing UPI transaction if UPI amount > 0 (to reverse the incoming payment)
+    if (upiAmount > 0) {
+      const upiTransactionId = addCashUpiTransaction({
+        type: 'upi',
+        transactionType: 'outgoing',
+        amount: upiAmount,
+        reason: 'Bill Deletion',
+        description: `Reversed UPI payment for deleted bill ${billNumber}`,
+        billNumber: billNumber,
+        createdBy: 'system'
+      });
+      console.log(`✅ Created UPI reversal transaction ${upiTransactionId} for ₹${upiAmount}`);
+      transactionsCreated++;
+    }
+    
+    if (transactionsCreated === 0) {
+      console.warn(`⚠️  No reversal transactions recorded for bill ${billNumber} - both amounts are 0`);
+    } else {
+      console.log(`🎉 Successfully recorded ${transactionsCreated} reversal transaction(s) for bill ${billNumber}`);
+    }
+  } catch (error) {
+    console.error('❌ Error reversing bill payment transactions:', error);
+    throw error;
+  }
+}
+
+// Handle cash/UPI tracking for bill edits
+export function updateBillPaymentTransactions(
+  billNumber: string, 
+  originalPaymentMode: string, 
+  originalCashAmount: number, 
+  originalUpiAmount: number,
+  newPaymentMode: string, 
+  newCashAmount: number, 
+  newUpiAmount: number
+): void {
+  const db = getDatabase();
+  
+  try {
+    console.log(`🔄 Updating bill payment transactions for edited bill ${billNumber}:`);
+    console.log(`   Original: ${originalPaymentMode} - Cash: ₹${originalCashAmount}, UPI: ₹${originalUpiAmount}`);
+    console.log(`   New: ${newPaymentMode} - Cash: ₹${newCashAmount}, UPI: ₹${newUpiAmount}`);
+    
+    // Calculate the difference in amounts
+    const cashDifference = newCashAmount - originalCashAmount;
+    const upiDifference = newUpiAmount - originalUpiAmount;
+    
+    console.log(`   Cash difference: ₹${cashDifference}`);
+    console.log(`   UPI difference: ₹${upiDifference}`);
+    
+    let transactionsCreated = 0;
+    
+    // Handle cash amount changes
+    if (cashDifference !== 0) {
+      const cashTransactionId = addCashUpiTransaction({
+        type: 'cash',
+        transactionType: cashDifference > 0 ? 'incoming' : 'outgoing',
+        amount: Math.abs(cashDifference),
+        reason: 'Bill Edit',
+        description: `Payment ${cashDifference > 0 ? 'increase' : 'decrease'} for edited bill ${billNumber}`,
+        billNumber: billNumber,
+        createdBy: 'system'
+      });
+      console.log(`✅ Created cash adjustment transaction ${cashTransactionId} for ₹${Math.abs(cashDifference)} (${cashDifference > 0 ? 'incoming' : 'outgoing'})`);
+      transactionsCreated++;
+    }
+    
+    // Handle UPI amount changes
+    if (upiDifference !== 0) {
+      const upiTransactionId = addCashUpiTransaction({
+        type: 'upi',
+        transactionType: upiDifference > 0 ? 'incoming' : 'outgoing',
+        amount: Math.abs(upiDifference),
+        reason: 'Bill Edit',
+        description: `UPI payment ${upiDifference > 0 ? 'increase' : 'decrease'} for edited bill ${billNumber}`,
+        billNumber: billNumber,
+        createdBy: 'system'
+      });
+      console.log(`✅ Created UPI adjustment transaction ${upiTransactionId} for ₹${Math.abs(upiDifference)} (${upiDifference > 0 ? 'incoming' : 'outgoing'})`);
+      transactionsCreated++;
+    }
+    
+    if (transactionsCreated === 0) {
+      console.log(`ℹ️  No adjustment transactions needed for bill ${billNumber} - no payment changes`);
+    } else {
+      console.log(`🎉 Successfully recorded ${transactionsCreated} adjustment transaction(s) for bill ${billNumber}`);
+    }
+  } catch (error) {
+    console.error('❌ Error updating bill payment transactions:', error);
+    throw error;
+  }
+}

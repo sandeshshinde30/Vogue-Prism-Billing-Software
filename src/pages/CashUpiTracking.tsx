@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Card } from '../components/common/Card';
+import { PasswordModal } from '../components/common/PasswordModal';
 import { CashUpiTransaction, CashUpiSummary } from '../types';
 import { toast } from 'react-hot-toast';
 import { 
@@ -18,10 +20,14 @@ import {
 } from 'lucide-react';
 
 export function CashUpiTracking() {
+  const navigate = useNavigate();
   const [transactions, setTransactions] = useState<CashUpiTransaction[]>([]);
   const [summary, setSummary] = useState<CashUpiSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [showPasswordModal, setShowPasswordModal] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [filters, setFilters] = useState({
     type: 'all' as 'all' | 'cash' | 'upi',
     transactionType: 'all' as 'all' | 'incoming' | 'outgoing',
@@ -39,9 +45,15 @@ export function CashUpiTracking() {
     description: ''
   });
 
+  const handleGoToDashboard = () => {
+    navigate('/');
+  };
+
   useEffect(() => {
-    loadData();
-  }, [filters]);
+    if (isAuthenticated) {
+      loadData();
+    }
+  }, [filters, isAuthenticated]);
 
   const loadData = async () => {
     try {
@@ -71,6 +83,13 @@ export function CashUpiTracking() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleManualRefresh = async () => {
+    setIsRefreshing(true);
+    await loadData();
+    setIsRefreshing(false);
+    toast.success('Data refreshed');
   };
 
   const handleAddTransaction = async (e: React.FormEvent) => {
@@ -124,6 +143,11 @@ export function CashUpiTracking() {
     }
   };
 
+  const handlePasswordSuccess = () => {
+    setIsAuthenticated(true);
+    setShowPasswordModal(false);
+  };
+
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-IN', {
       style: 'currency',
@@ -140,6 +164,20 @@ export function CashUpiTracking() {
       minute: '2-digit'
     });
   };
+
+  if (!isAuthenticated) {
+    return (
+      <>
+        <PasswordModal
+          isOpen={showPasswordModal}
+          onClose={handleGoToDashboard}
+          onSuccess={handlePasswordSuccess}
+          title="Administrator Access Required"
+          description="Enter the administrator password to access Cash & UPI Tracking"
+        />
+      </>
+    );
+  }
 
   if (loading) {
     return (
@@ -172,13 +210,26 @@ export function CashUpiTracking() {
           <h1 className="text-3xl font-bold text-gray-900">Cash & UPI Tracking</h1>
           <p className="text-gray-600 mt-2">Track cash and UPI transactions for your store</p>
         </div>
-        <button
-          onClick={() => setShowAddModal(true)}
-          className="bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white px-6 py-3 rounded-xl font-medium flex items-center gap-2 shadow-lg hover:shadow-xl transition-all"
-        >
-          <Plus className="h-5 w-5" />
-          Add Transaction
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={handleManualRefresh}
+            disabled={isRefreshing}
+            className="bg-gray-600 hover:bg-gray-700 disabled:bg-gray-400 text-white px-4 py-3 rounded-xl font-medium flex items-center gap-2 shadow-lg hover:shadow-xl transition-all"
+            title="Refresh data to see latest bill changes"
+          >
+            <svg className={`h-5 w-5 ${isRefreshing ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+            Refresh
+          </button>
+          <button
+            onClick={() => setShowAddModal(true)}
+            className="bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white px-6 py-3 rounded-xl font-medium flex items-center gap-2 shadow-lg hover:shadow-xl transition-all"
+          >
+            <Plus className="h-5 w-5" />
+            Add Transaction
+          </button>
+        </div>
       </div>
 
       {/* Summary Cards */}

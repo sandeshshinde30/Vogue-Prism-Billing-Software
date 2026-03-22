@@ -2,7 +2,7 @@ import { getDatabase } from './connection';
 import { updateStock } from './products';
 import { addActivityLog } from './logs';
 import { trackLocalChange } from '../services/dbSync';
-import { recordBillPaymentTransactions } from './cashUpiTransactions';
+import { recordBillPaymentTransactions, reverseBillPaymentTransactions, updateBillPaymentTransactions } from './cashUpiTransactions';
 
 export interface BillData {
   items: Array<{
@@ -427,6 +427,11 @@ export function updateBill(billId: number, data: Partial<BillData>) {
     throw new Error('Bill not found');
   }
   
+  // Store original payment details for cash/UPI tracking
+  const originalPaymentMode = originalBill.bill.paymentMode;
+  const originalCashAmount = originalBill.bill.cashAmount || 0;
+  const originalUpiAmount = originalBill.bill.upiAmount || 0;
+  
   const transaction = db.transaction(() => {
     // If items are being updated, we need to restore old stock and apply new stock changes
     if (data.items) {
@@ -511,6 +516,34 @@ export function updateBill(billId: number, data: Partial<BillData>) {
   
   transaction();
   
+  // Get the updated bill to check new payment details
+  const updatedBill = getBillById(billId);
+  if (updatedBill) {
+    const newPaymentMode = updatedBill.bill.paymentMode;
+    const newCashAmount = updatedBill.bill.cashAmount || 0;
+    const newUpiAmount = updatedBill.bill.upiAmount || 0;
+    
+    // Update cash/UPI tracking if payment details changed
+    if (originalPaymentMode !== newPaymentMode || 
+        originalCashAmount !== newCashAmount || 
+        originalUpiAmount !== newUpiAmount) {
+      
+      try {
+        updateBillPaymentTransactions(
+          originalBill.bill.billNumber,
+          originalPaymentMode,
+          originalCashAmount,
+          originalUpiAmount,
+          newPaymentMode,
+          newCashAmount,
+          newUpiAmount
+        );
+      } catch (error) {
+        console.error('❌ Error updating cash/UPI transactions for bill edit:', error);
+      }
+    }
+  }
+  
   // Log the activity
   addActivityLog(
     'update',
@@ -566,6 +599,33 @@ export function deleteBill(billId: number, reason?: string) {
   });
   
   transaction();
+  
+  // Reverse cash/UPI transactions for the deleted bill
+  try {
+    const cashAmount = billData.bill.cashAmount || 0;
+    const upiAmount = billData.bill.upiAmount || 0;
+    
+    // Calculate actual amounts based on payment mode
+    let actualCashAmount = cashAmount;
+    let actualUpiAmount = upiAmount;
+    
+    if (billData.bill.paymentMode === 'cash' && actualCashAmount === 0) {
+      actualCashAmount = billData.bill.total;
+    }
+    
+    if (billData.bill.paymentMode === 'upi' && actualUpiAmount === 0) {
+      actualUpiAmount = billData.bill.total;
+    }
+    
+    reverseBillPaymentTransactions(
+      billData.bill.billNumber,
+      billData.bill.paymentMode,
+      actualCashAmount,
+      actualUpiAmount
+    );
+  } catch (error) {
+    console.error('❌ Error reversing cash/UPI transactions for bill deletion:', error);
+  }
   
   // Log the activity
   addActivityLog(
@@ -659,6 +719,33 @@ export function restoreDeletedBill(deletedBillId: number) {
   });
   
   transaction();
+  
+  // Restore cash/UPI transactions for the recovered bill
+  try {
+    const cashAmount = billData.cashAmount || 0;
+    const upiAmount = billData.upiAmount || 0;
+    
+    // Calculate actual amounts based on payment mode
+    let actualCashAmount = cashAmount;
+    let actualUpiAmount = upiAmount;
+    
+    if (billData.paymentMode === 'cash' && actualCashAmount === 0) {
+      actualCashAmount = billData.total;
+    }
+    
+    if (billData.paymentMode === 'upi' && actualUpiAmount === 0) {
+      actualUpiAmount = billData.total;
+    }
+    
+    recordBillPaymentTransactions(
+      billData.billNumber + '-RESTORED',
+      billData.paymentMode,
+      actualCashAmount,
+      actualUpiAmount
+    );
+  } catch (error) {
+    console.error('❌ Error recording cash/UPI transactions for bill recovery:', error);
+  }
   
   // Log the activity
   addActivityLog(

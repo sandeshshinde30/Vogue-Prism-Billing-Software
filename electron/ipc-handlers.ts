@@ -2001,5 +2001,27 @@ $shell.Run("notepad /p \\"$filePath\\"", 0, $true)
     }
   });
 
+  ipcMain.handle('cashUpi:reverseBillPayment', async (_, billNumber: string, paymentMode: string, cashAmount: number, upiAmount: number) => {
+    try {
+      const { reverseBillPaymentTransactions } = await import('./DB/cashUpiTransactions');
+      reverseBillPaymentTransactions(billNumber, paymentMode, cashAmount, upiAmount);
+      return { success: true };
+    } catch (error) {
+      console.error('Error reversing bill payment transactions:', error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle('cashUpi:updateBillPayment', async (_, billNumber: string, originalPaymentMode: string, originalCashAmount: number, originalUpiAmount: number, newPaymentMode: string, newCashAmount: number, newUpiAmount: number) => {
+    try {
+      const { updateBillPaymentTransactions } = await import('./DB/cashUpiTransactions');
+      updateBillPaymentTransactions(billNumber, originalPaymentMode, originalCashAmount, originalUpiAmount, newPaymentMode, newCashAmount, newUpiAmount);
+      return { success: true };
+    } catch (error) {
+      console.error('Error updating bill payment transactions:', error);
+      throw error;
+    }
+  });
+
   console.log('All IPC handlers set up successfully');
 }
